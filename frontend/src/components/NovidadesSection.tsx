@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 
 interface Game {
@@ -27,6 +27,7 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
   const [gamesPerPage, setGamesPerPage] = useState(4);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  const providersLoadedRef = useRef(false);
 
   useEffect(() => {
     const updateGamesPerPage = () => {
@@ -59,14 +60,17 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
           code: g.code,
         }));
         setGames(mapped);
-        const uniqueProviders = Array.from(
-          new Set(
-            mapped
-              .map((g) => g.provider?.trim())
-              .filter((p): p is string => Boolean(p))
-          )
-        ).sort((a, b) => a.localeCompare(b));
-        onProvidersLoaded?.(uniqueProviders);
+        if (!providersLoadedRef.current) {
+          const uniqueProviders = Array.from(
+            new Set(
+              mapped
+                .map((g) => g.provider?.trim())
+                .filter((p): p is string => Boolean(p))
+            )
+          ).sort((a, b) => a.localeCompare(b));
+          onProvidersLoaded?.(uniqueProviders);
+          providersLoadedRef.current = true;
+        }
       } catch (err) {
         console.error('Erro ao buscar jogos', err);
       } finally {
@@ -74,7 +78,7 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
       }
     };
     fetchGames();
-  }, [onProvidersLoaded]);
+  }, []);
 
   const normalizedQuery = (filters?.query || '').trim().toLowerCase();
   const normalizedProvider = (filters?.provider || '').trim().toLowerCase();

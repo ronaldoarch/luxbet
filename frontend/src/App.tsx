@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import PromoBanner from './components/PromoBanner';
 import Header from './components/Header';
 import HeroBanner from './components/HeroBanner';
@@ -22,6 +22,10 @@ function App() {
   const handleFiltersChange = (partial: { query?: string; provider?: string }) => {
     setFilters((prev) => ({ ...prev, ...partial }));
   };
+
+  const handleProvidersLoaded = useCallback((items: string[]) => {
+    setProviders(items);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0a0e0f] text-white">
@@ -52,7 +56,7 @@ function App() {
             <GameCards />
             <NovidadesSection
               filters={filters}
-              onProvidersLoaded={(items) => setProviders(items)}
+              onProvidersLoaded={handleProvidersLoaded}
             />
           </main>
           <Footer />
