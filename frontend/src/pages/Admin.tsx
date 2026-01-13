@@ -757,24 +757,28 @@ function BrandingTab() {
         })
     );
     Promise.all(readers).then((imgs) => {
-      const updated = {
-        ...assets,
-        banner: imgs[0] || assets.banner,
-        banners: [...(assets.banners || []), ...imgs]
-      };
-      setAssets(updated);
-      saveBrandAssets(updated);
-      applyBrandAssets(updated);
+      setAssets((prev) => {
+        const updated = {
+          ...prev,
+          banners: [...(prev.banners || []), ...imgs],
+        };
+        updated.banner = updated.banners?.[0] || prev.banner;
+        saveBrandAssets(updated);
+        applyBrandAssets(updated);
+        return updated;
+      });
       setMessage('Banners adicionados e aplicados.');
     });
   };
 
   const removeBannerAt = (idx: number) => {
-    const next = (assets.banners || []).filter((_, i) => i !== idx);
-    const updated = { ...assets, banners: next, banner: next[0] };
-    setAssets(updated);
-    saveBrandAssets(updated);
-    applyBrandAssets(updated);
+    setAssets((prev) => {
+      const next = (prev.banners || []).filter((_, i) => i !== idx);
+      const updated = { ...prev, banners: next, banner: next[0] };
+      saveBrandAssets(updated);
+      applyBrandAssets(updated);
+      return updated;
+    });
   };
 
   return (

@@ -135,6 +135,9 @@ export function getBrandAssets(): BrandAssets {
     if (parsed.banner && !parsed.banners) {
       parsed.banners = [parsed.banner];
     }
+    if (parsed.banners?.length && !parsed.banner) {
+      parsed.banner = parsed.banners[0];
+    }
     return parsed;
   } catch {
     return {};
