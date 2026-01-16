@@ -21,8 +21,8 @@ FROM nginx:alpine
 # Copiar arquivos buildados
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copiar configuração customizada do nginx (opcional)
-# COPY nginx.conf /etc/nginx/nginx.conf
+# Copiar configuração customizada do nginx para SPA
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expor porta
 EXPOSE 80
