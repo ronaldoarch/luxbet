@@ -3,11 +3,12 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copiar arquivos de dependências (garantir que ambos sejam copiados)
-COPY package.json package-lock.json* ./
+# Copiar arquivos de dependências
+COPY package.json ./
+COPY package-lock.json* ./
 
-# Instalar dependências (npm ci se tiver lock, senão npm install)
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Instalar dependências (npm install funciona mesmo sem package-lock.json)
+RUN npm install --frozen-lockfile || npm install
 
 # Copiar código fonte
 COPY . .
