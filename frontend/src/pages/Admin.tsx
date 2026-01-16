@@ -6,8 +6,8 @@ import {
   ArrowDownCircle, Key, Activity, RefreshCw,
   Image as ImageIcon, Palette
 } from 'lucide-react';
-import type { BrandAssets, ThemePalette } from '../utils/themeManager';
-import { applyBrandAssets, applyThemeToDocument, getBrandAssets, getThemeList, saveBrandAssets, saveThemeList, setActiveTheme } from '../utils/themeManager';
+import type { ThemePalette } from '../utils/themeManager';
+import { applyThemeToDocument, getThemeList, saveThemeList, setActiveTheme } from '../utils/themeManager';
 
 interface Stats {
   total_users: number;
