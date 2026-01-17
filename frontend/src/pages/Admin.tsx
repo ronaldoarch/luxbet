@@ -721,8 +721,8 @@ function SettingsTab({ token }: { token: string }) {
 }
 
 function BrandingTab({ token }: { token: string }) {
-  const [logo, setLogo] = useState<{ id: number; url: string } | null>(null);
-  const [banners, setBanners] = useState<Array<{ id: number; url: string }>>([]);
+  const [logos, setLogos] = useState<Array<{ id: number; url: string; is_active: boolean; created_at: string }>>([]);
+  const [banners, setBanners] = useState<Array<{ id: number; url: string; position: number; is_active: boolean }>>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -739,13 +739,13 @@ function BrandingTab({ token }: { token: string }) {
       ]);
       
       if (logoRes.ok) {
-        const logos = await logoRes.json();
-        setLogo(logos.length > 0 ? { id: logos[0].id, url: logos[0].url } : null);
+        const logosData = await logoRes.json();
+        setLogos(logosData.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       }
       
       if (bannersRes.ok) {
         const bannersData = await bannersRes.json();
-        setBanners(bannersData.map((b: any) => ({ id: b.id, url: b.url })));
+        setBanners(bannersData.sort((a: any, b: any) => a.position - b.position));
       }
     } catch (err) {
       console.error('Erro ao buscar assets:', err);
@@ -821,12 +821,11 @@ function BrandingTab({ token }: { token: string }) {
     }
   };
 
-  const removeLogo = async () => {
-    if (!logo) return;
+  const removeLogo = async (id: number) => {
     setLoading(true);
     setMessage('');
     try {
-      const res = await fetch(`${API_URL}/api/admin/media/${logo.id}`, {
+      const res = await fetch(`${API_URL}/api/admin/media/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -862,24 +861,88 @@ function BrandingTab({ token }: { token: string }) {
     }
   };
 
+  const toggleActive = async (id: number) => {
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/media/${id}/toggle-active`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!res.ok) throw new Error('Erro ao alterar status');
+      
+      await fetchAssets();
+      setMessage('Status atualizado.');
+    } catch (err: any) {
+      setMessage(err.message || 'Erro ao alterar status.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const moveBanner = async (id: number, direction: 'up' | 'down') => {
+    const index = banners.findIndex(b => b.id === id);
+    if (index === -1) return;
+    
+    const newPosition = direction === 'up' ? index - 1 : index + 1;
+    if (newPosition < 0 || newPosition >= banners.length) return;
+
+    setLoading(true);
+    setMessage('');
+    try {
+      const targetBanner = banners[newPosition];
+      const currentBanner = banners[index];
+      
+      // Trocar posições
+      const formData1 = new FormData();
+      formData1.append('position', newPosition.toString());
+      
+      const formData2 = new FormData();
+      formData2.append('position', index.toString());
+
+      await Promise.all([
+        fetch(`${API_URL}/api/admin/media/${currentBanner.id}/position`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData1
+        }),
+        fetch(`${API_URL}/api/admin/media/${targetBanner.id}/position`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData2
+        })
+      ]);
+      
+      await fetchAssets();
+      setMessage('Ordem atualizada.');
+    } catch (err: any) {
+      setMessage(err.message || 'Erro ao reordenar.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getImageUrl = (url: string) => {
+    return url.startsWith('/api') ? `${API_URL}${url}` : `${API_URL}/api/public/media${url}`;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Branding</h2>
-          <p className="text-sm text-gray-400">Envie logo e banner para aplicar na plataforma em tempo real.</p>
+          <p className="text-sm text-gray-400">Gerencie logos e banners da plataforma.</p>
         </div>
       </div>
       {message && <div className={`text-sm ${message.includes('Erro') ? 'text-red-400' : 'text-emerald-400'}`}>{message}</div>}
       {loading && <div className="text-sm text-gray-400">Carregando...</div>}
 
       <div className="grid md:grid-cols-2 gap-4">
+        {/* Logo Section */}
         <div className="bg-gray-800/60 p-4 rounded border border-gray-700 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Logo</h3>
-            {logo && (
-              <button onClick={removeLogo} className="text-sm text-gray-300 hover:text-white">Limpar</button>
-            )}
           </div>
           <label className="block">
             <span className="text-sm text-gray-300">Upload (PNG/JPG/SVG)</span>
@@ -891,16 +954,45 @@ function BrandingTab({ token }: { token: string }) {
               disabled={loading}
             />
           </label>
-          {logo && (
-            <div className="p-2 bg-gray-900 rounded border border-gray-700">
-              <img src={logo.url.startsWith('/api') ? `${API_URL}${logo.url}` : `${API_URL}/api/public/media${logo.url}`} alt="Logo atual" className="max-h-20 object-contain mx-auto" />
+          
+          {logos.length > 0 && (
+            <div className="space-y-2">
+              {logos.map((logo) => (
+                <div key={logo.id} className={`p-2 rounded border ${logo.is_active ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-700 bg-gray-900'}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <img src={getImageUrl(logo.url)} alt="Logo" className="max-h-16 object-contain" />
+                    <div className="flex-1">
+                      <div className="text-xs text-gray-400">
+                        {logo.is_active ? '✓ Ativo' : 'Inativo'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => toggleActive(logo.id)}
+                      className={`text-xs px-2 py-1 rounded ${logo.is_active ? 'bg-gray-700 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                      disabled={loading}
+                    >
+                      {logo.is_active ? 'Desativar' : 'Ativar'}
+                    </button>
+                    <button
+                      onClick={() => removeLogo(logo.id)}
+                      className="text-xs px-2 py-1 rounded bg-red-600/60 hover:bg-red-600/80"
+                      disabled={loading}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
+        {/* Banner Section */}
         <div className="bg-gray-800/60 p-4 rounded border border-gray-700 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Banner</h3>
+            <h3 className="font-semibold">Banners</h3>
           </div>
           <label className="block">
             <span className="text-sm text-gray-300">Upload (PNG/JPG) - múltiplos para carrossel</span>
@@ -913,18 +1005,51 @@ function BrandingTab({ token }: { token: string }) {
               disabled={loading}
             />
           </label>
+          
           {banners.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {banners.map((b) => (
-                <div key={b.id} className="relative p-2 bg-gray-900 rounded border border-gray-700">
-                  <img src={b.url.startsWith('/api') ? `${API_URL}${b.url}` : `${API_URL}/api/public/media${b.url}`} alt={`Banner ${b.id}`} className="max-h-28 w-full object-cover rounded" />
-                  <button
-                    onClick={() => removeBanner(b.id)}
-                    className="absolute top-2 right-2 text-xs bg-black/60 px-2 py-1 rounded hover:bg-black/80"
-                    disabled={loading}
-                  >
-                    Remover
-                  </button>
+            <div className="space-y-2">
+              {banners.map((banner, index) => (
+                <div key={banner.id} className={`p-2 rounded border ${banner.is_active ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-700 bg-gray-900'}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <img src={getImageUrl(banner.url)} alt={`Banner ${banner.id}`} className="max-h-20 w-full object-cover rounded" />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-gray-400">
+                      Posição: {index + 1} {banner.is_active ? '| ✓ Ativo' : '| Inativo'}
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => moveBanner(banner.id, 'up')}
+                        disabled={loading || index === 0}
+                        className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30"
+                        title="Mover para cima"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moveBanner(banner.id, 'down')}
+                        disabled={loading || index === banners.length - 1}
+                        className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30"
+                        title="Mover para baixo"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => toggleActive(banner.id)}
+                        className={`text-xs px-2 py-1 rounded ${banner.is_active ? 'bg-gray-700 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                        disabled={loading}
+                      >
+                        {banner.is_active ? '⚫' : '⚪'}
+                      </button>
+                      <button
+                        onClick={() => removeBanner(banner.id)}
+                        className="text-xs px-2 py-1 rounded bg-red-600/60 hover:bg-red-600/80"
+                        disabled={loading}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

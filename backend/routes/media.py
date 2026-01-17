@@ -188,10 +188,20 @@ async def delete_media(
     if not asset:
         raise HTTPException(status_code=404, detail="Mídia não encontrada")
 
-    # Deletar arquivo físico (remove /api/public/media/uploads/ da URL se presente)
+    # Deletar arquivo físico
+    # Extrair path da URL: /api/public/media/uploads/logos/file.jpg -> logos/file.jpg
     url_path = asset.url.replace("/api/public/media/uploads/", "").lstrip("/")
-    file_path = UPLOAD_BASE_DIR / url_path
-    if file_path.exists():
+    
+    # Se ainda tiver prefixo, remover (compatibilidade com URLs antigas)
+    if "/" in url_path:
+        parts = url_path.split("/", 1)
+        file_path = UPLOAD_BASE_DIR / parts[0] / parts[1] if len(parts) == 2 else UPLOAD_BASE_DIR / url_path
+    else:
+        # Fallback: usar diretório baseado no tipo
+        upload_dir = UPLOAD_DIRS.get(asset.type)
+        file_path = upload_dir / asset.filename if upload_dir else None
+    
+    if file_path and file_path.exists():
         try:
             file_path.unlink()
         except Exception as e:
@@ -224,6 +234,28 @@ async def update_position(
         "success": True,
         "id": asset.id,
         "position": asset.position,
+    }
+
+
+@router.put("/{media_id}/toggle-active")
+async def toggle_active(
+    media_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Ativar/desativar mídia"""
+    asset = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Mídia não encontrada")
+
+    asset.is_active = not asset.is_active
+    db.commit()
+    db.refresh(asset)
+
+    return {
+        "success": True,
+        "id": asset.id,
+        "is_active": asset.is_active,
     }
 
 
