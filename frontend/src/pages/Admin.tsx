@@ -927,6 +927,39 @@ function BrandingTab({ token }: { token: string }) {
     return url.startsWith('/api') ? `${API_URL}${url}` : `${API_URL}/api/public/media${url}`;
   };
 
+  // Drag and drop handlers
+  const [dragActive, setDragActive] = useState(false);
+  const [dragBannerActive, setDragBannerActive] = useState(false);
+
+  const handleDrag = (e: React.DragEvent, type: 'logo' | 'banner') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (type === 'logo') setDragActive(true);
+    else setDragBannerActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent, type: 'logo' | 'banner') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (type === 'logo') setDragActive(false);
+    else setDragBannerActive(false);
+  };
+
+  const handleDrop = (e: React.DragEvent, type: 'logo' | 'banner') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (type === 'logo') setDragActive(false);
+    else setDragBannerActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      if (type === 'logo') {
+        handleLogoUpload(e.dataTransfer.files[0]);
+      } else {
+        handleBannerUpload(e.dataTransfer.files);
+      }
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -944,16 +977,39 @@ function BrandingTab({ token }: { token: string }) {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Logo</h3>
           </div>
-          <label className="block">
-            <span className="text-sm text-gray-300">Upload (PNG/JPG/SVG)</span>
-            <input 
-              type="file" 
-              accept="image/*" 
-              onChange={(e) => handleLogoUpload(e.target.files?.[0])} 
-              className="mt-2 w-full text-sm" 
+          
+          {/* Drag & Drop Area */}
+          <div
+            onDragEnter={(e) => handleDrag(e, 'logo')}
+            onDragLeave={(e) => handleDragLeave(e, 'logo')}
+            onDragOver={(e) => handleDrag(e, 'logo')}
+            onDrop={(e) => handleDrop(e, 'logo')}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              dragActive 
+                ? 'border-emerald-500 bg-emerald-500/10' 
+                : 'border-gray-600 hover:border-gray-500'
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleLogoUpload(e.target.files?.[0])}
+              className="hidden"
+              id="logo-upload"
               disabled={loading}
             />
-          </label>
+            <label htmlFor="logo-upload" className="cursor-pointer">
+              <div className="space-y-2">
+                <div className="text-4xl">📁</div>
+                <div className="text-sm text-gray-300">
+                  Arraste e solte os arquivos ou <span className="text-emerald-400 underline">Clique aqui</span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Recomendado: 200x60px | Formatos: PNG, JPG, SVG | Opcional
+                </div>
+              </div>
+            </label>
+          </div>
           
           {logos.length > 0 && (
             <div className="space-y-2">
@@ -994,17 +1050,40 @@ function BrandingTab({ token }: { token: string }) {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Banners</h3>
           </div>
-          <label className="block">
-            <span className="text-sm text-gray-300">Upload (PNG/JPG) - múltiplos para carrossel</span>
-            <input 
-              type="file" 
-              accept="image/*" 
-              multiple 
-              onChange={(e) => handleBannerUpload(e.target.files)} 
-              className="mt-2 w-full text-sm" 
+          
+          {/* Drag & Drop Area */}
+          <div
+            onDragEnter={(e) => handleDrag(e, 'banner')}
+            onDragLeave={(e) => handleDragLeave(e, 'banner')}
+            onDragOver={(e) => handleDrag(e, 'banner')}
+            onDrop={(e) => handleDrop(e, 'banner')}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              dragBannerActive 
+                ? 'border-emerald-500 bg-emerald-500/10' 
+                : 'border-gray-600 hover:border-gray-500'
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => handleBannerUpload(e.target.files)}
+              className="hidden"
+              id="banner-upload"
               disabled={loading}
             />
-          </label>
+            <label htmlFor="banner-upload" className="cursor-pointer">
+              <div className="space-y-2">
+                <div className="text-4xl">🖼️</div>
+                <div className="text-sm text-gray-300">
+                  Arraste e solte os arquivos ou <span className="text-emerald-400 underline">Clique aqui</span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Múltiplos arquivos para carrossel | Formatos: PNG, JPG
+                </div>
+              </div>
+            </label>
+          </div>
           
           {banners.length > 0 && (
             <div className="space-y-2">
