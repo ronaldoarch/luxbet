@@ -107,10 +107,13 @@ async def upload_media(
             ).scalar()
             position = (max_position or 0) + 1
 
+        # Determinar nome do diretório na URL (plural para banners)
+        url_dir = "banners" if media_type_enum == MediaType.BANNER else media_type_enum.value
+        
         # Salvar referência no banco
         media_asset = MediaAsset(
             type=media_type_enum,
-            url=f"/uploads/{media_type_enum.value}/{filename}",
+            url=f"/uploads/{url_dir}/{filename}",
             filename=filename,
             file_size=file_size,
             mime_type=file.content_type,
