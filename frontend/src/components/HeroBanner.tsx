@@ -14,7 +14,12 @@ export default function HeroBanner() {
         const res = await fetch(`${API_URL}/api/public/media/banners`);
         if (res.ok) {
           const data = await res.json();
-          const urls = data.map((b: any) => `${API_URL}${b.url}`);
+          const urls = data.map((b: any) => {
+            // Se a URL já começar com /api, usa direto; senão constrói com API_URL
+            return b.url.startsWith('/api') 
+              ? `${API_URL}${b.url}`
+              : `${API_URL}/api/public/media${b.url}`;
+          });
           setBanners(urls);
         }
       } catch (err) {

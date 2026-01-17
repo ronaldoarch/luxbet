@@ -893,7 +893,7 @@ function BrandingTab({ token }: { token: string }) {
           </label>
           {logo && (
             <div className="p-2 bg-gray-900 rounded border border-gray-700">
-              <img src={`${API_URL}${logo.url}`} alt="Logo atual" className="max-h-20 object-contain mx-auto" />
+              <img src={logo.url.startsWith('/api') ? `${API_URL}${logo.url}` : `${API_URL}/api/public/media${logo.url}`} alt="Logo atual" className="max-h-20 object-contain mx-auto" />
             </div>
           )}
         </div>
@@ -917,7 +917,7 @@ function BrandingTab({ token }: { token: string }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {banners.map((b) => (
                 <div key={b.id} className="relative p-2 bg-gray-900 rounded border border-gray-700">
-                  <img src={`${API_URL}${b.url}`} alt={`Banner ${b.id}`} className="max-h-28 w-full object-cover rounded" />
+                  <img src={b.url.startsWith('/api') ? `${API_URL}${b.url}` : `${API_URL}/api/public/media${b.url}`} alt={`Banner ${b.id}`} className="max-h-28 w-full object-cover rounded" />
                   <button
                     onClick={() => removeBanner(b.id)}
                     className="absolute top-2 right-2 text-xs bg-black/60 px-2 py-1 rounded hover:bg-black/80"

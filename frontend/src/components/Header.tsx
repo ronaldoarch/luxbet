@@ -20,7 +20,13 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
         if (res.ok) {
           const data = await res.json();
           if (data.url) {
-            setLogoUrl(`${API_URL}${data.url}`);
+            // Se a URL já começar com /api, usa direto; senão constrói com API_URL
+            const url = data.url.startsWith('/api') 
+              ? `${API_URL}${data.url}`
+              : `${API_URL}/api/public/media${data.url}`;
+            setLogoUrl(url);
+          } else {
+            setLogoUrl(null);
           }
         }
       } catch (err) {
