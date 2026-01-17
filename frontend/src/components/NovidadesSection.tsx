@@ -221,7 +221,6 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
             <div className="flex items-center justify-between">
               <h3 className="text-xl md:text-2xl font-black text-white flex items-center gap-3">
                 <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">POR PROVEDOR</span>
-                <span className="text-2xl">🎰</span>
               </h3>
               <span className="text-sm text-gray-400">
                 {providerEntries.length} {providerEntries.length === 1 ? 'provedor' : 'provedores'}

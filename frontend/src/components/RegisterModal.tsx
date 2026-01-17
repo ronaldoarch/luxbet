@@ -56,7 +56,6 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
         {/* Image placeholder */}
         <div className="px-8 pb-6 flex justify-center">
           <div className="w-32 h-32 bg-gradient-to-br from-[#d4af37]/20 to-[#ff6b35]/20 rounded-full flex items-center justify-center">
-            <span className="text-6xl">🎰</span>
           </div>
         </div>
 

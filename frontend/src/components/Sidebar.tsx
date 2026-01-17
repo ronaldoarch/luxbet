@@ -73,7 +73,6 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
                     <div className="text-xs text-gray-400 font-semibold uppercase mb-1.5 leading-tight">Gire e ganhe</div>
                     <div className="text-base font-bold text-white leading-tight">Slot da Sorte</div>
                   </div>
-                  <div className="text-3xl ml-2 flex-shrink-0">🎰</div>
                 </div>
               </button>
 

@@ -1197,7 +1197,6 @@ function BrandingTab({ token }: { token: string }) {
             />
             <label htmlFor="logo-upload" className="cursor-pointer">
               <div className="space-y-2">
-                <div className="text-4xl">📁</div>
                 <div className="text-sm text-gray-300">
                   Arraste e solte os arquivos ou <span className="text-emerald-400 underline">Clique aqui</span>
                 </div>
@@ -1216,7 +1215,7 @@ function BrandingTab({ token }: { token: string }) {
                     <img src={getImageUrl(logo.url)} alt="Logo" className="max-h-16 object-contain" />
                     <div className="flex-1">
                       <div className="text-xs text-gray-400">
-                        {logo.is_active ? '✓ Ativo' : 'Inativo'}
+                        {logo.is_active ? '[Ativo]' : '[Inativo]'}
                       </div>
                     </div>
                   </div>
@@ -1271,7 +1270,6 @@ function BrandingTab({ token }: { token: string }) {
             />
             <label htmlFor="banner-upload" className="cursor-pointer">
               <div className="space-y-2">
-                <div className="text-4xl">🖼️</div>
                 <div className="text-sm text-gray-300">
                   Arraste e solte os arquivos ou <span className="text-emerald-400 underline">Clique aqui</span>
                 </div>
@@ -1291,7 +1289,7 @@ function BrandingTab({ token }: { token: string }) {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-gray-400">
-                      Posição: {index + 1} {banner.is_active ? '| ✓ Ativo' : '| Inativo'}
+                      Posição: {index + 1} {banner.is_active ? '| [Ativo]' : '| [Inativo]'}
                     </div>
                     <div className="flex gap-1">
                       <button
@@ -1300,7 +1298,7 @@ function BrandingTab({ token }: { token: string }) {
                         className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30"
                         title="Mover para cima"
                       >
-                        ↑
+                        ^
                       </button>
                       <button
                         onClick={() => moveBanner(banner.id, 'down')}
@@ -1308,14 +1306,14 @@ function BrandingTab({ token }: { token: string }) {
                         className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30"
                         title="Mover para baixo"
                       >
-                        ↓
+                        v
                       </button>
                       <button
                         onClick={() => toggleActive(banner.id)}
                         className={`text-xs px-2 py-1 rounded ${banner.is_active ? 'bg-gray-700 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                         disabled={loading}
                       >
-                        {banner.is_active ? '⚫' : '⚪'}
+                        {banner.is_active ? 'ON' : 'OFF'}
                       </button>
                       <button
                         onClick={() => removeBanner(banner.id)}
@@ -1809,7 +1807,7 @@ function NotificationsTab({ token }: { token: string }) {
                     </span>
                   </td>
                   <td className="px-3 py-2">{n.username || (n.user_id ? `User ${n.user_id}` : 'Global')}</td>
-                  <td className="px-3 py-2">{n.is_active ? '✓' : '✗'}</td>
+                  <td className="px-3 py-2">{n.is_active ? 'SIM' : 'NAO'}</td>
                   <td className="px-3 py-2">{new Date(n.created_at).toLocaleString('pt-BR')}</td>
                   <td className="px-3 py-2">
                     <button

@@ -63,9 +63,6 @@ export default function GameCards() {
                   {game.tag}
                 </div>
               )}
-              <div className="text-5xl mb-3 group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 relative z-10">
-                {game.emoji}
-              </div>
               <div className="text-white text-xs font-bold text-center line-clamp-2 leading-tight relative z-10 group-hover:text-[#d4af37] transition-colors duration-300">
                 {game.title}
               </div>
