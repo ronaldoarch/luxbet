@@ -11,7 +11,7 @@ from database import get_db
 from dependencies import get_current_admin_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
-    TransactionStatus, UserRole
+    TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType
 )
 from schemas import (
     UserResponse, UserCreate, UserUpdate,
@@ -786,3 +786,298 @@ async def get_stats(
         "depositos_hoje": depositos_hoje,
         "total_lucro": net_revenue,
     }
+
+
+# ========== GGR REPORT ==========
+@router.get("/ggr/report")
+async def get_ggr_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Relatório de GGR (Gross Gaming Revenue)"""
+    from datetime import datetime, date
+    
+    # Parse dates or use defaults
+    if start_date:
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    else:
+        start = datetime.combine(date.today(), datetime.min.time())
+    
+    if end_date:
+        end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    else:
+        end = datetime.utcnow()
+    
+    # Total de depósitos aprovados no período
+    total_deposits = db.query(Deposit).filter(
+        Deposit.status == TransactionStatus.APPROVED,
+        Deposit.created_at >= start,
+        Deposit.created_at <= end
+    ).with_entities(func.sum(Deposit.amount)).scalar() or 0.0
+    
+    # Total de saques aprovados no período
+    total_withdrawals = db.query(Withdrawal).filter(
+        Withdrawal.status == TransactionStatus.APPROVED,
+        Withdrawal.created_at >= start,
+        Withdrawal.created_at <= end
+    ).with_entities(func.sum(Withdrawal.amount)).scalar() or 0.0
+    
+    # Total de apostas no período
+    total_bets = db.query(Bet).filter(
+        Bet.created_at >= start,
+        Bet.created_at <= end
+    ).with_entities(func.sum(Bet.amount)).scalar() or 0.0
+    
+    # Total ganho em apostas
+    total_wins = db.query(Bet).filter(
+        Bet.status == BetStatus.WON,
+        Bet.created_at >= start,
+        Bet.created_at <= end
+    ).with_entities(func.sum(Bet.win_amount)).scalar() or 0.0
+    
+    # GGR = Total Apostado - Total Ganho
+    ggr = total_bets - total_wins
+    
+    # NGR (Net Gaming Revenue) = GGR - Bonuses (simplificado, pode incluir bônus depois)
+    ngr = ggr
+    
+    return {
+        "period": {
+            "start": start.isoformat(),
+            "end": end.isoformat()
+        },
+        "deposits": {
+            "total": total_deposits,
+            "count": db.query(Deposit).filter(
+                Deposit.status == TransactionStatus.APPROVED,
+                Deposit.created_at >= start,
+                Deposit.created_at <= end
+            ).count()
+        },
+        "withdrawals": {
+            "total": total_withdrawals,
+            "count": db.query(Withdrawal).filter(
+                Withdrawal.status == TransactionStatus.APPROVED,
+                Withdrawal.created_at >= start,
+                Withdrawal.created_at <= end
+            ).count()
+        },
+        "bets": {
+            "total_amount": total_bets,
+            "total_wins": total_wins,
+            "count": db.query(Bet).filter(
+                Bet.created_at >= start,
+                Bet.created_at <= end
+            ).count()
+        },
+        "ggr": ggr,
+        "ngr": ngr,
+        "ggr_rate": (ggr / total_bets * 100) if total_bets > 0 else 0.0,
+    }
+
+
+# ========== BETS ==========
+@router.get("/bets")
+async def get_bets(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    user_id: Optional[int] = None,
+    status: Optional[BetStatus] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Listar apostas"""
+    query = db.query(Bet)
+    
+    if user_id:
+        query = query.filter(Bet.user_id == user_id)
+    if status:
+        query = query.filter(Bet.status == status)
+    
+    bets = query.order_by(desc(Bet.created_at)).offset(skip).limit(limit).all()
+    
+    return [
+        {
+            "id": bet.id,
+            "user_id": bet.user_id,
+            "username": bet.user.username if bet.user else None,
+            "game_id": bet.game_id,
+            "game_name": bet.game_name,
+            "provider": bet.provider,
+            "amount": bet.amount,
+            "win_amount": bet.win_amount,
+            "status": bet.status.value,
+            "transaction_id": bet.transaction_id,
+            "created_at": bet.created_at.isoformat(),
+        }
+        for bet in bets
+    ]
+
+
+@router.get("/bets/{bet_id}")
+async def get_bet(
+    bet_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Obter aposta específica"""
+    bet = db.query(Bet).filter(Bet.id == bet_id).first()
+    if not bet:
+        raise HTTPException(status_code=404, detail="Aposta não encontrada")
+    
+    return {
+        "id": bet.id,
+        "user_id": bet.user_id,
+        "username": bet.user.username if bet.user else None,
+        "game_id": bet.game_id,
+        "game_name": bet.game_name,
+        "provider": bet.provider,
+        "amount": bet.amount,
+        "win_amount": bet.win_amount,
+        "status": bet.status.value,
+        "transaction_id": bet.transaction_id,
+        "external_id": bet.external_id,
+        "metadata": json.loads(bet.metadata_json) if bet.metadata_json else None,
+        "created_at": bet.created_at.isoformat(),
+        "updated_at": bet.updated_at.isoformat(),
+    }
+
+
+# ========== NOTIFICATIONS ==========
+@router.get("/notifications")
+async def get_notifications(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    user_id: Optional[int] = None,
+    is_read: Optional[bool] = None,
+    is_active: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Listar notificações"""
+    query = db.query(Notification)
+    
+    if user_id:
+        query = query.filter(Notification.user_id == user_id)
+    else:
+        # Admin vê apenas notificações globais (user_id = null)
+        query = query.filter(Notification.user_id == None)
+    
+    if is_read is not None:
+        query = query.filter(Notification.is_read == is_read)
+    if is_active is not None:
+        query = query.filter(Notification.is_active == is_active)
+    
+    notifications = query.order_by(desc(Notification.created_at)).offset(skip).limit(limit).all()
+    
+    return [
+        {
+            "id": notif.id,
+            "title": notif.title,
+            "message": notif.message,
+            "type": notif.type.value,
+            "user_id": notif.user_id,
+            "username": notif.user.username if notif.user else None,
+            "is_read": notif.is_read,
+            "is_active": notif.is_active,
+            "link": notif.link,
+            "created_at": notif.created_at.isoformat(),
+        }
+        for notif in notifications
+    ]
+
+
+@router.post("/notifications")
+async def create_notification(
+    title: str,
+    message: str,
+    type: NotificationType = NotificationType.INFO,
+    user_id: Optional[int] = None,
+    link: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Criar notificação"""
+    notification = Notification(
+        title=title,
+        message=message,
+        type=type,
+        user_id=user_id,  # null = notificação global
+        link=link,
+        is_active=True,
+        is_read=False
+    )
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+    
+    return {
+        "id": notification.id,
+        "title": notification.title,
+        "message": notification.message,
+        "type": notification.type.value,
+        "user_id": notification.user_id,
+        "is_read": notification.is_read,
+        "is_active": notification.is_active,
+        "link": notification.link,
+        "created_at": notification.created_at.isoformat(),
+    }
+
+
+@router.put("/notifications/{notification_id}")
+async def update_notification(
+    notification_id: int,
+    title: Optional[str] = None,
+    message: Optional[str] = None,
+    type: Optional[NotificationType] = None,
+    is_active: Optional[bool] = None,
+    link: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualizar notificação"""
+    notification = db.query(Notification).filter(Notification.id == notification_id).first()
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    
+    if title is not None:
+        notification.title = title
+    if message is not None:
+        notification.message = message
+    if type is not None:
+        notification.type = type
+    if is_active is not None:
+        notification.is_active = is_active
+    if link is not None:
+        notification.link = link
+    
+    db.commit()
+    db.refresh(notification)
+    
+    return {
+        "id": notification.id,
+        "title": notification.title,
+        "message": notification.message,
+        "type": notification.type.value,
+        "is_active": notification.is_active,
+        "link": notification.link,
+    }
+
+
+@router.delete("/notifications/{notification_id}")
+async def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Deletar notificação"""
+    notification = db.query(Notification).filter(Notification.id == notification_id).first()
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    
+    db.delete(notification)
+    db.commit()
+    
+    return {"success": True, "message": "Notificação deletada com sucesso"}

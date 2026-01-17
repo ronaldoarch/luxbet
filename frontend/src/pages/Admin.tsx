@@ -261,6 +261,9 @@ export default function Admin() {
           {activeTab === 'settings' && <SettingsTab token={token || ''} />}
           {activeTab === 'branding' && <BrandingTab token={token || ''} />}
           {activeTab === 'themes' && <ThemesTab />}
+          {activeTab === 'ggr' && <GGRTab token={token || ''} />}
+          {activeTab === 'bets' && <BetsTab token={token || ''} />}
+          {activeTab === 'notifications' && <NotificationsTab token={token || ''} />}
         </main>
       </div>
     </div>

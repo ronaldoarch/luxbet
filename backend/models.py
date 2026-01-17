@@ -40,6 +40,8 @@ class User(Base):
     deposits = relationship("Deposit", back_populates="user")
     withdrawals = relationship("Withdrawal", back_populates="user")
     ftds = relationship("FTD", back_populates="user")
+    bets = relationship("Bet")
+    notifications = relationship("Notification")
 
 
 class Gateway(Base):
@@ -151,3 +153,58 @@ class MediaAsset(Base):
     position = Column(Integer, default=0, nullable=False)  # Ordem para banners
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BetStatus(str, enum.Enum):
+    PENDING = "pending"
+    WON = "won"
+    LOST = "lost"
+    CANCELLED = "cancelled"
+
+
+class Bet(Base):
+    __tablename__ = "bets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    game_id = Column(String(255))  # ID do jogo (IGameWin ou outro provider)
+    game_name = Column(String(255))  # Nome do jogo
+    provider = Column(String(100))  # IGameWin, Pragmatic, etc
+    amount = Column(Float, nullable=False)  # Valor da aposta
+    win_amount = Column(Float, default=0.0)  # Valor ganho (0 se perdeu)
+    status = Column(Enum(BetStatus), default=BetStatus.PENDING, nullable=False)
+    transaction_id = Column(String(255), unique=True, index=True)
+    external_id = Column(String(255), index=True)  # ID do provider externo
+    metadata_json = Column(Text)  # JSON com dados adicionais do jogo
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User")
+
+
+class NotificationType(str, enum.Enum):
+    INFO = "info"
+    SUCCESS = "success"
+    WARNING = "warning"
+    ERROR = "error"
+    PROMOTION = "promotion"
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(Enum(NotificationType), default=NotificationType.INFO, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # null = notificação global
+    is_read = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    link = Column(String(500))  # Link opcional (ex: /promo/bonus)
+    metadata_json = Column(Text)  # JSON com dados adicionais
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User")

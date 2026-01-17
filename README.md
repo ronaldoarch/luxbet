@@ -1,36 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fortune Vegas - Plataforma de Cassino e Apostas Esportivas
 
-## Getting Started
+Front-end recriado - Uma plataforma moderna de cassino e apostas esportivas.
 
-First, run the development server:
+## 🚀 Arquitetura
+
+- **Frontend**: React com Vite e TypeScript
+- **Backend**: Python com FastAPI
+
+## 📦 Instalação
+
+### Frontend
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd frontend
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Backend
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate  # macOS/Linux
+# ou venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🏃 Executar em Desenvolvimento
 
-## Learn More
+### Frontend
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd frontend
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Acesse [http://localhost:5173](http://localhost:5173) no seu navegador.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Backend
 
-## Deploy on Vercel
+```bash
+cd backend
+source venv/bin/activate  # macOS/Linux
+# ou venv\Scripts\activate  # Windows
+uvicorn main:app --reload --port 8000
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+A API estará disponível em: http://localhost:8000
+Documentação interativa: http://localhost:8000/docs
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🏗️ Estrutura do Projeto
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── PromoBanner.tsx      # Banner promocional superior
+│   │   ├── Header.tsx            # Cabeçalho com logo e navegação
+│   │   ├── HeroBanner.tsx        # Banner principal hero
+│   │   ├── SearchBar.tsx         # Barra de pesquisa
+│   │   ├── GameCards.tsx         # Cards de jogos/categorias
+│   │   ├── Sidebar.tsx           # Menu lateral
+│   │   ├── NovidadesSection.tsx  # Seção de novidades
+│   │   ├── Footer.tsx            # Rodapé
+│   │   ├── BottomNav.tsx         # Navegação inferior fixa
+│   │   └── ChatWidget.tsx        # Widget de chat
+│   ├── App.tsx                   # Componente principal
+│   └── index.css                 # Estilos globais
+
+backend/
+├── main.py                       # API principal
+└── requirements.txt              # Dependências Python
+```
+
+## 🎨 Cores Principais
+
+- **Teal Escuro**: `#0a4d3e` - Header e navegação
+- **Dourado**: `#d4af37` - Destaques e CTAs
+- **Laranja**: `#ff6b35` - Botões e acentuações
+- **Fundo Escuro**: `#0a0e0f` - Background principal
+
+## ✨ Funcionalidades
+
+- ✅ Banner promocional com opção de fechar
+- ✅ Header responsivo com logo e navegação
+- ✅ Hero banner com carousel
+- ✅ Barra de pesquisa de jogos
+- ✅ Cards de jogos/categorias com scroll horizontal
+- ✅ Menu lateral responsivo
+- ✅ Navegação inferior fixa
+- ✅ Widget de chat
+- ✅ Design responsivo
+- ✅ Backend API com FastAPI
+
+## 📝 Próximos Passos
+
+- Integrar frontend com backend
+- Adicionar autenticação
+- Implementar funcionalidades de jogos
+- Adicionar mais animações e interações
+- Implementar rotas no frontend (React Router)
+
+## 📄 Licença
+
+Este projeto é privado.
