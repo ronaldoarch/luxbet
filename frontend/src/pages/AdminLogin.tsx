@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Backend FastAPI roda na porta 8000 (uvicorn main:app --port 8000)
-const API_URL = 'http://localhost:8000';
+// Backend FastAPI - usa variável de ambiente ou fallback para localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function AdminLogin() {
   const navigate = useNavigate();

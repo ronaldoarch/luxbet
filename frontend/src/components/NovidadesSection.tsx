@@ -19,8 +19,9 @@ interface NovidadesSectionProps {
   onProvidersLoaded?: (providers: string[]) => void;
 }
 
-// Backend expõe /api/public/games via FastAPI (uvicorn na porta 8000)
-const API_URL = 'http://127.0.0.1:8000/api/public/games';
+// Backend expõe /api/public/games via FastAPI - usa variável de ambiente ou fallback
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = `${API_BASE_URL}/api/public/games`;
 
 export default function NovidadesSection({ filters, onProvidersLoaded }: NovidadesSectionProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
