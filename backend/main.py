@@ -14,7 +14,7 @@ app = FastAPI(title="Fortune Vegas API", version="1.0.0")
 cors_origins_env = os.getenv("CORS_ORIGINS", "").strip()
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()] if cors_origins_env else []
 
-# Se não houver variável, usa defaults de desenvolvimento + permite qualquer origem em produção (para Coolify)
+# Se não houver variável, usa defaults de desenvolvimento
 if not cors_origins:
     cors_origins = [
         "http://localhost:5173",
@@ -23,15 +23,15 @@ if not cors_origins:
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:3000",
+        # Permite qualquer origem do domínio agenciamidas.com em produção
+        "https://*.agenciamidas.com",
+        "http://*.agenciamidas.com",
     ]
-    
-    # Se estiver em produção (sem localhost na DATABASE_URL), permite todas as origens do Coolify
-    if os.getenv("DATABASE_URL") and "localhost" not in os.getenv("DATABASE_URL", ""):
-        cors_origins = ["*"]  # Permite todas as origens em produção
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=r"https?://.*\.agenciamidas\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
