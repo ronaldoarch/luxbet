@@ -644,23 +644,115 @@ async def get_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user)
 ):
-    total_users = db.query(User).count()
-    total_deposits = db.query(Deposit).filter(Deposit.status == TransactionStatus.APPROVED).count()
-    total_withdrawals = db.query(Withdrawal).filter(Withdrawal.status == TransactionStatus.APPROVED).count()
-    total_ftds = db.query(FTD).count()
+    from datetime import date, timedelta
     
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+    
+    # Total de usuários
+    total_users = db.query(User).count()
+    
+    # Usuários registrados hoje
+    usuarios_registrados_hoje = db.query(User).filter(
+        func.date(User.created_at) == today
+    ).count()
+    
+    # Balanço total dos jogadores com saldo
+    users_with_balance = db.query(User).filter(User.balance > 0).all()
+    balanco_jogador_total = sum(u.balance for u in users_with_balance)
+    jogadores_com_saldo = len(users_with_balance)
+    
+    # Depósitos
+    total_deposits = db.query(Deposit).filter(Deposit.status == TransactionStatus.APPROVED).count()
     total_deposit_amount = db.query(Deposit).filter(Deposit.status == TransactionStatus.APPROVED).with_entities(
         func.sum(Deposit.amount)
     ).scalar() or 0.0
+    pending_deposits = db.query(Deposit).filter(Deposit.status == TransactionStatus.PENDING).count()
     
+    # Depósitos recebidos (aprovados) hoje
+    pagamentos_recebidos_hoje = db.query(Deposit).filter(
+        Deposit.status == TransactionStatus.APPROVED,
+        func.date(Deposit.created_at) == today
+    ).count()
+    valor_pagamentos_recebidos_hoje = db.query(Deposit).filter(
+        Deposit.status == TransactionStatus.APPROVED,
+        func.date(Deposit.created_at) == today
+    ).with_entities(func.sum(Deposit.amount)).scalar() or 0.0
+    
+    # PIX recebido hoje (depósitos PIX aprovados hoje)
+    pix_recebido_hoje = db.query(Deposit).join(Gateway).filter(
+        Deposit.status == TransactionStatus.APPROVED,
+        Gateway.type == "pix",
+        func.date(Deposit.created_at) == today
+    ).with_entities(func.sum(Deposit.amount)).scalar() or 0.0
+    pix_recebido_count_hoje = db.query(Deposit).join(Gateway).filter(
+        Deposit.status == TransactionStatus.APPROVED,
+        Gateway.type == "pix",
+        func.date(Deposit.created_at) == today
+    ).count()
+    
+    # Saques
+    total_withdrawals = db.query(Withdrawal).filter(Withdrawal.status == TransactionStatus.APPROVED).count()
     total_withdrawal_amount = db.query(Withdrawal).filter(Withdrawal.status == TransactionStatus.APPROVED).with_entities(
         func.sum(Withdrawal.amount)
     ).scalar() or 0.0
-    
-    pending_deposits = db.query(Deposit).filter(Deposit.status == TransactionStatus.PENDING).count()
     pending_withdrawals = db.query(Withdrawal).filter(Withdrawal.status == TransactionStatus.PENDING).count()
     
+    # Pagamentos feitos (saques aprovados) hoje
+    pagamentos_feitos_hoje = db.query(Withdrawal).filter(
+        Withdrawal.status == TransactionStatus.APPROVED,
+        func.date(Withdrawal.created_at) == today
+    ).count()
+    valor_pagamentos_feitos_hoje = db.query(Withdrawal).filter(
+        Withdrawal.status == TransactionStatus.APPROVED,
+        func.date(Withdrawal.created_at) == today
+    ).with_entities(func.sum(Withdrawal.amount)).scalar() or 0.0
+    
+    # PIX feito hoje (saques PIX aprovados hoje)
+    pix_feito_hoje = db.query(Withdrawal).join(Gateway).filter(
+        Withdrawal.status == TransactionStatus.APPROVED,
+        Gateway.type == "pix",
+        func.date(Withdrawal.created_at) == today
+    ).with_entities(func.sum(Withdrawal.amount)).scalar() or 0.0
+    pix_feito_count_hoje = db.query(Withdrawal).join(Gateway).filter(
+        Withdrawal.status == TransactionStatus.APPROVED,
+        Gateway.type == "pix",
+        func.date(Withdrawal.created_at) == today
+    ).count()
+    
+    # PIX gerado hoje (pendentes ou aprovados)
+    pix_gerado_hoje = db.query(Deposit).join(Gateway).filter(
+        Gateway.type == "pix",
+        func.date(Deposit.created_at) == today
+    ).count()
+    pix_gerado_pago_hoje = db.query(Deposit).join(Gateway).filter(
+        Gateway.type == "pix",
+        Deposit.status == TransactionStatus.APPROVED,
+        func.date(Deposit.created_at) == today
+    ).count()
+    pix_percentual_pago = (pix_gerado_pago_hoje / pix_gerado_hoje * 100) if pix_gerado_hoje > 0 else 0
+    
+    # FTDs
+    total_ftds = db.query(FTD).count()
+    ftd_hoje = db.query(FTD).filter(func.date(FTD.created_at) == today).count()
+    
+    # GGR (Gross Gaming Revenue) - receita bruta de jogos
+    # Simplificado: diferença entre depósitos e saques aprovados
+    ggr_gerado = total_deposit_amount - total_withdrawal_amount
+    ggr_taxa = 17.0  # Taxa padrão de 17% (pode ser configurável)
+    
+    # Total pago em GGR (assumindo que GGR pago = saques aprovados)
+    total_pago_ggr = total_withdrawal_amount
+    pagamentos_feitos_total = total_withdrawals
+    
+    # Receita líquida / Lucro total
+    net_revenue = total_deposit_amount - total_withdrawal_amount
+    
+    # Depósitos hoje
+    depositos_hoje = db.query(Deposit).filter(func.date(Deposit.created_at) == today).count()
+    
     return {
+        # Métricas básicas
         "total_users": total_users,
         "total_deposits": total_deposits,
         "total_withdrawals": total_withdrawals,
@@ -669,5 +761,28 @@ async def get_stats(
         "total_withdrawal_amount": total_withdrawal_amount,
         "pending_deposits": pending_deposits,
         "pending_withdrawals": pending_withdrawals,
-        "net_revenue": total_deposit_amount - total_withdrawal_amount
+        "net_revenue": net_revenue,
+        
+        # Métricas expandidas
+        "usuarios_na_casa": total_users,
+        "usuarios_registrados_hoje": usuarios_registrados_hoje,
+        "balanco_jogador_total": balanco_jogador_total,
+        "jogadores_com_saldo": jogadores_com_saldo,
+        "ggr_gerado": ggr_gerado,
+        "ggr_taxa": ggr_taxa,
+        "total_pago_ggr": total_pago_ggr,
+        "pix_recebido_hoje": pix_recebido_hoje,
+        "pix_recebido_count_hoje": pix_recebido_count_hoje,
+        "pix_feito_hoje": pix_feito_hoje,
+        "pix_feito_count_hoje": pix_feito_count_hoje,
+        "pix_gerado_hoje": pix_gerado_hoje,
+        "pix_percentual_pago": pix_percentual_pago,
+        "pagamentos_recebidos_hoje": pagamentos_recebidos_hoje,
+        "valor_pagamentos_recebidos_hoje": valor_pagamentos_recebidos_hoje,
+        "pagamentos_feitos_hoje": pagamentos_feitos_hoje,
+        "valor_pagamentos_feitos_hoje": valor_pagamentos_feitos_hoje,
+        "pagamentos_feitos_total": pagamentos_feitos_total,
+        "ftd_hoje": ftd_hoje,
+        "depositos_hoje": depositos_hoje,
+        "total_lucro": net_revenue,
     }

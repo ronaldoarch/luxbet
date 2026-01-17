@@ -19,6 +19,28 @@ interface Stats {
   pending_deposits: number;
   pending_withdrawals: number;
   net_revenue: number;
+  // Métricas expandidas
+  usuarios_na_casa?: number;
+  usuarios_registrados_hoje?: number;
+  balanco_jogador_total?: number;
+  jogadores_com_saldo?: number;
+  ggr_gerado?: number;
+  ggr_taxa?: number;
+  total_pago_ggr?: number;
+  pix_recebido_hoje?: number;
+  pix_recebido_count_hoje?: number;
+  pix_feito_hoje?: number;
+  pix_feito_count_hoje?: number;
+  pix_gerado_hoje?: number;
+  pix_percentual_pago?: number;
+  pagamentos_recebidos_hoje?: number;
+  valor_pagamentos_recebidos_hoje?: number;
+  pagamentos_feitos_hoje?: number;
+  valor_pagamentos_feitos_hoje?: number;
+  pagamentos_feitos_total?: number;
+  ftd_hoje?: number;
+  depositos_hoje?: number;
+  total_lucro?: number;
 }
 
 // Backend FastAPI - usa variável de ambiente ou fallback para localhost
@@ -217,28 +239,100 @@ function DashboardTab({ stats, loading }: { stats: Stats | null; loading: boolea
           <RefreshCw size={18} /> Atualizar
         </button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard title="Total Usuários" value={stats.total_users} icon={<Users />} accent />
-        <StatCard title="Total Depósitos" value={`R$ ${stats.total_deposit_amount.toFixed(2)}`} icon={<ArrowDownCircle />} />
-        <StatCard title="Total Saques" value={`R$ ${stats.total_withdrawal_amount.toFixed(2)}`} icon={<ArrowUpCircle />} />
-        <StatCard title="Receita Líquida" value={`R$ ${stats.net_revenue.toFixed(2)}`} icon={<DollarSign />} />
-        <StatCard title="FTDs" value={stats.total_ftds} icon={<TrendingUp />} />
-        <StatCard title="Depósitos Pendentes" value={stats.pending_deposits} icon={<Activity />} />
-        <StatCard title="Saques Pendentes" value={stats.pending_withdrawals} icon={<Activity />} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard 
+          title="USUARIOS NA CASA" 
+          value={stats.usuarios_na_casa ?? stats.total_users} 
+          subtitle={`${stats.usuarios_na_casa ?? stats.total_users} Usuarios Registrados`}
+          icon={<Users />} 
+          accent 
+        />
+        <StatCard 
+          title="BALANÇO JOGADOR" 
+          value={`R$ ${(stats.balanco_jogador_total ?? 0).toFixed(2)}`} 
+          subtitle={`${stats.jogadores_com_saldo ?? 0} Jogadores com Saldo`}
+          icon={<DollarSign />} 
+        />
+        <StatCard 
+          title="GGR GERADO" 
+          value={`R$ ${(stats.ggr_gerado ?? stats.net_revenue).toFixed(2)}`} 
+          subtitle={`Taxa (${stats.ggr_taxa ?? 17}%)`}
+          icon={<TrendingUp />} 
+        />
+        <StatCard 
+          title="TOTAL PAGO GGR" 
+          value={`R$ ${(stats.total_pago_ggr ?? stats.total_withdrawal_amount).toFixed(2)}`} 
+          subtitle={`${stats.pagamentos_feitos_total ?? stats.total_withdrawals} Pagamento Feitos`}
+          icon={<ArrowUpCircle />} 
+        />
+        <StatCard 
+          title="PIX RECEBIDO HOJE" 
+          value={`R$ ${(stats.pix_recebido_hoje ?? 0).toFixed(2)}`} 
+          subtitle={`${stats.pix_recebido_count_hoje ?? 0} Pagamentos recebidos`}
+          icon={<ArrowDownCircle />} 
+        />
+        <StatCard 
+          title="PIX FEITO HOJE" 
+          value={`R$ ${(stats.pix_feito_hoje ?? 0).toFixed(2)}`} 
+          subtitle={`${stats.pix_feito_count_hoje ?? 0} Pagamentos feitos`}
+          icon={<ArrowUpCircle />} 
+        />
+        <StatCard 
+          title="PIX GERADO HOJE" 
+          value={stats.pix_gerado_hoje ?? 0} 
+          subtitle={`${Math.round(stats.pix_percentual_pago ?? 0)}% Pago`}
+          icon={<Activity />} 
+        />
+        <StatCard 
+          title="USUÁRIO REGISTRADOS HOJE" 
+          value={stats.usuarios_registrados_hoje ?? 0} 
+          subtitle={`${stats.depositos_hoje ?? 0} Depósitos (${stats.depositos_hoje ? Math.round((stats.depositos_hoje / (stats.usuarios_registrados_hoje || 1)) * 100) : 0}%)`}
+          icon={<Users />} 
+        />
+        <StatCard 
+          title="PAGAMENTOS RECEBIDOS" 
+          value={`R$ ${(stats.valor_pagamentos_recebidos_hoje ?? 0).toFixed(2)}`} 
+          subtitle={`${stats.pagamentos_recebidos_hoje ?? 0} Depósitos Recebidos`}
+          icon={<ArrowDownCircle />} 
+        />
+        <StatCard 
+          title="PAGAMENTOS FEITOS" 
+          value={`R$ ${(stats.valor_pagamentos_feitos_hoje ?? 0).toFixed(2)}`} 
+          subtitle={`${stats.pagamentos_feitos_hoje ?? 0} Pagamentos enviados`}
+          icon={<ArrowUpCircle />} 
+        />
+        <StatCard 
+          title="FTD HOJE" 
+          value={stats.ftd_hoje ?? 0} 
+          subtitle={`${stats.total_ftds} Totais (geral)`}
+          icon={<TrendingUp />} 
+        />
+        <StatCard 
+          title="TOTAL LUCRO" 
+          value={`R$ ${(stats.total_lucro ?? stats.net_revenue).toFixed(2)}`} 
+          subtitle="Total de lucro geral"
+          icon={<DollarSign />} 
+        />
       </div>
     </div>
   );
 }
 
-function StatCard({ title, value, icon, accent = false }: { title: string; value: string | number; icon: React.ReactNode; accent?: boolean }) {
+function StatCard({ title, value, subtitle, icon, accent = false }: { 
+  title: string; 
+  value: string | number; 
+  subtitle?: string;
+  icon: React.ReactNode; 
+  accent?: boolean 
+}) {
   return (
-    <div className={`rounded-lg p-6 border border-gray-700 relative overflow-hidden ${accent ? 'bg-gradient-to-br from-[#d4af37] via-[#f5d97f] to-[#f7e8b6] text-gray-900' : 'bg-gray-800'}`}>
-      <div className="absolute inset-0 bg-white/5 pointer-events-none" />
-      <div className="flex items-center justify-between mb-2 relative z-10">
-        <h3 className={`text-sm ${accent ? 'text-gray-800' : 'text-gray-400'}`}>{title}</h3>
-        <div className={accent ? 'text-gray-900' : 'text-[#d4af37]'}>{icon}</div>
+    <div className={`rounded-lg p-4 border ${accent ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-700'} bg-gray-800`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className={`text-xs font-semibold uppercase ${accent ? 'text-emerald-400' : 'text-gray-400'}`}>{title}</h3>
+        <div className={accent ? 'text-emerald-400' : 'text-[#d4af37]'}>{icon}</div>
       </div>
-      <p className="text-2xl font-bold relative z-10">{value}</p>
+      <p className="text-xl font-bold mb-1">{value}</p>
+      {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
     </div>
   );
 }
