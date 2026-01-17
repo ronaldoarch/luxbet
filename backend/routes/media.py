@@ -107,8 +107,8 @@ async def upload_media(
             ).scalar()
             position = (max_position or 0) + 1
 
-        # Determinar nome do diretório na URL (plural para banners)
-        url_dir = "banners" if media_type_enum == MediaType.BANNER else media_type_enum.value
+        # Determinar nome do diretório na URL (sempre plural: logos, banners)
+        url_dir = "logos" if media_type_enum == MediaType.LOGO else "banners"
         
         # Salvar referência no banco (URL relativa que será servida pela rota /api/public/media/uploads/...)
         media_asset = MediaAsset(
