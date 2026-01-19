@@ -8,7 +8,7 @@ import uuid
 import json
 
 from database import get_db
-from dependencies import get_current_admin_user
+from dependencies import get_current_admin_user, get_current_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType
@@ -635,6 +635,40 @@ async def public_games(
         "providers": providers,
         "provider_code": chosen_provider,
         "games": public_games
+    }
+
+
+@public_router.get("/games/{game_code}/launch")
+async def launch_game(
+    game_code: str,
+    provider_code: Optional[str] = Query(None),
+    lang: str = Query("pt", description="Language code"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Launch a game - requires user authentication"""
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
+    
+    # Gerar URL de lançamento do jogo
+    game_url = await api.launch_game(
+        username=current_user.username,
+        game_code=game_code,
+        provider_code=provider_code,
+        lang=lang
+    )
+    
+    if not game_url:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Não foi possível iniciar o jogo. {api.last_error or 'Erro desconhecido'}"
+        )
+    
+    return {
+        "game_url": game_url,
+        "game_code": game_code,
+        "username": current_user.username
     }
 
 

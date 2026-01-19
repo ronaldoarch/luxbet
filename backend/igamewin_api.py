@@ -164,6 +164,39 @@ class IGameWinAPI:
             return None
         return data.get("games")
 
+    async def launch_game(self, username: str, game_code: str, provider_code: Optional[str] = None, lang: str = "pt") -> Optional[str]:
+        """Generate game launch URL for user"""
+        # Método comum em APIs de jogos: game_launch ou game_url
+        payload: Dict[str, Any] = {
+            "method": "game_launch",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key,
+            "username": username,
+            "game_code": game_code,
+            "lang": lang
+        }
+        if provider_code:
+            payload["provider_code"] = provider_code
+        
+        data = await self._post(payload)
+        if not data:
+            return None
+        
+        # A resposta pode ter "url" ou "game_url" ou construir a URL baseada no retorno
+        game_url = data.get("url") or data.get("game_url") or data.get("launch_url")
+        if game_url:
+            return game_url
+        
+        # Se não retornar URL direta, construir baseado no padrão comum
+        # Muitas APIs retornam apenas o path e precisamos construir a URL completa
+        game_path = data.get("path") or data.get("game_path")
+        if game_path:
+            # Construir URL completa com base no api_url
+            base_game_url = self.api_url.replace("/api/v1", "").replace("/api", "")
+            return f"{base_game_url}{game_path}?token={data.get('token', '')}&username={username}&game={game_code}"
+        
+        return None
+
 
 def get_igamewin_api(db: Session) -> Optional[IGameWinAPI]:
     """Get active igamewin agent and return API instance"""

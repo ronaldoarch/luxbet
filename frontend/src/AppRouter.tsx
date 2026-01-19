@@ -3,6 +3,7 @@ import App from './App';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
 import Profile from './pages/Profile';
+import Game from './pages/Game';
 
 export default function AppRouter() {
   return (
@@ -10,6 +11,7 @@ export default function AppRouter() {
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/conta" element={<Profile />} />
+        <Route path="/jogo/:gameCode" element={<Game />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -43,9 +43,16 @@ export default function GameCards() {
     <div className="w-full bg-gradient-to-b from-[#0a0e0f] to-[#0d1415] py-8 px-4">
       <div className="container mx-auto">
         <div className="flex gap-5 overflow-x-auto pb-5 scrollbar-hide scroll-smooth">
-          {games.map((game) => (
-            <div
+          {games.map((game) => {
+            // Determinar se é um jogo real ou ação especial
+            const isSpecialAction = ['1', '2', '4'].includes(game.id);
+            const gameSlug = game.title.toLowerCase().replace(/\s+/g, '-');
+            
+            return (
+            <a
               key={game.id}
+              href={isSpecialAction ? '#' : `/jogo/${gameSlug}`}
+              onClick={isSpecialAction ? (e) => e.preventDefault() : undefined}
               className="flex-shrink-0 w-36 h-36 bg-gradient-to-br from-gray-800/90 via-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer hover:scale-110 hover:-translate-y-2 transition-all duration-300 relative border border-gray-700/50 hover:border-[#d4af37]/50 hover:shadow-2xl hover:shadow-[#d4af37]/20 group"
             >
               {/* Efeito de brilho no hover */}
@@ -63,8 +70,9 @@ export default function GameCards() {
               <div className="text-white text-xs font-bold text-center line-clamp-2 leading-tight relative z-10 group-hover:text-[#d4af37] transition-colors duration-300">
                 {game.title}
               </div>
-            </div>
-          ))}
+            </a>
+          );
+          })}
         </div>
       </div>
     </div>
