@@ -46,7 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Carregar token do localStorage ao iniciar
   useEffect(() => {
     const storedToken = localStorage.getItem('user_token');
-    console.log('AuthContext - Token do localStorage:', storedToken ? 'encontrado' : 'não encontrado');
     if (storedToken) {
       setToken(storedToken);
       fetchUser(storedToken);
@@ -57,7 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = async (authToken: string) => {
     try {
-      console.log('AuthContext - Buscando usuário com token:', authToken.substring(0, 20) + '...');
       const res = await fetch(`${API_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -65,11 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         const userData = await res.json();
-        console.log('AuthContext - Usuário carregado:', userData.username);
         setUser(userData);
-        setLoading(false); // Finalizar loading após setUser
+        setLoading(false);
       } else {
-        console.error('AuthContext - Token inválido, status:', res.status);
         // Token inválido, limpar
         localStorage.removeItem('user_token');
         setToken(null);
@@ -77,13 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     } catch (err) {
-      console.error('AuthContext - Erro ao buscar usuário:', err);
+      console.error('Erro ao buscar usuário:', err);
       localStorage.removeItem('user_token');
       setToken(null);
       setUser(null);
       setLoading(false);
     }
-    console.log('AuthContext - Loading finalizado');
   };
 
   const login = async (username: string, password: string) => {
