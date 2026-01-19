@@ -951,6 +951,9 @@ function IGameWinTab({ token }: { token: string }) {
   const [providerCode, setProviderCode] = useState('');
   const [loadingGames, setLoadingGames] = useState(false);
   const [gamesError, setGamesError] = useState('');
+  const [agentBalance, setAgentBalance] = useState<number | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+  const [balanceError, setBalanceError] = useState('');
 
   const fetchData = async () => {
     setLoading(true); setError('');
@@ -986,6 +989,25 @@ function IGameWinTab({ token }: { token: string }) {
     } catch (err:any) { setGamesError(err.message); }
     finally { setLoadingGames(false); }
   };
+
+  const fetchAgentBalance = async () => {
+    setLoadingBalance(true); setBalanceError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/igamewin/agent-balance`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Falha ao carregar saldo do agente');
+      }
+      const data = await res.json();
+      setAgentBalance(data.balance);
+    } catch (err:any) { 
+      setBalanceError(err.message);
+      setAgentBalance(null);
+    }
+    finally { setLoadingBalance(false); }
+  };
   const create = async () => {
     setLoading(true); setError('');
     const body = JSON.stringify(form);
@@ -1016,7 +1038,11 @@ function IGameWinTab({ token }: { token: string }) {
     } catch (err:any) { setError(err.message); } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); fetchGames(); }, []);
+  useEffect(() => { 
+    fetchData(); 
+    fetchGames(); 
+    fetchAgentBalance();
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -1034,6 +1060,58 @@ function IGameWinTab({ token }: { token: string }) {
       {error && <div className="text-red-400">{error}</div>}
       {gamesError && <div className="text-red-400">{gamesError}</div>}
       {loading && <div className="text-sm text-gray-400">Carregando agente...</div>}
+
+      {/* Saldo do Agente */}
+      {items.length > 0 && items[0].is_active && (
+        <div className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 p-5 rounded-lg border border-gray-700">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Saldo do Agente IGameWin</h3>
+              <p className="text-sm text-gray-400 mt-1">Saldo disponível para transações com usuários</p>
+            </div>
+            <button 
+              onClick={fetchAgentBalance}
+              disabled={loadingBalance}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={loadingBalance ? 'animate-spin' : ''} /> Atualizar
+            </button>
+          </div>
+
+          {loadingBalance ? (
+            <div className="text-center py-4 text-gray-400">
+              <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
+              <p>Consultando saldo...</p>
+            </div>
+          ) : balanceError ? (
+            <div className="bg-red-500/20 border border-red-500 rounded-lg p-3 text-red-400 text-sm">
+              {balanceError}
+            </div>
+          ) : agentBalance !== null ? (
+            <div className="space-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-[#d4af37]">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(agentBalance)}
+                </span>
+                <span className="text-sm text-gray-400">BRL</span>
+              </div>
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mt-3">
+                <div className="flex items-start gap-2">
+                  <Activity size={18} className="text-yellow-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-yellow-200">
+                    <p className="font-semibold mb-1">Importante:</p>
+                    <p>A API da IGameWin não permite adicionar saldo ao agente diretamente. Para adicionar saldo ao agente, é necessário acessar o painel administrativo da IGameWin.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 text-gray-400">
+              <p>Clique em "Atualizar" para consultar o saldo do agente</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-3 bg-gray-800/60 p-4 rounded border border-gray-700">
         <input className="bg-gray-700 rounded px-3 py-2 text-sm" placeholder="Agent Code" value={form.agent_code} onChange={e=>setForm({...form, agent_code:e.target.value})}/>

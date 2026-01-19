@@ -52,6 +52,25 @@ class IGameWinAPI:
         
         return None
     
+    async def get_agent_balance(self) -> Optional[float]:
+        """Get agent balance from igamewin - follows IGameWin API documentation"""
+        payload = {
+            "method": "money_info",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key
+        }
+        
+        data = await self._post(payload)
+        if not data:
+            return None
+        
+        # A resposta tem estrutura: {"status": 1, "agent": {"agent_code": "...", "balance": ...}}
+        agent_info = data.get("agent")
+        if agent_info:
+            return agent_info.get("balance", 0.0)
+        
+        return None
+
     async def get_user_balance(self, user_code: str) -> Optional[float]:
         """Get user balance from igamewin - follows IGameWin API documentation"""
         payload = {

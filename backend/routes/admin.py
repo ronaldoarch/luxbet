@@ -555,6 +555,30 @@ def _normalize_games(games: list, chosen_provider: Optional[str]) -> list:
     return games
 
 
+@router.get("/igamewin/agent-balance")
+async def get_igamewin_agent_balance(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Get IGameWin agent balance - Cannot deposit via API, must use IGameWin admin"""
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
+
+    balance = await api.get_agent_balance()
+    if balance is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Não foi possível obter saldo do agente da IGameWin ({api.last_error or 'erro desconhecido'})"
+        )
+
+    return {
+        "agent_code": api.agent_code,
+        "balance": balance,
+        "note": "Para adicionar saldo ao agente, utilize o painel administrativo da IGameWin. Esta API permite apenas consultar o saldo."
+    }
+
+
 @router.get("/igamewin/games")
 async def list_igamewin_games(
     provider_code: Optional[str] = Query(None),
