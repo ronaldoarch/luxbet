@@ -11,21 +11,13 @@
 
 #### Opção A: Manter Nameservers da Hostinger (Recomendado)
 
-Se você mantiver os nameservers da Hostinger (`ns1.dns-parking.com`, `ns2.dns-parking.com`), você pode adicionar registros DNS diretamente:
+Se você mantiver os nameservers da Hostinger (`ns1.dns-parking.com`, `ns2.dns-parking.com`), você precisa adicionar apenas um registro DNS:
 
-**Para o Backend (API):**
-```
-Tipo: A
-Nome: api
-Valor: [IP do servidor Coolify]
-TTL: 3600
-```
-
-**Para o Frontend (Site):**
+**Para o domínio principal (fortunevegas.site):**
 ```
 Tipo: A
 Nome: @ (ou deixe vazio para domínio raiz)
-Valor: [IP do servidor Coolify]
+Valor: 147.93.147.33
 TTL: 3600
 ```
 
@@ -33,9 +25,11 @@ TTL: 3600
 ```
 Tipo: A (ou CNAME)
 Nome: www
-Valor: [IP do servidor Coolify]
+Valor: 147.93.147.33 (ou fortunevegas.site se usar CNAME)
 TTL: 3600
 ```
+
+**⚠️ IMPORTANTE:** Backend e Frontend usarão o mesmo domínio `fortunevegas.site`. O backend estará disponível em `fortunevegas.site/api`.
 
 #### Opção B: Usar Nameservers do Coolify
 
@@ -86,41 +80,46 @@ Se seu site no Coolify já está acessível via subdomínio (ex: `backend-xxx.co
 ```
 Tipo: A
 Nome: @
-Valor: 123.456.789.012  (IP do Coolify)
-TTL: 3600
-
-Tipo: A
-Nome: api
-Valor: 123.456.789.012  (mesmo IP)
+Valor: 147.93.147.33  (IP do Coolify)
 TTL: 3600
 
 Tipo: A (ou CNAME)
 Nome: www
-Valor: 123.456.789.012  (ou fortunevegas.site se usar CNAME)
+Valor: 147.93.147.33  (ou fortunevegas.site se usar CNAME)
 TTL: 3600
 ```
+
+**Nota:** Apenas um registro A para o domínio principal é necessário. Backend e Frontend compartilham o mesmo domínio.
 
 #### 2. Configurar no Coolify:
 
 **Backend:**
-- Domínio: `api.fortunevegas.site`
+- Domínio: `fortunevegas.site`
 - SSL será gerado automaticamente
+- API estará disponível em `https://fortunevegas.site/api`
 
 **Frontend:**
-- Domínio: `fortunevegas.site`
-- Domínio adicional: `www.fortunevegas.site`
+- Domínio: `fortunevegas.site` (mesmo domínio do backend)
+- Domínio adicional: `www.fortunevegas.site` (opcional)
 - SSL será gerado automaticamente
+
+**⚠️ IMPORTANTE:** Como ambos usam o mesmo domínio, você pode configurar apenas o frontend com o domínio e usar um proxy reverso, OU configurar ambos separadamente mas com o mesmo domínio (o Coolify irá gerenciar o roteamento).
 
 #### 3. Variáveis de Ambiente:
 
 **Backend - CORS_ORIGINS:**
 ```env
-CORS_ORIGINS=https://fortunevegas.site,https://www.fortunevegas.site,https://api.fortunevegas.site
+CORS_ORIGINS=https://fortunevegas.site,https://www.fortunevegas.site
 ```
 
 **Frontend - VITE_API_URL:**
 ```env
-VITE_API_URL=https://api.fortunevegas.site
+VITE_API_URL=https://fortunevegas.site/api
+```
+
+Ou use URL relativa (recomendado quando backend e frontend estão no mesmo domínio):
+```env
+VITE_API_URL=/api
 ```
 
 #### 4. Fazer Redeploy:
