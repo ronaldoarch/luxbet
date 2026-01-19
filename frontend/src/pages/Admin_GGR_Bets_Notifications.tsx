@@ -1,3 +1,69 @@
+import { useState, useEffect } from 'react';
+import { RefreshCw, TrendingUp, DollarSign, Activity, ArrowDownCircle, ArrowUpCircle, Percent } from 'lucide-react';
+
+// Backend FastAPI - usa variável de ambiente ou fallback para localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// Componente auxiliar para cards de estatísticas
+function StatCard({ title, value, subtitle, icon }: { title: string; value: string; subtitle?: string; icon: React.ReactNode }) {
+  return (
+    <div className="bg-gray-800/60 p-4 rounded border border-gray-700">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-400">{title}</span>
+        <div className="text-[#d4af37]">{icon}</div>
+      </div>
+      <div className="text-2xl font-bold">{value}</div>
+      {subtitle && <div className="text-xs text-gray-500 mt-1">{subtitle}</div>}
+    </div>
+  );
+}
+
+// Componente auxiliar para tabelas
+function TabTable({ title, loading, error, onRefresh, columns, rows }: { 
+  title: string; 
+  loading: boolean; 
+  error: string; 
+  onRefresh: () => void; 
+  columns: string[]; 
+  rows: any[][] 
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">{title}</h2>
+        <button onClick={onRefresh} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+          <RefreshCw size={18} /> Atualizar
+        </button>
+      </div>
+      {error && <div className="text-red-400">{error}</div>}
+      {loading && <div className="text-sm text-gray-400">Carregando...</div>}
+      {!loading && rows.length === 0 && <div className="text-gray-400">Nenhum dado encontrado</div>}
+      {!loading && rows.length > 0 && (
+        <div className="overflow-x-auto border border-gray-700 rounded-lg">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-800">
+              <tr>
+                {columns.map((col, i) => (
+                  <th key={i} className="px-3 py-2 text-left">{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} className="border-t border-gray-800">
+                  {row.map((cell: any, j: number) => (
+                    <td key={j} className="px-3 py-2">{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ========== GGR TAB ==========
 function GGRTab({ token }: { token: string }) {
   const [report, setReport] = useState<any>(null);

@@ -14,7 +14,7 @@ interface HeaderProps {
 
 export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: HeaderProps) {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {

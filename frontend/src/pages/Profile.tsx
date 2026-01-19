@@ -3,12 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Wallet, User, Mail, Phone, CreditCard, LogOut, ArrowLeft } from 'lucide-react';
 
-// Backend FastAPI - usa variável de ambiente ou fallback para localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
 export default function Profile() {
   const navigate = useNavigate();
-  const { user, token, logout, refreshUser } = useAuth();
+  const { user, token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
