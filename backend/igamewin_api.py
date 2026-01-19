@@ -31,81 +31,86 @@ class IGameWinAPI:
             "Content-Type": "application/json"
         }
     
-    async def create_user(self, username: str, password: str, email: str) -> Optional[Dict[str, Any]]:
-        """Create user in igamewin system"""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/users",
-                    headers=self._get_headers(),
-                    json={
-                        "username": username,
-                        "password": password,
-                        "email": email
-                    },
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPError as e:
-                print(f"Error creating user in igamewin: {e}")
-                return None
+    async def create_user(self, user_code: str, is_demo: bool = False) -> Optional[Dict[str, Any]]:
+        """Create user in igamewin system - follows IGameWin API documentation"""
+        payload = {
+            "method": "user_create",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key,
+            "user_code": user_code
+        }
+        if is_demo:
+            payload["is_demo"] = True
+        
+        data = await self._post(payload)
+        if not data:
+            return None
+        
+        # Verificar se status é 1 (sucesso)
+        if data.get("status") == 1:
+            return data
+        
+        return None
     
-    async def get_user_balance(self, username: str) -> Optional[float]:
-        """Get user balance from igamewin"""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(
-                    f"{self.base_url}/users/{username}/balance",
-                    headers=self._get_headers(),
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data.get("balance", 0.0)
-            except httpx.HTTPError as e:
-                print(f"Error getting user balance from igamewin: {e}")
-                return None
+    async def get_user_balance(self, user_code: str) -> Optional[float]:
+        """Get user balance from igamewin - follows IGameWin API documentation"""
+        payload = {
+            "method": "money_info",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key,
+            "user_code": user_code
+        }
+        
+        data = await self._post(payload)
+        if not data:
+            return None
+        
+        # A resposta tem estrutura: {"status": 1, "agent": {...}, "user": {"user_code": "...", "balance": ...}}
+        user_info = data.get("user")
+        if user_info:
+            return user_info.get("balance", 0.0)
+        
+        return None
     
-    async def transfer_in(self, username: str, amount: float, transaction_id: str) -> Optional[Dict[str, Any]]:
-        """Transfer money into user account"""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/transfers/in",
-                    headers=self._get_headers(),
-                    json={
-                        "username": username,
-                        "amount": amount,
-                        "transaction_id": transaction_id
-                    },
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPError as e:
-                print(f"Error transferring in igamewin: {e}")
-                return None
+    async def transfer_in(self, user_code: str, amount: float) -> Optional[Dict[str, Any]]:
+        """Transfer money into user account (deposit) - follows IGameWin API documentation"""
+        payload = {
+            "method": "user_deposit",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key,
+            "user_code": user_code,
+            "amount": amount
+        }
+        
+        data = await self._post(payload)
+        if not data:
+            return None
+        
+        # Verificar se status é 1 (sucesso)
+        if data.get("status") == 1:
+            return data
+        
+        return None
     
-    async def transfer_out(self, username: str, amount: float, transaction_id: str) -> Optional[Dict[str, Any]]:
-        """Transfer money out of user account"""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/transfers/out",
-                    headers=self._get_headers(),
-                    json={
-                        "username": username,
-                        "amount": amount,
-                        "transaction_id": transaction_id
-                    },
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPError as e:
-                print(f"Error transferring out igamewin: {e}")
-                return None
+    async def transfer_out(self, user_code: str, amount: float) -> Optional[Dict[str, Any]]:
+        """Transfer money out of user account (withdraw) - follows IGameWin API documentation"""
+        payload = {
+            "method": "user_withdraw",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key,
+            "user_code": user_code,
+            "amount": amount
+        }
+        
+        data = await self._post(payload)
+        if not data:
+            return None
+        
+        # Verificar se status é 1 (sucesso)
+        if data.get("status") == 1:
+            return data
+        
+        return None
     
     async def _post(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         self.last_error = None
@@ -164,14 +169,13 @@ class IGameWinAPI:
             return None
         return data.get("games")
 
-    async def launch_game(self, username: str, game_code: str, provider_code: Optional[str] = None, lang: str = "pt") -> Optional[str]:
-        """Generate game launch URL for user"""
-        # Método comum em APIs de jogos: game_launch ou game_url
+    async def launch_game(self, user_code: str, game_code: str, provider_code: Optional[str] = None, lang: str = "pt") -> Optional[str]:
+        """Generate game launch URL for user - follows IGameWin API documentation"""
         payload: Dict[str, Any] = {
             "method": "game_launch",
             "agent_code": self.agent_code,
             "agent_token": self.agent_key,
-            "username": username,
+            "user_code": user_code,
             "game_code": game_code,
             "lang": lang
         }
@@ -182,18 +186,10 @@ class IGameWinAPI:
         if not data:
             return None
         
-        # A resposta pode ter "url" ou "game_url" ou construir a URL baseada no retorno
-        game_url = data.get("url") or data.get("game_url") or data.get("launch_url")
-        if game_url:
-            return game_url
-        
-        # Se não retornar URL direta, construir baseado no padrão comum
-        # Muitas APIs retornam apenas o path e precisamos construir a URL completa
-        game_path = data.get("path") or data.get("game_path")
-        if game_path:
-            # Construir URL completa com base no api_url
-            base_game_url = self.api_url.replace("/api/v1", "").replace("/api", "")
-            return f"{base_game_url}{game_path}?token={data.get('token', '')}&username={username}&game={game_code}"
+        # A resposta de sucesso tem "launch_url" conforme documentação
+        launch_url = data.get("launch_url")
+        if launch_url:
+            return launch_url
         
         return None
 

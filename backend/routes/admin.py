@@ -646,29 +646,36 @@ async def launch_game(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Launch a game - requires user authentication"""
+    """Launch a game - requires user authentication
+    
+    Follows IGameWin API documentation:
+    - Uses user_code (username) to launch game
+    - Returns launch_url from API response
+    """
     api = get_igamewin_api(db)
     if not api:
         raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
     
-    # Gerar URL de lançamento do jogo
-    game_url = await api.launch_game(
-        username=current_user.username,
+    # Gerar URL de lançamento do jogo usando user_code (username)
+    launch_url = await api.launch_game(
+        user_code=current_user.username,
         game_code=game_code,
         provider_code=provider_code,
         lang=lang
     )
     
-    if not game_url:
+    if not launch_url:
         raise HTTPException(
             status_code=502,
             detail=f"Não foi possível iniciar o jogo. {api.last_error or 'Erro desconhecido'}"
         )
     
     return {
-        "game_url": game_url,
+        "game_url": launch_url,
+        "launch_url": launch_url,  # Mantém compatibilidade
         "game_code": game_code,
-        "username": current_user.username
+        "username": current_user.username,
+        "user_code": current_user.username
     }
 
 
