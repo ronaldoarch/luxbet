@@ -839,55 +839,104 @@ function GatewaysTab({ token }: { token: string }) {
 
       {/* Lista de gateways */}
       {loading && items.length === 0 && (
-        <div className="text-center py-8 text-gray-400">Carregando gateways...</div>
+        <div className="text-center py-12 text-gray-400">
+          <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
+          <p>Carregando gateways...</p>
+        </div>
       )}
 
-      <div className="grid gap-3">
-        {items.map(g => {
-          let credentials = null;
-          try {
-            if (g.credentials) {
-              credentials = JSON.parse(g.credentials);
-            }
-          } catch (e) {
-            // Não é JSON
-          }
+      {!loading && items.length === 0 && (
+        <div className="text-center py-12 text-gray-500 border border-gray-700 rounded-lg bg-gray-800/30">
+          <p className="text-lg mb-2">Nenhum gateway configurado</p>
+          <p className="text-sm">Adicione um gateway acima para começar</p>
+        </div>
+      )}
 
-          return (
-            <div key={g.id} className="p-4 rounded-lg border border-gray-700 bg-gray-800/50">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-bold text-lg">{g.name}</div>
-                  <div className="text-sm text-gray-400 mt-1">
-                    Tipo: <span className="text-white">{g.type.toUpperCase()}</span>
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    Status: <span className={g.is_active ? 'text-green-400' : 'text-red-400'}>
+      {items.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-300">Gateways Configurados</h3>
+          <div className="grid md:grid-cols-2 gap-4">
+            {items.map(g => {
+              let credentials = null;
+              try {
+                if (g.credentials) {
+                  credentials = JSON.parse(g.credentials);
+                }
+              } catch (e) {
+                // Não é JSON
+              }
+
+              return (
+                <div key={g.id} className="relative p-5 rounded-lg border border-gray-700 bg-gradient-to-br from-gray-800/80 to-gray-900/80 hover:border-[#d4af37]/50 transition-all duration-200">
+                  {/* Badge de status */}
+                  <div className="absolute top-4 right-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      g.is_active 
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                        : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                    }`}>
                       {g.is_active ? 'Ativo' : 'Inativo'}
                     </span>
                   </div>
-                </div>
-                <button
-                  onClick={() => loadForEdit(g)}
-                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors"
-                >
-                  Editar
-                </button>
-              </div>
 
-              {credentials && (
-                <div className="mt-3 pt-3 border-t border-gray-700">
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <div>Client ID: <span className="text-gray-300 font-mono">{credentials.client_id || credentials.ci || 'Não configurado'}</span></div>
-                    <div>Client Secret: <span className="text-gray-300 font-mono">{credentials.client_secret || credentials.cs ? '••••••••' : 'Não configurado'}</span></div>
-                    <div>Ambiente: <span className="text-gray-300">{credentials.sandbox ? 'Sandbox' : 'Produção'}</span></div>
+                  {/* Header */}
+                  <div className="mb-4 pr-16">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-lg bg-[#d4af37]/20 flex items-center justify-center border border-[#d4af37]/30">
+                        <Activity size={20} className="text-[#d4af37]" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-lg text-white">{g.name}</h4>
+                        <p className="text-xs text-gray-400 uppercase tracking-wide">{g.type}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Credenciais */}
+                  {credentials && (
+                    <div className="space-y-3 pt-4 border-t border-gray-700/50">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Client ID</span>
+                        <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                          {credentials.client_id || credentials.ci || '—'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Client Secret</span>
+                        <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                          {credentials.client_secret || credentials.cs ? '••••••••••••' : '—'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Ambiente</span>
+                        <span className={`font-semibold text-xs px-2 py-1 rounded ${
+                          credentials.sandbox 
+                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' 
+                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        }`}>
+                          {credentials.sandbox ? 'Sandbox' : 'Produção'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Botão de ação */}
+                  <div className="mt-4 pt-4 border-t border-gray-700/50">
+                    <button
+                      onClick={() => loadForEdit(g)}
+                      className="w-full px-4 py-2 bg-[#d4af37]/10 hover:bg-[#d4af37]/20 text-[#d4af37] rounded-lg text-sm font-semibold transition-all duration-200 border border-[#d4af37]/30 hover:border-[#d4af37]/50"
+                    >
+                      Editar Gateway
+                    </button>
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
