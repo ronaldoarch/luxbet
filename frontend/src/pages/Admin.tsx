@@ -596,10 +596,19 @@ function GatewaysTab({ token }: { token: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', type: '', is_active: true, credentials: '' });
+  const [success, setSuccess] = useState('');
+  const [form, setForm] = useState({ 
+    name: '', 
+    type: 'pix', 
+    is_active: true, 
+    client_id: '',
+    client_secret: '',
+    sandbox: true
+  });
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const fetchData = async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSuccess('');
     try {
       const res = await fetch(`${API_URL}/api/admin/gateways`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -609,18 +618,103 @@ function GatewaysTab({ token }: { token: string }) {
     } catch (err:any) { setError(err.message); }
     finally { setLoading(false); }
   };
+
+  const resetForm = () => {
+    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', sandbox: true });
+    setEditingId(null);
+  };
+
+  const prepareCredentials = () => {
+    return JSON.stringify({
+      client_id: form.client_id,
+      client_secret: form.client_secret,
+      sandbox: form.sandbox
+    });
+  };
+
   const create = async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSuccess('');
     try {
+      const credentials = prepareCredentials();
       const res = await fetch(`${API_URL}/api/admin/gateways`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form)
+        body: JSON.stringify({
+          name: form.name,
+          type: form.type,
+          is_active: form.is_active,
+          credentials: credentials
+        })
       });
-      if (!res.ok) throw new Error('Falha ao criar gateway');
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Falha ao criar gateway');
+      }
+      setSuccess('Gateway criado com sucesso!');
+      resetForm();
       await fetchData();
-    } catch (err:any) { setError(err.message); } finally { setLoading(false); }
+    } catch (err:any) { 
+      setError(err.message || 'Erro ao criar gateway');
+    } finally { 
+      setLoading(false); 
+    }
   };
+
+  const update = async (id: number) => {
+    setLoading(true); setError(''); setSuccess('');
+    try {
+      const credentials = prepareCredentials();
+      const res = await fetch(`${API_URL}/api/admin/gateways/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: form.name,
+          type: form.type,
+          is_active: form.is_active,
+          credentials: credentials
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Falha ao atualizar gateway');
+      }
+      setSuccess('Gateway atualizado com sucesso!');
+      resetForm();
+      await fetchData();
+    } catch (err:any) { 
+      setError(err.message || 'Erro ao atualizar gateway');
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  const loadForEdit = (gateway: any) => {
+    setEditingId(gateway.id);
+    setForm({
+      name: gateway.name || '',
+      type: gateway.type || 'pix',
+      is_active: gateway.is_active ?? true,
+      client_id: '',
+      client_secret: '',
+      sandbox: true
+    });
+
+    // Parse credentials se existir
+    if (gateway.credentials) {
+      try {
+        const creds = JSON.parse(gateway.credentials);
+        setForm(prev => ({
+          ...prev,
+          client_id: creds.client_id || creds.ci || '',
+          client_secret: creds.client_secret || creds.cs || '',
+          sandbox: creds.sandbox !== undefined ? creds.sandbox : true
+        }));
+      } catch (e) {
+        // Se não for JSON, deixa vazio
+      }
+    }
+  };
+
   useEffect(() => { fetchData(); }, []);
 
   return (
@@ -631,29 +725,168 @@ function GatewaysTab({ token }: { token: string }) {
           <RefreshCw size={18} /> Atualizar
         </button>
       </div>
-      {error && <div className="text-red-400">{error}</div>}
-      {loading && <div className="text-sm text-gray-400">Carregando...</div>}
 
-      <div className="grid md:grid-cols-2 gap-3 bg-gray-800/60 p-4 rounded border border-gray-700">
-        <input className="bg-gray-700 rounded px-3 py-2 text-sm" placeholder="Nome" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
-        <input className="bg-gray-700 rounded px-3 py-2 text-sm" placeholder="Tipo (pix, card...)" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}/>
-        <textarea className="bg-gray-700 rounded px-3 py-2 text-sm md:col-span-2" placeholder="Credenciais (JSON ou texto)" value={form.credentials} onChange={e=>setForm({...form, credentials:e.target.value})}/>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form, is_active:e.target.checked})}/>
-          <span>Ativo</span>
+      {error && (
+        <div className="bg-red-500/20 border border-red-500 rounded-lg p-3 text-red-400 text-sm">
+          {error}
         </div>
-        <button onClick={create} className="md:col-span-2 bg-[#ff6b35] hover:bg-[#ff7b35] text-white py-2 rounded font-semibold">Criar</button>
+      )}
+      {success && (
+        <div className="bg-green-500/20 border border-green-500 rounded-lg p-3 text-green-400 text-sm">
+          {success}
+        </div>
+      )}
+
+      {/* Formulário de criar/editar */}
+      <div className="bg-gray-800/60 p-6 rounded-lg border border-gray-700">
+        <h3 className="text-lg font-semibold mb-4">
+          {editingId ? 'Editar Gateway' : 'Adicionar Novo Gateway'}
+        </h3>
+        
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Nome do Gateway</label>
+            <input 
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+              placeholder="Ex: SuitPay PIX"
+              value={form.name} 
+              onChange={e=>setForm({...form, name:e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Tipo</label>
+            <select 
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.type} 
+              onChange={e=>setForm({...form, type:e.target.value})}
+            >
+              <option value="pix">PIX</option>
+              <option value="card">Cartão</option>
+              <option value="boleto">Boleto</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Client ID (ci)</label>
+            <input 
+              type="text"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+              placeholder="Client ID da SuitPay"
+              value={form.client_id} 
+              onChange={e=>setForm({...form, client_id:e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Client Secret (cs)</label>
+            <input 
+              type="password"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+              placeholder="Client Secret da SuitPay"
+              value={form.client_secret} 
+              onChange={e=>setForm({...form, client_secret:e.target.value})}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              checked={form.sandbox} 
+              onChange={e=>setForm({...form, sandbox:e.target.checked})}
+              className="w-4 h-4"
+            />
+            <label className="text-sm text-gray-300">Ambiente Sandbox</label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              checked={form.is_active} 
+              onChange={e=>setForm({...form, is_active:e.target.checked})}
+              className="w-4 h-4"
+            />
+            <label className="text-sm text-gray-300">Ativo</label>
+          </div>
+
+          <div className="md:col-span-2 flex gap-2">
+            {editingId ? (
+              <>
+                <button 
+                  onClick={() => update(editingId)} 
+                  className="flex-1 bg-[#d4af37] hover:bg-[#ffd700] text-black py-2 rounded font-semibold transition-colors"
+                >
+                  Atualizar Gateway
+                </button>
+                <button 
+                  onClick={resetForm} 
+                  className="px-4 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={create} 
+                className="flex-1 bg-[#ff6b35] hover:bg-[#ff7b35] text-white py-2 rounded font-semibold transition-colors"
+              >
+                Criar Gateway
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
+      {/* Lista de gateways */}
+      {loading && items.length === 0 && (
+        <div className="text-center py-8 text-gray-400">Carregando gateways...</div>
+      )}
+
       <div className="grid gap-3">
-        {items.map(g => (
-          <div key={g.id} className="p-4 rounded border border-gray-700 bg-gray-800/50">
-            <div className="font-bold text-lg">{g.name}</div>
-            <div className="text-sm text-gray-400">Tipo: {g.type}</div>
-            <div className="text-sm text-gray-400">Status: {g.is_active ? 'Ativo' : 'Inativo'}</div>
-            <div className="text-xs text-gray-500 break-all mt-1">Credenciais: {g.credentials}</div>
-          </div>
-        ))}
+        {items.map(g => {
+          let credentials = null;
+          try {
+            if (g.credentials) {
+              credentials = JSON.parse(g.credentials);
+            }
+          } catch (e) {
+            // Não é JSON
+          }
+
+          return (
+            <div key={g.id} className="p-4 rounded-lg border border-gray-700 bg-gray-800/50">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="font-bold text-lg">{g.name}</div>
+                  <div className="text-sm text-gray-400 mt-1">
+                    Tipo: <span className="text-white">{g.type.toUpperCase()}</span>
+                  </div>
+                  <div className="text-sm text-gray-400">
+                    Status: <span className={g.is_active ? 'text-green-400' : 'text-red-400'}>
+                      {g.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => loadForEdit(g)}
+                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors"
+                >
+                  Editar
+                </button>
+              </div>
+
+              {credentials && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <div>Client ID: <span className="text-gray-300 font-mono">{credentials.client_id || credentials.ci || 'Não configurado'}</span></div>
+                    <div>Client Secret: <span className="text-gray-300 font-mono">{credentials.client_secret || credentials.cs ? '••••••••' : 'Não configurado'}</span></div>
+                    <div>Ambiente: <span className="text-gray-300">{credentials.sandbox ? 'Sandbox' : 'Produção'}</span></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
