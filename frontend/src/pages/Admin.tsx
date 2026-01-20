@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { ThemePalette } from '../utils/themeManager';
 import { applyThemeToDocument, getThemeList, saveThemeList, setActiveTheme } from '../utils/themeManager';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Stats {
   total_users: number;
@@ -57,6 +58,7 @@ export default function Admin() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const { theme } = useTheme();
   
   // Estado para controlar seções expansíveis
   const [expandedSections, setExpandedSections] = useState({
@@ -73,6 +75,19 @@ export default function Admin() {
     }
     loadStats();
   }, [token, navigate]);
+
+  // Aplicar tema do backend no admin também
+  useEffect(() => {
+    if (theme) {
+      const root = document.documentElement;
+      root.style.setProperty('--color-primary', theme.primary);
+      root.style.setProperty('--color-secondary', theme.secondary);
+      root.style.setProperty('--color-accent', theme.accent);
+      root.style.setProperty('--color-background', theme.background);
+      root.style.setProperty('--color-text', theme.text);
+      root.style.setProperty('--color-text-secondary', theme.textSecondary);
+    }
+  }, [theme]);
 
   const loadStats = async () => {
     try {
