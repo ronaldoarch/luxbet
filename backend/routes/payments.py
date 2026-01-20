@@ -243,11 +243,16 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret):
             raise HTTPException(status_code=401, detail="Hash inválido")
         
-        # Processar webhook
+        # Processar webhook conforme documentação oficial SuitPay
+        # Campos esperados: idTransaction, typeTransaction, statusTransaction, 
+        # value, payerName, payerTaxId, paymentDate, paymentCode, requestNumber, hash
         id_transaction = data.get("idTransaction")
         status_transaction = data.get("statusTransaction")
+        type_transaction = data.get("typeTransaction")  # Deve ser "PIX"
         value = data.get("value")
         request_number = data.get("requestNumber")
+        payment_date = data.get("paymentDate")  # Formato: dd/MM/yyyy HH:mm:ss
+        payment_code = data.get("paymentCode")
         
         # Buscar depósito pelo external_id ou request_number
         deposit = None

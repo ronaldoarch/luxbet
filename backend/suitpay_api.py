@@ -132,24 +132,31 @@ class SuitPayAPI:
         """
         Valida o hash do webhook recebido da SuitPay
         
+        IMPORTANTE: Conforme documentação oficial da SuitPay:
+        "Mantenha a ordem dos valores contidos consistente com a ordem dos valores recebidos no JSON"
+        
         Args:
-            data: Dados do webhook (JSON)
+            data: Dados do webhook (JSON) - deve manter ordem original
             client_secret: Client Secret (cs) da SuitPay
         
         Returns:
             True se o hash for válido, False caso contrário
         """
         import hashlib
+        import copy
+        
+        # Faz cópia para não modificar o original
+        data_copy = copy.deepcopy(data)
         
         # Remove o hash do dict para calcular
-        received_hash = data.pop("hash", None)
+        received_hash = data_copy.pop("hash", None)
         if not received_hash:
             return False
         
-        # Concatena todos os valores (exceto hash) em ordem
+        # IMPORTANTE: Concatena valores na ORDEM ORIGINAL do JSON recebido
+        # Não ordenar alfabeticamente! A documentação exige manter a ordem original
         values = []
-        for key in sorted(data.keys()):
-            value = data.get(key)
+        for key, value in data_copy.items():
             if value is not None:
                 values.append(str(value))
         
@@ -159,8 +166,5 @@ class SuitPayAPI:
         # Calcula SHA-256
         calculated_hash = hashlib.sha256(string_to_hash.encode()).hexdigest()
         
-        # Restaura o hash no dict
-        data["hash"] = received_hash
-        
-        # Compara hashes
+        # Compara hashes (case-insensitive conforme documentação)
         return calculated_hash.lower() == received_hash.lower()
