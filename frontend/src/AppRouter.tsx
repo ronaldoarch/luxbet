@@ -5,6 +5,7 @@ import AdminLogin from './pages/AdminLogin';
 import Profile from './pages/Profile';
 import Game from './pages/Game';
 import Deposit from './pages/Deposit';
+import Withdrawal from './pages/Withdrawal';
 
 export default function AppRouter() {
   return (
@@ -13,6 +14,7 @@ export default function AppRouter() {
         <Route path="/" element={<App />} />
         <Route path="/conta" element={<Profile />} />
         <Route path="/depositar" element={<Deposit />} />
+        <Route path="/sacar" element={<Withdrawal />} />
         <Route path="/jogo/:gameCode" element={<Game />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<Admin />} />
