@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
-from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus
+from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate
 from suitpay_api import SuitPayAPI
-from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest
+from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
 from dependencies import get_current_user
 from igamewin_api import get_igamewin_api
 from datetime import datetime, timedelta
@@ -17,6 +17,7 @@ import os
 
 router = APIRouter(prefix="/api/public/payments", tags=["payments"])
 webhook_router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+affiliate_router = APIRouter(prefix="/api/public/affiliate", tags=["affiliate"])
 
 
 def get_active_pix_gateway(db: Session) -> Gateway:
