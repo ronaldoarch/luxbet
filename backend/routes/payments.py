@@ -7,7 +7,7 @@ from typing import Optional
 from database import get_db
 from models import User, Deposit, Withdrawal, Gateway, TransactionStatus
 from suitpay_api import SuitPayAPI
-from schemas import DepositResponse, WithdrawalResponse
+from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest
 from dependencies import get_current_user
 from datetime import datetime, timedelta
 import json
@@ -58,11 +58,7 @@ def get_suitpay_client(gateway: Gateway) -> SuitPayAPI:
 
 @router.post("/deposit/pix", response_model=DepositResponse, status_code=status.HTTP_201_CREATED)
 async def create_pix_deposit(
-    amount: float,
-    payer_name: str,
-    payer_tax_id: str,
-    payer_email: str,
-    payer_phone: Optional[str] = None,
+    request: DepositPixRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -71,16 +67,12 @@ async def create_pix_deposit(
     Conforme documentação oficial: POST /api/v1/gateway/request-qrcode
     
     Args:
-        amount: Valor do depósito
-        payer_name: Nome do pagador
-        payer_tax_id: CPF/CNPJ do pagador
-        payer_email: E-mail do pagador
-        payer_phone: Telefone do pagador (DDD+TELEFONE) - opcional
+        request: Dados do depósito (amount, payer_name, payer_tax_id, payer_email, payer_phone)
     """
     # Usar usuário autenticado
     user = current_user
     
-    if amount <= 0:
+    if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
     
     # Buscar gateway PIX ativo
@@ -103,11 +95,11 @@ async def create_pix_deposit(
     pix_response = await suitpay.generate_pix_payment(
         request_number=request_number,
         due_date=due_date,
-        amount=amount,
-        client_name=payer_name,
-        client_document=payer_tax_id,
-        client_email=payer_email,
-        client_phone=payer_phone,
+        amount=request.amount,
+        client_name=request.payer_name,
+        client_document=request.payer_tax_id,
+        client_email=request.payer_email,
+        client_phone=request.payer_phone,
         callback_url=callback_url
     )
     
@@ -128,7 +120,7 @@ async def create_pix_deposit(
     deposit = Deposit(
         user_id=user.id,
         gateway_id=gateway.id,
-        amount=amount,
+        amount=request.amount,
         status=TransactionStatus.PENDING,
         transaction_id=str(uuid.uuid4()),
         external_id=pix_response.get("idTransaction") or request_number,
@@ -149,10 +141,7 @@ async def create_pix_deposit(
 
 @router.post("/withdrawal/pix", response_model=WithdrawalResponse, status_code=status.HTTP_201_CREATED)
 async def create_pix_withdrawal(
-    amount: float,
-    pix_key: str,
-    pix_key_type: str,
-    document_validation: Optional[str] = None,
+    request: WithdrawalPixRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -164,24 +153,21 @@ async def create_pix_withdrawal(
     (GATEWAY/CHECKOUT -> GERENCIAMENTO DE IPs)
     
     Args:
-        amount: Valor do saque
-        pix_key: Chave PIX (CPF/CNPJ, telefone, email, chave aleatória ou QR Code)
-        pix_key_type: Tipo da chave: "document", "phoneNumber", "email", "randomKey", "paymentCode"
-        document_validation: CPF/CNPJ para validar se pertence à chave PIX - opcional
+        request: Dados do saque (amount, pix_key, pix_key_type, document_validation)
     """
     # Usar usuário autenticado
     user = current_user
     
     # Verificar saldo
-    if user.balance < amount:
+    if user.balance < request.amount:
         raise HTTPException(status_code=400, detail="Saldo insuficiente")
     
-    if amount <= 0:
+    if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
     
     # Validar tipo de chave
     valid_key_types = ["document", "phoneNumber", "email", "randomKey", "paymentCode"]
-    if pix_key_type not in valid_key_types:
+    if request.pix_key_type not in valid_key_types:
         raise HTTPException(
             status_code=400, 
             detail=f"Tipo de chave inválido. Deve ser um dos: {', '.join(valid_key_types)}"
@@ -202,11 +188,11 @@ async def create_pix_withdrawal(
     
     # Realizar transferência PIX conforme documentação oficial
     transfer_response = await suitpay.transfer_pix(
-        key=pix_key,
-        type_key=pix_key_type,
-        value=amount,
+        key=request.pix_key,
+        type_key=request.pix_key_type,
+        value=request.amount,
         callback_url=callback_url,
-        document_validation=document_validation,
+        document_validation=request.document_validation,
         external_id=external_id
     )
     
@@ -238,21 +224,21 @@ async def create_pix_withdrawal(
     withdrawal = Withdrawal(
         user_id=user.id,
         gateway_id=gateway.id,
-        amount=amount,
+        amount=request.amount,
         status=TransactionStatus.PENDING,
         transaction_id=str(uuid.uuid4()),
         external_id=transfer_response.get("idTransaction") or external_id,
         metadata_json=json.dumps({
-            "pix_key": pix_key,
-            "pix_key_type": pix_key_type,
-            "document_validation": document_validation,
+            "pix_key": request.pix_key,
+            "pix_key_type": request.pix_key_type,
+            "document_validation": request.document_validation,
             "external_id": external_id,
             "suitpay_response": transfer_response
         })
     )
     
     # Bloquear saldo do usuário
-    user.balance -= amount
+    user.balance -= request.amount
     
     db.add(withdrawal)
     db.commit()

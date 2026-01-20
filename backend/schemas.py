@@ -120,6 +120,15 @@ class DepositCreate(DepositBase):
     pass
 
 
+class DepositPixRequest(BaseModel):
+    """Request body para criar depósito PIX"""
+    amount: float
+    payer_name: str
+    payer_tax_id: str
+    payer_email: str
+    payer_phone: Optional[str] = None
+
+
 class DepositUpdate(BaseModel):
     status: Optional[TransactionStatus] = None
     external_id: Optional[str] = None
@@ -148,6 +157,14 @@ class WithdrawalBase(BaseModel):
 
 class WithdrawalCreate(WithdrawalBase):
     pass
+
+
+class WithdrawalPixRequest(BaseModel):
+    """Request body para criar saque PIX"""
+    amount: float
+    pix_key: str
+    pix_key_type: str
+    document_validation: Optional[str] = None
 
 
 class WithdrawalUpdate(BaseModel):

@@ -55,7 +55,19 @@ export default function Deposit() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({ detail: 'Erro ao gerar PIX' }));
-        throw new Error(data.detail || 'Erro ao gerar código PIX');
+        // Tratar erros de validação (422) que podem ter formato diferente
+        if (data.detail) {
+          if (Array.isArray(data.detail)) {
+            // FastAPI retorna array de erros de validação
+            const errors = data.detail.map((err: any) => err.msg || err.message || JSON.stringify(err)).join(', ');
+            throw new Error(errors);
+          } else if (typeof data.detail === 'string') {
+            throw new Error(data.detail);
+          } else {
+            throw new Error(JSON.stringify(data.detail));
+          }
+        }
+        throw new Error('Erro ao gerar código PIX');
       }
 
       const data = await response.json();
