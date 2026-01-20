@@ -1,6 +1,6 @@
 # Configuração Nixpacks (fallback se Dockerfile não for usado)
 [phases.setup]
-nixPkgs = ["python312", "pip"]
+nixPkgs = ["python312"]
 
 [phases.install]
 cmds = [
