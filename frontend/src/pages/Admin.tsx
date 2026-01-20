@@ -2313,49 +2313,41 @@ function ThemesTab({ token }: { token: string }) {
                 label="Cor Primária"
                 value={form.primary}
                 onChange={v => setForm({...form, primary: v})}
-                colorName="primary"
               />
               <ColorInput
                 label="Cor Secundária"
                 value={form.secondary}
                 onChange={v => setForm({...form, secondary: v})}
-                colorName="secondary"
               />
               <ColorInput
                 label="Cor de Acento"
                 value={form.accent}
                 onChange={v => setForm({...form, accent: v})}
-                colorName="accent"
               />
               <ColorInput
                 label="Cor de Sucesso"
                 value={form.success}
                 onChange={v => setForm({...form, success: v})}
-                colorName="success"
               />
               <ColorInput
                 label="Cor do Texto"
                 value={form.text}
                 onChange={v => setForm({...form, text: v})}
-                colorName="text"
               />
               <ColorInput
                 label="Cor do Texto Secundário"
                 value={form.textSecondary}
                 onChange={v => setForm({...form, textSecondary: v})}
-                colorName="textSecondary"
               />
               <ColorInput
                 label="Cor de Fundo"
                 value={form.background}
                 onChange={v => setForm({...form, background: v})}
-                colorName="background"
               />
               <ColorInput
                 label="Cor de Erro"
                 value={form.error}
                 onChange={v => setForm({...form, error: v})}
-                colorName="error"
               />
             </div>
 
