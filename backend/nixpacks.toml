@@ -4,10 +4,7 @@ nixPkgs = ["python312"]
 
 [phases.install]
 cmds = [
-  "curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py",
-  "python get-pip.py",
-  "python -m pip install --upgrade pip",
-  "python -m pip install -r requirements.txt"
+  "python -m venv /opt/venv && /opt/venv/bin/pip install --upgrade pip && /opt/venv/bin/pip install -r requirements.txt"
 ]
 
 [phases.build]
@@ -17,4 +14,4 @@ cmds = [
 ]
 
 [start]
-cmd = "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"
+cmd = "/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"
