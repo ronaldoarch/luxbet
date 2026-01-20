@@ -17,8 +17,8 @@ Se você mantiver os nameservers da Hostinger (`ns1.dns-parking.com`, `ns2.dns-p
 ```
 Tipo: A
 Nome: @ (ou deixe vazio para domínio raiz)
-Valor: 147.93.147.33
-TTL: 3600
+Valor: 147.93.147.33  ← IP do servidor Coolify
+TTL: 3600 (ou padrão)
 ```
 
 **Opcional - WWW:**
