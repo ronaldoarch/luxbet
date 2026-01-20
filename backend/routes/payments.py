@@ -93,7 +93,6 @@ async def create_pix_deposit(
     request_number = f"DEP_{user.id}_{int(datetime.utcnow().timestamp())}"
     
     # Data de vencimento (30 dias a partir de hoje)
-    from datetime import timedelta
     due_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
     
     # URL do webhook (usar variável de ambiente ou construir)
