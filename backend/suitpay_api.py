@@ -87,6 +87,8 @@ class SuitPayAPI:
         Returns:
             Dict com dados do PIX ou None em caso de erro
         """
+        # Estrutura conforme documentação oficial SuitPay
+        # POST /api/v1/gateway/request-qrcode
         payload = {
             "requestNumber": request_number,
             "dueDate": due_date,
@@ -98,21 +100,31 @@ class SuitPayAPI:
             }
         }
         
+        # Adicionar phoneNumber se fornecido
         if client_phone:
             payload["client"]["phoneNumber"] = client_phone
         
+        # Adicionar address se fornecido
         if client_address:
             payload["client"]["address"] = client_address
         
+        # Adicionar shippingAmount se fornecido
         if shipping_amount is not None:
             payload["shippingAmount"] = shipping_amount
         
-        if products:
+        # Products: conforme documentação, pode ser lista vazia ou com produtos
+        # Se não fornecido, enviar lista vazia para garantir compatibilidade
+        if products is not None:
             payload["products"] = products
+        else:
+            # Enviar lista vazia se não fornecido (algumas APIs exigem o campo)
+            payload["products"] = []
         
+        # Adicionar callbackUrl se fornecido
         if callback_url:
             payload["callbackUrl"] = callback_url
         
+        # Adicionar usernameCheckout se fornecido
         if username_checkout:
             payload["usernameCheckout"] = username_checkout
         

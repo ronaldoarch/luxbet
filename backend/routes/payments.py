@@ -75,6 +75,13 @@ async def create_pix_deposit(
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
     
+    # Validar CPF/CNPJ (não pode estar vazio conforme SuitPay)
+    if not request.payer_tax_id or not request.payer_tax_id.strip():
+        raise HTTPException(
+            status_code=400, 
+            detail="CPF/CNPJ é obrigatório para gerar código PIX. Por favor, complete seu cadastro."
+        )
+    
     # Buscar gateway PIX ativo
     gateway = get_active_pix_gateway(db)
     
