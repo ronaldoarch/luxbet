@@ -36,10 +36,16 @@ class SuitPayAPI:
                     headers=self.headers,
                     json=payload
                 )
+                # Log da resposta para debug
+                response_text = response.text
+                print(f"SuitPay {endpoint} - Status: {response.status_code}")
+                print(f"SuitPay {endpoint} - Response: {response_text[:500]}")
+                
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            print(f"Erro HTTP SuitPay {endpoint}: {e.response.status_code} - {e.response.text}")
+            error_text = e.response.text if e.response else "Sem resposta"
+            print(f"Erro HTTP SuitPay {endpoint}: {e.response.status_code} - {error_text}")
             return None
         except Exception as e:
             print(f"Erro ao chamar SuitPay {endpoint}: {str(e)}")

@@ -102,7 +102,14 @@ async def create_pix_deposit(
     if not pix_response:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Erro ao gerar código PIX no gateway"
+            detail="Erro ao gerar código PIX no gateway. Verifique as credenciais e se o gateway está ativo."
+        )
+    
+    # Validar campos obrigatórios na resposta
+    if not pix_response.get("paymentCode") and not pix_response.get("qrCode"):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Resposta inválida do gateway SuitPay. Campos esperados não encontrados. Resposta: {pix_response}"
         )
     
     # Criar registro de depósito
