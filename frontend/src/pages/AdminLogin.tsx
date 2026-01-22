@@ -51,8 +51,26 @@ export default function AdminLogin() {
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('admin_token', data.access_token);
-        navigate('/admin');
+        // Verificar se o usuário é admin antes de permitir login
+        const userResponse = await fetch(`${API_URL}/api/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${data.access_token}`
+          }
+        });
+
+        if (userResponse.ok) {
+          const user = await userResponse.json();
+          
+          // Verificar se o usuário tem role ADMIN
+          if (user.role === 'admin' || user.role === 'ADMIN') {
+            localStorage.setItem('admin_token', data.access_token);
+            navigate('/admin');
+          } else {
+            setError('Acesso negado. Apenas administradores podem acessar esta área.');
+          }
+        } else {
+          setError('Erro ao verificar permissões do usuário');
+        }
       } else {
         setError(data.detail || 'Erro ao fazer login');
       }

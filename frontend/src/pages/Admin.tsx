@@ -67,11 +67,44 @@ export default function Admin() {
   });
 
   useEffect(() => {
-    if (!token) {
-      navigate('/admin/login');
-      return;
-    }
-    loadStats();
+    const verifyAdmin = async () => {
+      if (!token) {
+        navigate('/admin/login');
+        return;
+      }
+
+      // Verificar se o usuário é realmente admin
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const user = await response.json();
+          // Verificar se o usuário tem role ADMIN
+          if (user.role !== 'admin' && user.role !== 'ADMIN') {
+            // Não é admin, redirecionar para home
+            localStorage.removeItem('admin_token');
+            navigate('/');
+            return;
+          }
+          // É admin, carregar stats
+          loadStats();
+        } else {
+          // Token inválido
+          localStorage.removeItem('admin_token');
+          navigate('/admin/login');
+        }
+      } catch (error) {
+        console.error('Erro ao verificar admin:', error);
+        localStorage.removeItem('admin_token');
+        navigate('/admin/login');
+      }
+    };
+
+    verifyAdmin();
   }, [token, navigate]);
 
   // Aplicar tema do backend no admin também

@@ -7,6 +7,8 @@ import Game from './pages/Game';
 import Deposit from './pages/Deposit';
 import Withdrawal from './pages/Withdrawal';
 import AffiliatePanel from './pages/AffiliatePanel';
+import AdminRoute from './components/AdminRoute';
+import AdminLoginRoute from './components/AdminLoginRoute';
 
 export default function AppRouter() {
   return (
@@ -18,8 +20,16 @@ export default function AppRouter() {
         <Route path="/sacar" element={<Withdrawal />} />
         <Route path="/jogo/:gameCode" element={<Game />} />
         <Route path="/afiliado" element={<AffiliatePanel />} />
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/login" element={
+          <AdminLoginRoute>
+            <AdminLogin />
+          </AdminLoginRoute>
+        } />
+        <Route path="/admin" element={
+          <AdminRoute>
+            <Admin />
+          </AdminRoute>
+        } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
