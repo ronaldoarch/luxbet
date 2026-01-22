@@ -633,35 +633,67 @@ async def public_games(
             detail=f"Não foi possível obter provedores da IGameWin ({api.last_error or 'erro desconhecido'})"
         )
 
-    chosen_provider = _choose_provider(providers, provider_code)
-
-    games = await api.get_games(provider_code=chosen_provider)
-    if games is None:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Não foi possível obter jogos da IGameWin (verifique provider_code e credenciais do agente). {api.last_error or ''}".strip()
-        )
-
-    games = _normalize_games(games, chosen_provider)
-
-    public_games = []
-    for g in games:
-        status_val = g.get("status")
-        is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
-        if not is_active:
+    # Se provider_code foi especificado, retorna apenas jogos desse provedor
+    if provider_code:
+        chosen_provider = _choose_provider(providers, provider_code)
+        games = await api.get_games(provider_code=chosen_provider)
+        if games is None:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Não foi possível obter jogos da IGameWin (verifique provider_code e credenciais do agente). {api.last_error or ''}".strip()
+            )
+        games = _normalize_games(games, chosen_provider)
+        public_games = []
+        for g in games:
+            status_val = g.get("status")
+            is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
+            if not is_active:
+                continue
+            public_games.append({
+                "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
+                "code": g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug"),
+                "provider": g.get("provider_code") or g.get("provider") or g.get("provider_name") or g.get("vendor") or g.get("vendor_name") or chosen_provider,
+                "banner": g.get("banner") or g.get("image") or g.get("icon"),
+                "status": "active"
+            })
+        return {
+            "providers": providers,
+            "provider_code": chosen_provider,
+            "games": public_games
+        }
+    
+    # Se não há provider_code, busca jogos de TODOS os provedores
+    all_games = []
+    active_providers = [p for p in providers if str(p.get("status", 1)) in ["1", "true", "True"]] or providers
+    
+    for provider in active_providers:
+        prov_code = provider.get("code") or provider.get("provider_code")
+        if not prov_code:
             continue
-        public_games.append({
-            "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
-            "code": g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug"),
-            "provider": g.get("provider_code") or g.get("provider") or g.get("provider_name") or g.get("vendor") or g.get("vendor_name") or chosen_provider,
-            "banner": g.get("banner") or g.get("image") or g.get("icon"),
-            "status": "active"
-        })
+        
+        games = await api.get_games(provider_code=prov_code)
+        if games is None:
+            continue
+        
+        games = _normalize_games(games, prov_code)
+        
+        for g in games:
+            status_val = g.get("status")
+            is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
+            if not is_active:
+                continue
+            all_games.append({
+                "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
+                "code": g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug"),
+                "provider": g.get("provider_code") or g.get("provider") or g.get("provider_name") or g.get("vendor") or g.get("vendor_name") or prov_code,
+                "banner": g.get("banner") or g.get("image") or g.get("icon"),
+                "status": "active"
+            })
 
     return {
         "providers": providers,
-        "provider_code": chosen_provider,
-        "games": public_games
+        "provider_code": None,
+        "games": all_games
     }
 
 

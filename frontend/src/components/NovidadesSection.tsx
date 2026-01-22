@@ -228,20 +228,26 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
             </div>
 
             <div className="space-y-6">
-              {providerEntries.map(([providerName, providerGames]) => (
-                <div key={providerName} className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-8 rounded-full bg-[#d4af37]" />
-                      <h4 className="text-lg md:text-xl font-extrabold uppercase tracking-wide">{providerName}</h4>
-                      <span className="text-xs text-gray-400">({providerGames.length})</span>
+              {providerEntries.map(([providerName, providerGames]) => {
+                // Limitar a 20 jogos por provedor na home
+                const limitedGames = providerGames.slice(0, 20);
+                return (
+                  <div key={providerName} className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-8 rounded-full bg-[#d4af37]" />
+                        <h4 className="text-lg md:text-xl font-extrabold uppercase tracking-wide">{providerName}</h4>
+                        <span className="text-xs text-gray-400">
+                          ({limitedGames.length}{providerGames.length > 20 ? ` de ${providerGames.length}` : ''})
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+                      {limitedGames.map(renderGameCard)}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
-                    {providerGames.map(renderGameCard)}
-                  </div>
-                </div>
-          ))}
+                );
+              })}
         </div>
           </div>
         )}
