@@ -62,10 +62,14 @@ export default function GameCards() {
 
             if (matchedGame) {
               return {
-                ...matchedGame,
+                id: matchedGame.id,
+                title: matchedGame.title,
+                code: matchedGame.code,
+                banner: matchedGame.banner,
+                provider: matchedGame.provider,
                 tag: config.tag,
                 tagColor: config.tagColor,
-              };
+              } as GameCard;
             }
             return null;
           })
