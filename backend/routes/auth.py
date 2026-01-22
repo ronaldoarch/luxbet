@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
 from database import get_db
 from schemas import LoginRequest, Token, UserResponse, UserCreate
 from auth import authenticate_user, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash, get_user_by_username
@@ -8,6 +10,12 @@ from dependencies import get_current_user
 from models import User, UserRole
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Rate limiter será injetado via app.state.limiter no decorator
+def limiter_check(request: Request):
+    """Helper para aplicar rate limit via decorator"""
+    limiter = request.app.state.limiter
+    return limiter
 
 
 @router.post("/register", response_model=UserResponse)
@@ -48,7 +56,25 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+async def login(
+    request: Request,
+    login_data: LoginRequest,
+    db: Session = Depends(get_db),
+    limiter: Limiter = Depends(get_limiter)
+):
+    # Rate limiting: 5 tentativas por minuto por IP
+    @limiter.limit("5/minute")
+    async def _check_rate_limit():
+        pass
+    
+    try:
+        await _check_rate_limit()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later."
+        )
+    
     # authenticate_user já tenta por username e email
     user = authenticate_user(db, login_data.username, login_data.password)
     

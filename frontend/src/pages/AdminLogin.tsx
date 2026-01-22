@@ -93,7 +93,7 @@ export default function AdminLogin() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
-              placeholder="admin"
+              placeholder="Digite seu usuário"
               required
             />
           </div>
@@ -118,11 +118,6 @@ export default function AdminLogin() {
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
-
-        <div className="mt-6 text-center text-gray-400 text-sm">
-          <p>Usuário padrão: <strong className="text-white">admin</strong></p>
-          <p>Senha padrão: <strong className="text-white">admin123</strong></p>
-        </div>
       </div>
     </div>
   );
