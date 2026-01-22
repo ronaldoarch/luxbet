@@ -11,11 +11,10 @@ from models import User, UserRole
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Rate limiter será injetado via app.state.limiter no decorator
-def limiter_check(request: Request):
-    """Helper para aplicar rate limit via decorator"""
-    limiter = request.app.state.limiter
-    return limiter
+# Rate limiter será injetado via app.state.limiter
+def get_limiter(request: Request):
+    """Helper para obter o limiter do app"""
+    return request.app.state.limiter
 
 
 @router.post("/register", response_model=UserResponse)
@@ -56,19 +55,14 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-async def login(
-    request: Request,
-    login_data: LoginRequest,
-    db: Session = Depends(get_db),
-    limiter: Limiter = Depends(get_limiter)
-):
+async def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_db)):
     # Rate limiting: 5 tentativas por minuto por IP
-    @limiter.limit("5/minute")
-    async def _check_rate_limit():
-        pass
+    limiter = request.app.state.limiter
     
+    # Aplicar rate limit
     try:
-        await _check_rate_limit()
+        # Usar o método correto do slowapi para verificar limite
+        limiter.hit(f"login:{get_remote_address(request)}", "5/minute")
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
