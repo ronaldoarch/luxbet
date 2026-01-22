@@ -314,3 +314,61 @@ class ThemeResponse(ThemeBase):
     
     class Config:
         from_attributes = True
+
+
+# Provider Order Schemas
+class ProviderOrderBase(BaseModel):
+    provider_code: str
+    display_order: int = 999
+    is_priority: bool = False
+
+
+class ProviderOrderCreate(ProviderOrderBase):
+    pass
+
+
+class ProviderOrderUpdate(BaseModel):
+    display_order: Optional[int] = None
+    is_priority: Optional[bool] = None
+
+
+class ProviderOrderResponse(ProviderOrderBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Tracking Config Schemas
+class TrackingConfigBase(BaseModel):
+    platform: str = "meta"
+    pixel_id: Optional[str] = None
+    access_token: Optional[str] = None
+    webhook_url: Optional[str] = None
+    webhook_verify_token: Optional[str] = None
+    is_active: bool = True
+    metadata_json: Optional[str] = None
+
+
+class TrackingConfigCreate(TrackingConfigBase):
+    pass
+
+
+class TrackingConfigUpdate(BaseModel):
+    pixel_id: Optional[str] = None
+    access_token: Optional[str] = None
+    webhook_url: Optional[str] = None
+    webhook_verify_token: Optional[str] = None
+    is_active: Optional[bool] = None
+    metadata_json: Optional[str] = None
+
+
+class TrackingConfigResponse(TrackingConfigBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

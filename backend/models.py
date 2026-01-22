@@ -253,3 +253,29 @@ class Theme(Base):
     # }
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProviderOrder(Base):
+    __tablename__ = "provider_orders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    provider_code = Column(String(100), unique=True, nullable=False, index=True)  # Código do provedor (ex: "PRAGMATIC", "SPRIBE")
+    display_order = Column(Integer, nullable=False, default=999)  # Ordem de exibição (menor = primeiro)
+    is_priority = Column(Boolean, default=False, nullable=False)  # Se é um dos 3 primeiros (prioritário)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrackingConfig(Base):
+    __tablename__ = "tracking_configs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String(50), nullable=False, default="meta")  # meta, google, tiktok, etc
+    pixel_id = Column(String(255))  # Meta Pixel ID
+    access_token = Column(String(500))  # Meta Access Token
+    webhook_url = Column(String(500))  # URL do webhook do Meta
+    webhook_verify_token = Column(String(255))  # Token de verificação do webhook
+    is_active = Column(Boolean, default=True, nullable=False)
+    metadata_json = Column(Text)  # JSON com configurações adicionais
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

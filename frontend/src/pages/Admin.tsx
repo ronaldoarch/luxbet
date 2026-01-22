@@ -6,7 +6,7 @@ import {
   ArrowDownCircle, Activity, RefreshCw,
   Image as ImageIcon, Home, BarChart3,
   ChevronUp, ChevronDown, Percent, FileText, 
-  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette
+  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -276,6 +276,12 @@ export default function Admin() {
                 active={activeTab === 'themes'}
                 onClick={() => setActiveTab('themes')}
               />
+              <NavSubItem
+                icon={<BarChart />}
+                label="Tracking"
+                active={activeTab === 'tracking'}
+                onClick={() => setActiveTab('tracking')}
+              />
             </NavSection>
           </nav>
         </aside>
@@ -291,6 +297,7 @@ export default function Admin() {
           {activeTab === 'igamewin' && <IGameWinTab token={token || ''} />}
           {activeTab === 'affiliates' && <AffiliatesTab token={token || ''} />}
           {activeTab === 'themes' && <ThemesTab token={token || ''} />}
+          {activeTab === 'tracking' && <TrackingTab token={token || ''} />}
           {activeTab === 'settings' && <SettingsTab token={token || ''} />}
           {activeTab === 'branding' && <BrandingTab token={token || ''} />}
           {activeTab === 'ggr' && <GGRTab token={token || ''} />}
@@ -1201,6 +1208,8 @@ function IGameWinTab({ token }: { token: string }) {
           </div>
         )}
       </div>
+
+      <ProviderOrderSection token={token} providers={providers} loadingGames={loadingGames} />
 
       <div className="space-y-3 mt-6">
         <div className="flex items-center justify-between">
@@ -2760,6 +2769,365 @@ function NotificationsTab({ token }: { token: string }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function ProviderOrderSection({ token, providers, loadingGames }: { token: string; providers: any[]; loadingGames: boolean }) {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [sortedProviders, setSortedProviders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/provider-orders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Falha ao carregar ordens');
+      const ordersData = await res.json();
+      setOrders(ordersData);
+      
+      // Ordenar provedores baseado nas ordens
+      const providerOrders = providers.map((p) => {
+        const code = p.code || p.provider_code || p.name || '';
+        const name = p.name || p.code || p.provider_code || '—';
+        const order = ordersData.find((o: any) => o.provider_code === code);
+        return {
+          ...p,
+          code,
+          name,
+          display_order: order?.display_order ?? 999,
+          is_priority: order?.is_priority ?? false
+        };
+      }).sort((a, b) => {
+        if (a.is_priority && !b.is_priority) return -1;
+        if (!a.is_priority && b.is_priority) return 1;
+        return a.display_order - b.display_order;
+      });
+      
+      setSortedProviders(providerOrders);
+    } catch (err: any) {
+      setError(err.message);
+      // Se não há ordens, usar ordem padrão
+      setSortedProviders(providers.map((p, idx) => ({
+        ...p,
+        code: p.code || p.provider_code || p.name || '',
+        name: p.name || p.code || p.provider_code || '—',
+        display_order: idx + 1,
+        is_priority: idx < 3
+      })));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveOrders = async () => {
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const ordersToSave = sortedProviders.map((p, idx) => ({
+        provider_code: p.code,
+        display_order: idx + 1,
+        is_priority: idx < 3 // Primeiros 3 são prioritários
+      }));
+
+      const res = await fetch(`${API_URL}/api/admin/provider-orders/bulk`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(ordersToSave)
+      });
+      if (!res.ok) throw new Error('Falha ao salvar ordens');
+      setSuccess('Ordem dos provedores salva com sucesso!');
+      await fetchOrders();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (providers.length > 0) {
+      fetchOrders();
+    }
+  }, [providers.length]);
+
+  const moveUp = (index: number) => {
+    if (index === 0) return;
+    const newProviders = [...sortedProviders];
+    [newProviders[index - 1], newProviders[index]] = [newProviders[index], newProviders[index - 1]];
+    setSortedProviders(newProviders);
+  };
+
+  const moveDown = (index: number) => {
+    if (index >= sortedProviders.length - 1) return;
+    const newProviders = [...sortedProviders];
+    [newProviders[index], newProviders[index + 1]] = [newProviders[index + 1], newProviders[index]];
+    setSortedProviders(newProviders);
+  };
+
+  return (
+    <div className="space-y-3 mt-6 bg-gray-800/60 p-4 rounded border border-gray-700">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-xl font-bold">Ordenar Provedores</h3>
+          <p className="text-sm text-gray-400">Defina a ordem de exibição dos provedores (primeiros 3 aparecem primeiro)</p>
+        </div>
+        <button
+          onClick={saveOrders}
+          disabled={loading}
+          className="px-4 py-2 bg-[#ff6b35] hover:bg-[#ff7b35] text-white rounded font-semibold disabled:opacity-50"
+        >
+          {loading ? 'Salvando...' : 'Salvar Ordem'}
+        </button>
+      </div>
+      {error && <div className="text-red-400 text-sm">{error}</div>}
+      {success && <div className="text-green-400 text-sm">{success}</div>}
+      {loadingGames ? (
+        <div className="text-gray-400">Carregando provedores...</div>
+      ) : (
+        <div className="space-y-2">
+          {sortedProviders.map((p, idx) => (
+            <div
+              key={p.code}
+              className={`flex items-center gap-3 p-3 rounded border ${
+                idx < 3 ? 'bg-[#d4af37]/10 border-[#d4af37]/30' : 'bg-gray-700/50 border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => moveUp(idx)}
+                  disabled={idx === 0}
+                  className="p-1 hover:bg-gray-600 rounded disabled:opacity-30"
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  onClick={() => moveDown(idx)}
+                  disabled={idx >= sortedProviders.length - 1}
+                  className="p-1 hover:bg-gray-600 rounded disabled:opacity-30"
+                >
+                  <ChevronDown size={16} />
+                </button>
+              </div>
+              <GripVertical size={18} className="text-gray-400" />
+              <div className="flex-1">
+                <div className="font-semibold">{p.name}</div>
+                <div className="text-xs text-gray-400">{p.code}</div>
+              </div>
+              {idx < 3 && (
+                <span className="px-2 py-1 bg-[#d4af37] text-black text-xs font-bold rounded">
+                  Prioridade {idx + 1}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackingTab({ token }: { token: string }) {
+  const [configs, setConfigs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [form, setForm] = useState({
+    platform: 'meta',
+    pixel_id: '',
+    access_token: '',
+    webhook_url: '',
+    webhook_verify_token: '',
+    is_active: true
+  });
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/tracking-configs?platform=meta`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Falha ao carregar configurações');
+      const data = await res.json();
+      setConfigs(data);
+      if (data.length > 0) {
+        const first = data[0];
+        setForm({
+          platform: first.platform || 'meta',
+          pixel_id: first.pixel_id || '',
+          access_token: first.access_token || '',
+          webhook_url: first.webhook_url || '',
+          webhook_verify_token: first.webhook_verify_token || '',
+          is_active: first.is_active ?? true
+        });
+        setEditingId(first.id);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async () => {
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const url = editingId
+        ? `${API_URL}/api/admin/tracking-configs/${editingId}`
+        : `${API_URL}/api/admin/tracking-configs`;
+      const method = editingId ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(form)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Falha ao salvar configuração');
+      }
+      setSuccess('Configuração salva com sucesso!');
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Tracking - Meta</h2>
+          <p className="text-sm text-gray-400">Configure webhook, pixel e token do Meta para rastreamento de eventos</p>
+        </div>
+        <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+          <RefreshCw size={18} /> Atualizar
+        </button>
+      </div>
+      {error && <div className="text-red-400 bg-red-500/20 border border-red-500 rounded p-3">{error}</div>}
+      {success && <div className="text-green-400 bg-green-500/20 border border-green-500 rounded p-3">{success}</div>}
+
+      <div className="bg-gray-800/60 p-4 rounded border border-gray-700 space-y-4">
+        <h3 className="text-lg font-semibold">Configurações do Meta</h3>
+        
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Pixel ID</label>
+            <input
+              type="text"
+              value={form.pixel_id}
+              onChange={e => setForm({ ...form, pixel_id: e.target.value })}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm"
+              placeholder="123456789012345"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Access Token</label>
+            <input
+              type="password"
+              value={form.access_token}
+              onChange={e => setForm({ ...form, access_token: e.target.value })}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm"
+              placeholder="EAAxxxxxxxxxxxxx"
+            />
+          </div>
+          
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-300 mb-1">Webhook URL</label>
+            <input
+              type="url"
+              value={form.webhook_url}
+              onChange={e => setForm({ ...form, webhook_url: e.target.value })}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm"
+              placeholder="https://api.vertixbet.site/api/webhooks/meta"
+            />
+          </div>
+          
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-300 mb-1">Webhook Verify Token</label>
+            <input
+              type="text"
+              value={form.webhook_verify_token}
+              onChange={e => setForm({ ...form, webhook_verify_token: e.target.value })}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm"
+              placeholder="seu_token_secreto"
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={e => setForm({ ...form, is_active: e.target.checked })}
+              className="w-4 h-4"
+            />
+            <label className="text-sm text-gray-300">Ativo</label>
+          </div>
+        </div>
+        
+        <button
+          onClick={save}
+          disabled={loading}
+          className="w-full md:w-auto px-6 py-2 bg-[#ff6b35] hover:bg-[#ff7b35] text-white rounded font-semibold disabled:opacity-50"
+        >
+          {loading ? 'Salvando...' : editingId ? 'Atualizar Configuração' : 'Salvar Configuração'}
+        </button>
+      </div>
+
+      {configs.length > 0 && (
+        <div className="bg-gray-800/60 p-4 rounded border border-gray-700">
+          <h3 className="text-lg font-semibold mb-3">Configurações Salvas</h3>
+          <div className="space-y-2">
+            {configs.map(config => (
+              <div key={config.id} className="p-3 bg-gray-700/50 rounded border border-gray-600">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">Meta Tracking</div>
+                    <div className="text-sm text-gray-400">
+                      Pixel: {config.pixel_id ? '***' + config.pixel_id.slice(-4) : 'Não configurado'} | 
+                      Webhook: {config.webhook_url ? 'Configurado' : 'Não configurado'} | 
+                      Status: {config.is_active ? 'Ativo' : 'Inativo'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setForm({
+                        platform: config.platform || 'meta',
+                        pixel_id: config.pixel_id || '',
+                        access_token: config.access_token || '',
+                        webhook_url: config.webhook_url || '',
+                        webhook_verify_token: config.webhook_verify_token || '',
+                        is_active: config.is_active ?? true
+                      });
+                      setEditingId(config.id);
+                    }}
+                    className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-sm"
+                  >
+                    Editar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,7 +12,7 @@ from dependencies import get_current_admin_user, get_current_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType,
-    Affiliate, Theme
+    Affiliate, Theme, ProviderOrder, TrackingConfig
 )
 from schemas import (
     UserResponse, UserCreate, UserUpdate,
@@ -23,7 +23,9 @@ from schemas import (
     IGameWinAgentResponse, IGameWinAgentCreate, IGameWinAgentUpdate,
     FTDSettingsResponse, FTDSettingsCreate, FTDSettingsUpdate,
     AffiliateResponse, AffiliateCreate, AffiliateUpdate,
-    ThemeResponse, ThemeCreate, ThemeUpdate
+    ThemeResponse, ThemeCreate, ThemeUpdate,
+    ProviderOrderResponse, ProviderOrderCreate, ProviderOrderUpdate,
+    TrackingConfigResponse, TrackingConfigCreate, TrackingConfigUpdate
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
@@ -598,6 +600,19 @@ async def list_igamewin_games(
             status_code=502,
             detail=f"Não foi possível obter provedores da IGameWin ({api.last_error or 'erro desconhecido'})"
         )
+    
+    # Ordenar provedores pela ordem definida no banco
+    provider_orders = db.query(ProviderOrder).all()
+    order_map = {po.provider_code: po.display_order for po in provider_orders}
+    priority_providers = {po.provider_code for po in provider_orders if po.is_priority}
+    
+    def sort_providers(p):
+        code = p.get("code") or p.get("provider_code") or ""
+        is_priority = code in priority_providers
+        order = order_map.get(code, 999)
+        return (not is_priority, order if not is_priority else 0, code)
+    
+    providers = sorted(providers, key=sort_providers)
 
     chosen_provider = _choose_provider(providers, provider_code)
 
@@ -632,7 +647,21 @@ async def public_games(
             status_code=502,
             detail=f"Não foi possível obter provedores da IGameWin ({api.last_error or 'erro desconhecido'})"
         )
-
+    
+    # Ordenar provedores pela ordem definida no banco
+    provider_orders = db.query(ProviderOrder).all()
+    order_map = {po.provider_code: po.display_order for po in provider_orders}
+    priority_providers = {po.provider_code for po in provider_orders if po.is_priority}
+    
+    # Ordenar: primeiro os prioritários (1, 2, 3), depois os outros por ordem, depois os sem ordem
+    def sort_providers(p):
+        code = p.get("code") or p.get("provider_code") or ""
+        is_priority = code in priority_providers
+        order = order_map.get(code, 999)
+        return (not is_priority, order if not is_priority else 0, code)
+    
+    providers = sorted(providers, key=sort_providers)
+    
     # Se provider_code foi especificado, retorna apenas jogos desse provedor
     if provider_code:
         chosen_provider = _choose_provider(providers, provider_code)
@@ -665,6 +694,9 @@ async def public_games(
     # Se não há provider_code, busca jogos de TODOS os provedores
     all_games = []
     active_providers = [p for p in providers if str(p.get("status", 1)) in ["1", "true", "True"]] or providers
+    
+    # Ordenar provedores pela ordem definida no banco (já ordenado acima, mas garantir)
+    active_providers = sorted(active_providers, key=sort_providers)
     
     for provider in active_providers:
         prov_code = provider.get("code") or provider.get("provider_code")
@@ -1534,4 +1566,152 @@ async def delete_theme(
         raise HTTPException(status_code=400, detail="Não é possível deletar o tema ativo")
     
     db.delete(theme)
+    db.commit()
+
+
+# ========== PROVIDER ORDER ==========
+@router.get("/provider-orders", response_model=List[ProviderOrderResponse])
+async def get_provider_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Lista todas as ordens de provedores"""
+    orders = db.query(ProviderOrder).order_by(ProviderOrder.display_order.asc()).all()
+    return orders
+
+
+@router.post("/provider-orders", response_model=ProviderOrderResponse)
+async def create_provider_order(
+    order_data: ProviderOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Cria ou atualiza ordem de um provedor"""
+    existing = db.query(ProviderOrder).filter(ProviderOrder.provider_code == order_data.provider_code).first()
+    if existing:
+        existing.display_order = order_data.display_order
+        existing.is_priority = order_data.is_priority
+        db.commit()
+        db.refresh(existing)
+        return existing
+    
+    order = ProviderOrder(**order_data.dict())
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@router.put("/provider-orders/bulk", response_model=List[ProviderOrderResponse])
+async def update_provider_orders_bulk(
+    orders: List[ProviderOrderCreate],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualiza múltiplas ordens de provedores de uma vez"""
+    updated = []
+    for order_data in orders:
+        existing = db.query(ProviderOrder).filter(ProviderOrder.provider_code == order_data.provider_code).first()
+        if existing:
+            existing.display_order = order_data.display_order
+            existing.is_priority = order_data.is_priority
+            updated.append(existing)
+        else:
+            new_order = ProviderOrder(**order_data.dict())
+            db.add(new_order)
+            updated.append(new_order)
+    db.commit()
+    for order in updated:
+        db.refresh(order)
+    return updated
+
+
+@router.delete("/provider-orders/{provider_code}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_provider_order(
+    provider_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Remove ordem de um provedor"""
+    order = db.query(ProviderOrder).filter(ProviderOrder.provider_code == provider_code).first()
+    if order:
+        db.delete(order)
+        db.commit()
+
+
+# ========== TRACKING CONFIG ==========
+@router.get("/tracking-configs", response_model=List[TrackingConfigResponse])
+async def get_tracking_configs(
+    platform: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Lista configurações de tracking"""
+    query = db.query(TrackingConfig)
+    if platform:
+        query = query.filter(TrackingConfig.platform == platform)
+    configs = query.all()
+    return configs
+
+
+@router.get("/tracking-configs/{config_id}", response_model=TrackingConfigResponse)
+async def get_tracking_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Obtém uma configuração de tracking específica"""
+    config = db.query(TrackingConfig).filter(TrackingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuração de tracking não encontrada")
+    return config
+
+
+@router.post("/tracking-configs", response_model=TrackingConfigResponse)
+async def create_tracking_config(
+    config_data: TrackingConfigCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Cria uma nova configuração de tracking"""
+    config = TrackingConfig(**config_data.dict())
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@router.put("/tracking-configs/{config_id}", response_model=TrackingConfigResponse)
+async def update_tracking_config(
+    config_id: int,
+    config_data: TrackingConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualiza uma configuração de tracking"""
+    config = db.query(TrackingConfig).filter(TrackingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuração de tracking não encontrada")
+    
+    update_data = config_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(config, key, value)
+    
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@router.delete("/tracking-configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tracking_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Deleta uma configuração de tracking"""
+    config = db.query(TrackingConfig).filter(TrackingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuração de tracking não encontrada")
+    
+    db.delete(config)
     db.commit()
