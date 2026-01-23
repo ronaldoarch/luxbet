@@ -518,6 +518,16 @@ async def update_igamewin_agent(
         raise HTTPException(status_code=404, detail="IGameWin agent not found")
     
     update_data = agent_data.model_dump(exclude_unset=True)
+    
+    # Verificar se agent_code está sendo atualizado e se já existe em outro registro
+    if 'agent_code' in update_data:
+        existing_agent = db.query(IGameWinAgent).filter(
+            IGameWinAgent.agent_code == update_data['agent_code'],
+            IGameWinAgent.id != agent_id
+        ).first()
+        if existing_agent:
+            raise HTTPException(status_code=400, detail="Agent code already exists")
+    
     for field, value in update_data.items():
         setattr(agent, field, value)
     
