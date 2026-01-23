@@ -1102,10 +1102,10 @@ function IGameWinTab({ token }: { token: string }) {
         // Criar novo agente apenas se não existir nenhum
         res = await fetch(`${API_URL}/api/admin/igamewin-agents`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body
-        });
-      }
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body
+          });
+        }
       
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: 'Erro ao salvar agente' }));
@@ -1136,20 +1136,45 @@ function IGameWinTab({ token }: { token: string }) {
   useEffect(() => {
     if (items.length > 0 && items[0]) {
       const agent = items[0];
-      setForm({
+      const newForm = {
         agent_code: agent.agent_code || '',
         agent_key: agent.agent_key || '',
         api_url: agent.api_url || 'https://api.igamewin.com',
         credentials: agent.credentials || '',
         is_active: agent.is_active !== undefined ? agent.is_active : true
-      });
-      // Só buscar jogos e saldo se o agente estiver ativo e tiver credenciais
+      };
+      
+      // Só atualizar o formulário se os dados mudaram
+      if (JSON.stringify(newForm) !== JSON.stringify(form)) {
+        setForm(newForm);
+      }
+      
+      // Só buscar jogos e saldo se o agente estiver ativo e tiver credenciais válidas
       if (agent.is_active && agent.agent_code && agent.agent_key) {
+        // Usar um pequeno delay para evitar chamadas múltiplas
+        const timer = setTimeout(() => {
     fetchGames(); 
     fetchAgentBalance();
+        }, 300);
+        return () => clearTimeout(timer);
+      } else {
+        // Limpar dados se o agente não estiver válido
+        setGames([]);
+        setProviders([]);
+        setAgentBalance(null);
+        setBalanceError('');
+        setGamesError('');
       }
+    } else {
+      // Se não há agentes, limpar formulário
+      setForm({ agent_code: '', agent_key: '', api_url: 'https://api.igamewin.com', credentials: '', is_active: true });
+      setGames([]);
+      setProviders([]);
+      setAgentBalance(null);
+      setBalanceError('');
+      setGamesError('');
     }
-  }, [items]);
+  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">
