@@ -68,10 +68,10 @@ export default function Admin() {
 
   useEffect(() => {
     const verifyAdmin = async () => {
-      if (!token) {
-        navigate('/admin/login');
-        return;
-      }
+    if (!token) {
+      navigate('/admin/login');
+      return;
+    }
 
       // Verificar se o usuário é realmente admin
       try {
@@ -91,7 +91,7 @@ export default function Admin() {
             return;
           }
           // É admin, carregar stats
-          loadStats();
+    loadStats();
         } else {
           // Token inválido
           localStorage.removeItem('admin_token');
@@ -1087,30 +1087,45 @@ function IGameWinTab({ token }: { token: string }) {
     setLoading(true); setError('');
     const body = JSON.stringify(form);
     try {
-      // Tenta criar; se já existir, faz update no primeiro agente
-      let res = await fetch(`${API_URL}/api/admin/igamewin-agents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body
-      });
-      if (!res.ok) {
-        // Se já existe, tenta update do primeiro agente
+      // Se já existe um agente, fazer update em vez de criar
         const existingId = items[0]?.id;
-        if (res.status === 400 && existingId) {
+      let res;
+      
+      if (existingId) {
+        // Fazer update do agente existente
           res = await fetch(`${API_URL}/api/admin/igamewin-agents/${existingId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body
           });
-        }
+      } else {
+        // Criar novo agente apenas se não existir nenhum
+        res = await fetch(`${API_URL}/api/admin/igamewin-agents`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body
+        });
       }
+      
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Falha ao salvar agente: ${txt || res.status}`);
+        const data = await res.json().catch(() => ({ detail: 'Erro ao salvar agente' }));
+        throw new Error(data.detail || 'Falha ao salvar agente');
       }
+      
+      // Recarregar dados após salvar
       await fetchData();
-      await fetchGames();
-    } catch (err:any) { setError(err.message); } finally { setLoading(false); }
+      // Aguardar um pouco para garantir que o banco foi atualizado
+      setTimeout(() => {
+        if (form.is_active && form.agent_code && form.agent_key) {
+          fetchGames();
+          fetchAgentBalance();
+        }
+      }, 500);
+    } catch (err:any) { 
+      setError(err.message); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { 
@@ -1130,8 +1145,8 @@ function IGameWinTab({ token }: { token: string }) {
       });
       // Só buscar jogos e saldo se o agente estiver ativo e tiver credenciais
       if (agent.is_active && agent.agent_code && agent.agent_key) {
-        fetchGames();
-        fetchAgentBalance();
+    fetchGames(); 
+    fetchAgentBalance();
       }
     }
   }, [items]);
@@ -1918,7 +1933,7 @@ function AffiliatesTab({ token }: { token: string }) {
   };
 
   return (
-    <div>
+      <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Afiliados</h2>
         <button onClick={fetchAffiliates} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
@@ -1947,7 +1962,7 @@ function AffiliatesTab({ token }: { token: string }) {
                   <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
                 ))}
               </select>
-            </div>
+        </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Código do Afiliado</label>
               <input
@@ -1959,7 +1974,7 @@ function AffiliatesTab({ token }: { token: string }) {
                 disabled={!!editingId}
                 placeholder="Ex: AFF001"
               />
-            </div>
+        </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">CPA (R$)</label>
               <input
@@ -1971,8 +1986,8 @@ function AffiliatesTab({ token }: { token: string }) {
                 required
                 placeholder="0.00"
               />
-            </div>
-            <div>
+        </div>
+              <div>
               <label className="block text-sm text-gray-400 mb-1">Revshare (%)</label>
               <input
                 type="number"
@@ -1985,8 +2000,8 @@ function AffiliatesTab({ token }: { token: string }) {
                 required
                 placeholder="0.00"
               />
-            </div>
-          </div>
+              </div>
+              </div>
           <div className="flex gap-3">
             <button
               type="submit"
@@ -2003,10 +2018,10 @@ function AffiliatesTab({ token }: { token: string }) {
               >
                 Cancelar
               </button>
-            )}
-          </div>
+              )}
+            </div>
         </form>
-      </div>
+          </div>
 
       <TabTable
         title="Lista de Afiliados"
@@ -2026,7 +2041,7 @@ function AffiliatesTab({ token }: { token: string }) {
           <div key={a.id} className="flex gap-2">
             <button onClick={() => loadForEdit(a)} className="text-blue-400 hover:text-blue-300 text-xs">Editar</button>
             <button onClick={() => deleteAffiliate(a.id)} className="text-red-400 hover:text-red-300 text-xs">Deletar</button>
-          </div>
+      </div>
         ])}
       />
     </div>
@@ -2248,7 +2263,7 @@ function ThemesTab({ token }: { token: string }) {
   };
 
   const ColorInput = ({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) => {
-    return (
+  return (
       <div>
         <label className="block text-sm text-gray-400 mb-1">{label}</label>
         <div className="flex items-center gap-2">
