@@ -1040,6 +1040,17 @@ function IGameWinTab({ token }: { token: string }) {
   };
 
   const fetchGames = async (provider?: string) => {
+    // Validar se há credenciais antes de fazer a chamada
+    const currentAgent = items[0];
+    if (!currentAgent || !currentAgent.is_active || 
+        !currentAgent.agent_code || !currentAgent.agent_key ||
+        currentAgent.agent_code.trim() === '' || currentAgent.agent_key.trim() === '') {
+      setGamesError('Nenhum agente IGameWin ativo configurado ou credenciais incompletas (agent_code/agent_key vazios)');
+      setGames([]);
+      setProviders([]);
+      return;
+    }
+
     setLoadingGames(true); setGamesError('');
     try {
       const query = provider || providerCode ? `?provider_code=${encodeURIComponent(provider || providerCode)}` : '';
@@ -1061,7 +1072,11 @@ function IGameWinTab({ token }: { token: string }) {
         setProviderCode(data.provider_code);
       }
       setGames(data.games || []);
-    } catch (err:any) { setGamesError(err.message); }
+    } catch (err:any) { 
+      setGamesError(err.message); 
+      setGames([]);
+      setProviders([]);
+    }
     finally { setLoadingGames(false); }
   };
 
