@@ -578,7 +578,10 @@ async def get_igamewin_agent_balance(
     """Get IGameWin agent balance - Cannot deposit via API, must use IGameWin admin"""
     api = get_igamewin_api(db)
     if not api:
-        raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
+        raise HTTPException(
+            status_code=400, 
+            detail="Nenhum agente IGameWin ativo configurado ou credenciais incompletas (agent_code/agent_key vazios)"
+        )
 
     balance = await api.get_agent_balance()
     if balance is None:
@@ -602,7 +605,10 @@ async def list_igamewin_games(
 ):
     api = get_igamewin_api(db)
     if not api:
-        raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
+        raise HTTPException(
+            status_code=400, 
+            detail="Nenhum agente IGameWin ativo configurado ou credenciais incompletas (agent_code/agent_key vazios)"
+        )
 
     providers = await api.get_providers()
     if providers is None:
@@ -649,7 +655,10 @@ async def public_games(
 ):
     api = get_igamewin_api(db)
     if not api:
-        raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
+        raise HTTPException(
+            status_code=400, 
+            detail="Nenhum agente IGameWin ativo configurado ou credenciais incompletas (agent_code/agent_key vazios)"
+        )
 
     providers = await api.get_providers()
     if providers is None:
@@ -756,7 +765,10 @@ async def launch_game(
     """
     api = get_igamewin_api(db)
     if not api:
-        raise HTTPException(status_code=400, detail="Nenhum agente IGameWin ativo configurado")
+        raise HTTPException(
+            status_code=400, 
+            detail="Nenhum agente IGameWin ativo configurado ou credenciais incompletas (agent_code/agent_key vazios)"
+        )
     
     # Se provider_code não foi fornecido, buscar na lista de jogos
     if not provider_code:

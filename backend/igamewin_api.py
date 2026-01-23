@@ -218,6 +218,11 @@ def get_igamewin_api(db: Session) -> Optional[IGameWinAPI]:
     agent = db.query(IGameWinAgent).filter(IGameWinAgent.is_active == True).first()
     if not agent:
         return None
+    
+    # Validar que agent_code e agent_key não estão vazios
+    if not agent.agent_code or not agent.agent_key:
+        return None
+    
     credentials_dict: Dict[str, Any] = {}
     if agent.credentials:
         try:
