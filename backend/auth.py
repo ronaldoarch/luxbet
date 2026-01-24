@@ -55,7 +55,7 @@ def create_admin_user(db: Session):
     if not admin:
         admin = User(
             username="admin",
-            email="admin@fortunevegas.com",
+            email="admin@luxbet.com",
             password_hash=get_password_hash("admin123"),
             role=UserRole.ADMIN,
             is_active=True,
