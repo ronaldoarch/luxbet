@@ -8,20 +8,13 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: false,
-    // Permitir todos os hosts (útil para deploy em subdomínios)
-    allowedHosts: [
-      'localhost',
-      '.agenciamidas.com',
-      '.localhost',
-      'vertixbet.site',
-      'www.vertixbet.site',
-      'api.vertixbet.site',
-      '.vertixbet.site'
-    ]
+    // Permitir todos os hosts
+    allowedHosts: true
   },
   server: {
     host: '0.0.0.0',
     port: 5173,
-    strictPort: false
+    strictPort: false,
+    allowedHosts: true
   }
 })
