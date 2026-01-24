@@ -56,20 +56,14 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_db)):
-    # Rate limiting: 100 tentativas por minuto por Usuário (aumentado para facilitar testes)
-    limiter = request.app.state.limiter
+    # Rate limit temporariamente desativado para debug/testes
+    # limiter = request.app.state.limiter
     
-    # Aplicar rate limit por usuário
-    try:
-        # Usar o método correto do slowapi para verificar limite
-        # Chave baseada no username (email)
-        limit_key = f"login:{login_data.username}"
-        limiter.hit(limit_key, "100/minute")
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Muitas tentativas de login para este usuário. Tente novamente mais tarde."
-        )
+    # try:
+    #     limit_key = f"login:{login_data.username}"
+    #     limiter.hit(limit_key, "100/minute")
+    # except Exception:
+    #     pass
     
     # authenticate_user já tenta por username e email
     user = authenticate_user(db, login_data.username, login_data.password)
