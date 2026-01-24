@@ -39,6 +39,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
             localStorage.removeItem('admin_token');
           }
         } else {
+          console.error('Falha na verificação de admin:', response.status);
           setIsAdmin(false);
           localStorage.removeItem('admin_token');
         }
@@ -63,6 +64,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
   }
 
   if (!isAdmin) {
+    // Se não for admin, mas o carregamento terminou, redireciona
     return <Navigate to="/" replace />;
   }
 
