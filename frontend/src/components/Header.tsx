@@ -61,10 +61,10 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
             )}
             <a href="/" className="flex items-center gap-1 md:gap-2 hover:opacity-80 transition-opacity">
               {logoUrl ? (
-                <img src={logoUrl} alt="VertixBet" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
+                <img src={logoUrl} alt="Lux Bet" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
               ) : (
                 <>
-                  <div className="text-lg md:text-2xl font-bold tracking-tight">VERTIX</div>
+                  <div className="text-lg md:text-2xl font-bold tracking-tight">LUX</div>
                   <div className="text-base md:text-xl font-semibold hidden sm:block">BET</div>
                 </>
               )}

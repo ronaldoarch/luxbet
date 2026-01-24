@@ -90,7 +90,7 @@ export default function Footer() {
             <h3 className="text-white font-bold mb-3 md:mb-4 text-base md:text-lg">Certificações</h3>
             <div className="flex flex-col gap-3 md:gap-4">
               {logoUrl ? (
-                <img src={logoUrl} alt="VertixBet" className="w-20 h-20 md:w-24 md:h-24 object-contain" />
+                <img src={logoUrl} alt="Lux Bet" className="w-20 h-20 md:w-24 md:h-24 object-contain" />
               ) : (
                 <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-800 rounded flex items-center justify-center">
                   <span className="text-gray-400 text-xs text-center">Logo</span>
@@ -120,7 +120,7 @@ export default function Footer() {
             </div>
           </div>
           <p className="text-gray-500 text-[10px] md:text-xs text-center">
-            © {new Date().getFullYear()} VertixBet. Todos os direitos reservados.
+            © {new Date().getFullYear()} Lux Bet. Todos os direitos reservados.
           </p>
         </div>
       </div>

@@ -87,7 +87,7 @@ export default function AdminLogin() {
         <div className="text-center mb-8">
           {logoUrl ? (
             <div className="flex justify-center mb-4">
-              <img src={logoUrl} alt="VertixBet" className="w-32 h-32 object-contain" />
+              <img src={logoUrl} alt="Lux Bet" className="w-32 h-32 object-contain" />
             </div>
           ) : (
             <h1 className="text-3xl font-black text-white mb-2">

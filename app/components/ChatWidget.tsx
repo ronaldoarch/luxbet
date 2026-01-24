@@ -11,7 +11,7 @@ export default function ChatWidget() {
       >
         <MessageCircle size={18} className="md:w-5 md:h-5" />
         <span className="text-xs md:text-sm font-medium hidden lg:block">
-          Bem Vindo a Zuvia, em que posso ajudar?
+          Bem Vindo a Lux Bet, em que posso ajudar?
         </span>
         <span className="text-xs md:text-sm font-medium lg:hidden">Chat</span>
       </button>

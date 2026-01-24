@@ -24,8 +24,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
               </button>
             )}
             <Link href="/" className="flex items-center gap-1 md:gap-2 hover:opacity-80 transition-opacity">
-              <div className="text-lg md:text-2xl font-bold tracking-tight">ZZUVIA</div>
-              <div className="text-base md:text-xl font-semibold hidden sm:block">ZUVIA</div>
+              <div className="text-lg md:text-2xl font-bold tracking-tight">LUX</div>
+              <div className="text-base md:text-xl font-semibold hidden sm:block">BET</div>
               <Gift className="text-[#d4af37] w-4 h-4 md:w-5 md:h-5" />
             </Link>
           </div>

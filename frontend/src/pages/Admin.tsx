@@ -160,7 +160,7 @@ export default function Admin() {
             >
               {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <h1 className="text-xl font-bold">VertixBet Admin</h1>
+            <h1 className="text-xl font-bold">Lux Bet Admin</h1>
           </div>
           <button
             onClick={handleLogout}
@@ -3173,7 +3173,7 @@ function TrackingTab({ token }: { token: string }) {
               value={form.webhook_url}
               onChange={e => setForm({ ...form, webhook_url: e.target.value })}
               className="w-full bg-gray-700 rounded px-3 py-2 text-sm"
-              placeholder="https://api.vertixbet.site/api/webhooks/meta"
+              placeholder="https://api.luxbet.site/api/webhooks/meta"
             />
           </div>
           

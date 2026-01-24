@@ -14,7 +14,7 @@ from routes import auth, admin, media, payments
 # Configurar rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-app = FastAPI(title="VertixBet API", version="1.0.0")
+app = FastAPI(title="Lux Bet API", version="1.0.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -70,7 +70,7 @@ async def startup_event():
 
 @app.get("/")
 async def root():
-    return {"message": "VertixBet API", "status": "ok", "version": "1.0.0"}
+    return {"message": "Lux Bet API", "status": "ok", "version": "1.0.0"}
 
 
 @app.get("/api/health")

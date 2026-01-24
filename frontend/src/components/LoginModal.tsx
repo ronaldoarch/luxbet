@@ -73,7 +73,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
         {/* Logo */}
         <div className="px-8 pb-6 flex justify-center">
           {logoUrl ? (
-            <img src={logoUrl} alt="VertixBet" className="w-32 h-32 object-contain" />
+            <img src={logoUrl} alt="Lux Bet" className="w-32 h-32 object-contain" />
           ) : (
             <div className="w-32 h-32 bg-gradient-to-br from-[#d4af37]/20 to-[#ff6b35]/20 rounded-full flex items-center justify-center">
               <div className="text-2xl font-black text-white">

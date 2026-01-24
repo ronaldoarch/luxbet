@@ -98,7 +98,7 @@ export default function Footer() {
             </div>
           </div>
           <p className="text-gray-500 text-[10px] md:text-xs text-center">
-            © {new Date().getFullYear()} Zuvia. Todos os direitos reservados.
+            © {new Date().getFullYear()} Lux Bet. Todos os direitos reservados.
           </p>
         </div>
       </div>

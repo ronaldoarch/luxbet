@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zuvia - Plataforma de cassino e apostas esportivas",
+  title: "Lux Bet - Plataforma de cassino e apostas esportivas",
   description: "Plataforma de cassino e apostas esportivas",
 };
 
