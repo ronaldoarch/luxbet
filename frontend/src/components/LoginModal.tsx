@@ -77,7 +77,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
           ) : (
             <div className="w-32 h-32 bg-gradient-to-br from-[#d4af37]/20 to-[#ff6b35]/20 rounded-full flex items-center justify-center">
               <div className="text-2xl font-black text-white">
-                VERTIX<span className="text-[#d4af37]">BET</span>
+                LUX<span className="text-[#d4af37]">BET</span>
               </div>
             </div>
           )}
