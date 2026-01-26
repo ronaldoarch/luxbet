@@ -61,11 +61,15 @@ export default function AdminLogin() {
         if (userResponse.ok) {
           const user = await userResponse.json();
           
-          // Verificar se o usuário tem role ADMIN
-          if (user.role === 'admin' || user.role === 'ADMIN') {
+          // Verificar se o usuário tem role ADMIN (case-insensitive)
+          const userRole = String(user.role || '').toLowerCase();
+          console.log('[AdminLogin] Role do usuário:', userRole);
+          if (userRole === 'admin') {
+            console.log('[AdminLogin] Login admin bem-sucedido, redirecionando...');
             localStorage.setItem('admin_token', data.access_token);
             navigate('/admin');
           } else {
+            console.log('[AdminLogin] Usuário não é admin, role:', userRole);
             setError('Acesso negado. Apenas administradores podem acessar esta área.');
           }
         } else {
@@ -91,7 +95,7 @@ export default function AdminLogin() {
             </div>
           ) : (
             <h1 className="text-3xl font-black text-white mb-2">
-              VERTIX<span className="text-[#d4af37]">BET</span>
+              LUX<span className="text-[#d4af37]">BET</span>
             </h1>
           )}
           <p className="text-gray-400">Painel Administrativo</p>

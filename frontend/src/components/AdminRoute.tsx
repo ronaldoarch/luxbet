@@ -16,35 +16,49 @@ export default function AdminRoute({ children }: AdminRouteProps) {
     const checkAdmin = async () => {
       const token = localStorage.getItem('admin_token');
       
+      console.log('[AdminRoute] Verificando acesso admin...');
+      console.log('[AdminRoute] Token encontrado:', token ? 'SIM' : 'NÃO');
+      
       if (!token) {
+        console.log('[AdminRoute] Sem token, redirecionando...');
         setIsAdmin(false);
         setLoading(false);
         return;
       }
 
       try {
+        console.log('[AdminRoute] Fazendo requisição para /api/auth/me...');
         const response = await fetch(`${API_URL}/api/auth/me`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
 
+        console.log('[AdminRoute] Resposta status:', response.status);
+
         if (response.ok) {
           const user = await response.json();
-          // Verificar se o usuário tem role ADMIN
-          if (user.role === 'admin' || user.role === 'ADMIN') {
+          console.log('[AdminRoute] Dados do usuário:', user);
+          console.log('[AdminRoute] Role do usuário:', user.role);
+          
+          // Verificar se o usuário tem role ADMIN (case-insensitive)
+          const userRole = String(user.role || '').toLowerCase();
+          if (userRole === 'admin') {
+            console.log('[AdminRoute] Usuário é admin, permitindo acesso!');
             setIsAdmin(true);
           } else {
+            console.log('[AdminRoute] Usuário NÃO é admin, role:', userRole);
             setIsAdmin(false);
             localStorage.removeItem('admin_token');
           }
         } else {
-          console.error('Falha na verificação de admin:', response.status);
+          const errorText = await response.text();
+          console.error('[AdminRoute] Falha na verificação de admin:', response.status, errorText);
           setIsAdmin(false);
           localStorage.removeItem('admin_token');
         }
       } catch (error) {
-        console.error('Erro ao verificar admin:', error);
+        console.error('[AdminRoute] Erro ao verificar admin:', error);
         setIsAdmin(false);
         localStorage.removeItem('admin_token');
       } finally {
