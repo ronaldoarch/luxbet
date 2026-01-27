@@ -7,6 +7,7 @@ from typing import Optional
 from database import get_db
 from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate
 from suitpay_api import SuitPayAPI
+from nxgate_api import NXGateAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
 from dependencies import get_current_user
 from igamewin_api import get_igamewin_api
@@ -36,21 +37,44 @@ def get_active_pix_gateway(db: Session) -> Gateway:
     return gateway
 
 
-def get_suitpay_client(gateway: Gateway) -> SuitPayAPI:
-    """Cria cliente SuitPay a partir das credenciais do gateway"""
+def get_payment_client(gateway: Gateway):
+    """
+    Cria cliente de pagamento baseado no nome do gateway
+    Suporta: SuitPay e NXGATE
+    """
     try:
         credentials = json.loads(gateway.credentials) if gateway.credentials else {}
-        client_id = credentials.get("client_id") or credentials.get("ci")
-        client_secret = credentials.get("client_secret") or credentials.get("cs")
-        sandbox = credentials.get("sandbox", True)
+        gateway_name = gateway.name.lower()
         
-        if not client_id or not client_secret:
+        if "nxgate" in gateway_name or "nx" in gateway_name:
+            # NXGATE usa apenas api_key
+            api_key = credentials.get("api_key")
+            if not api_key:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="API Key do gateway NXGATE não configurada"
+                )
+            return NXGateAPI(api_key)
+        
+        elif "suitpay" in gateway_name or "suit" in gateway_name:
+            # SuitPay usa client_id e client_secret
+            client_id = credentials.get("client_id") or credentials.get("ci")
+            client_secret = credentials.get("client_secret") or credentials.get("cs")
+            sandbox = credentials.get("sandbox", True)
+            
+            if not client_id or not client_secret:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Credenciais do gateway SuitPay não configuradas"
+                )
+            
+            return SuitPayAPI(client_id, client_secret, sandbox=sandbox)
+        
+        else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Credenciais do gateway não configuradas"
+                detail=f"Gateway '{gateway.name}' não suportado. Use 'NXGATE' ou 'SuitPay'"
             )
-        
-        return SuitPayAPI(client_id, client_secret, sandbox=sandbox)
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -87,42 +111,64 @@ async def create_pix_deposit(
     # Buscar gateway PIX ativo
     gateway = get_active_pix_gateway(db)
     
-    # Criar cliente SuitPay
-    suitpay = get_suitpay_client(gateway)
+    # Criar cliente de pagamento (SuitPay ou NXGATE)
+    payment_client = get_payment_client(gateway)
     
-    # Gerar número único da requisição
-    request_number = f"DEP_{user.id}_{int(datetime.utcnow().timestamp())}"
+    # URL do webhook
+    webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://api.luxbet.site")
     
-    # Data de vencimento (30 dias a partir de hoje)
-    due_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+    # Gerar código PIX conforme gateway
+    pix_response = None
+    id_transaction = None
+    pix_code = None
     
-    # URL do webhook (usar variável de ambiente ou construir)
-    webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://api.agenciamidas.com")
-    callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashin"
+    gateway_name = gateway.name.lower()
     
-    # Gerar código PIX conforme documentação oficial
-    pix_response = await suitpay.generate_pix_payment(
-        request_number=request_number,
-        due_date=due_date,
-        amount=request.amount,
-        client_name=request.payer_name,
-        client_document=request.payer_tax_id,
-        client_email=request.payer_email,
-        client_phone=request.payer_phone,
-        callback_url=callback_url
-    )
+    if isinstance(payment_client, NXGateAPI):
+        # NXGATE
+        callback_url = f"{webhook_url}/api/webhooks/nxgate/pix-cashin"
+        pix_response = await payment_client.generate_pix_payment(
+            nome_pagador=request.payer_name,
+            documento_pagador=request.payer_tax_id,
+            valor=request.amount,
+            webhook=callback_url
+        )
+        
+        if pix_response:
+            id_transaction = pix_response.get("idTransaction")
+            pix_code = pix_response.get("pix_copy_and_paste") or pix_response.get("qr_code")
     
-    if not pix_response:
+    elif isinstance(payment_client, SuitPayAPI):
+        # SuitPay
+        request_number = f"DEP_{user.id}_{int(datetime.utcnow().timestamp())}"
+        due_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+        callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashin"
+        
+        pix_response = await payment_client.generate_pix_payment(
+            request_number=request_number,
+            due_date=due_date,
+            amount=request.amount,
+            client_name=request.payer_name,
+            client_document=request.payer_tax_id,
+            client_email=request.payer_email,
+            client_phone=request.payer_phone,
+            callback_url=callback_url
+        )
+        
+        if pix_response:
+            id_transaction = pix_response.get("idTransaction")
+            pix_code = pix_response.get("paymentCode")
+    
+    if not pix_response or not id_transaction:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Erro ao gerar código PIX no gateway. Verifique as credenciais e se o gateway está ativo."
         )
     
-    # Validar campos obrigatórios na resposta
-    if not pix_response.get("paymentCode"):
+    if not pix_code:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Resposta inválida do gateway SuitPay. Campo 'paymentCode' não encontrado. Resposta: {pix_response}"
+            detail=f"Resposta inválida do gateway. Código PIX não encontrado. Resposta: {pix_response}"
         )
     
     # Criar registro de depósito
@@ -132,12 +178,12 @@ async def create_pix_deposit(
         amount=request.amount,
         status=TransactionStatus.PENDING,
         transaction_id=str(uuid.uuid4()),
-        external_id=pix_response.get("idTransaction") or request_number,
+        external_id=id_transaction,
         metadata_json=json.dumps({
-            "pix_code": pix_response.get("paymentCode"),
-            "pix_qr_code_base64": pix_response.get("paymentCodeBase64"),
-            "request_number": request_number,
-            "suitpay_response": pix_response
+            "pix_code": pix_code,
+            "pix_qr_code_base64": pix_response.get("paymentCodeBase64") or pix_response.get("base_64_image"),
+            "gateway": gateway.name,
+            "gateway_response": pix_response
         })
     )
     
@@ -185,48 +231,79 @@ async def create_pix_withdrawal(
     # Buscar gateway PIX ativo
     gateway = get_active_pix_gateway(db)
     
-    # Criar cliente SuitPay
-    suitpay = get_suitpay_client(gateway)
+    # Criar cliente de pagamento (SuitPay ou NXGATE)
+    payment_client = get_payment_client(gateway)
     
     # URL do webhook
-    webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://api.agenciamidas.com")
-    callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashout"
+    webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://api.luxbet.site")
     
     # Gerar external_id único para controle de duplicidade
     external_id = f"WTH_{user.id}_{int(datetime.utcnow().timestamp())}"
     
-    # Realizar transferência PIX conforme documentação oficial
-    transfer_response = await suitpay.transfer_pix(
-        key=request.pix_key,
-        type_key=request.pix_key_type,
-        value=request.amount,
-        callback_url=callback_url,
-        document_validation=request.document_validation,
-        external_id=external_id
-    )
+    # Realizar transferência PIX conforme gateway
+    transfer_response = None
+    id_transaction = None
     
-    if not transfer_response:
+    gateway_name = gateway.name.lower()
+    
+    if isinstance(payment_client, NXGateAPI):
+        # NXGATE - mapear tipos de chave
+        tipo_chave_map = {
+            "document": "CPF",
+            "phoneNumber": "PHONE",
+            "email": "EMAIL",
+            "randomKey": "RANDOM"
+        }
+        tipo_chave_nxgate = tipo_chave_map.get(request.pix_key_type, "CPF")
+        
+        callback_url = f"{webhook_url}/api/webhooks/nxgate/pix-cashout"
+        transfer_response = await payment_client.withdraw_pix(
+            valor=request.amount,
+            chave_pix=request.pix_key,
+            tipo_chave=tipo_chave_nxgate,
+            documento=request.document_validation or user.cpf or "",
+            webhook=callback_url
+        )
+        
+        if transfer_response:
+            id_transaction = transfer_response.get("idTransaction")
+    
+    elif isinstance(payment_client, SuitPayAPI):
+        # SuitPay
+        callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashout"
+        transfer_response = await payment_client.transfer_pix(
+            key=request.pix_key,
+            type_key=request.pix_key_type,
+            value=request.amount,
+            callback_url=callback_url,
+            document_validation=request.document_validation,
+            external_id=external_id
+        )
+        
+        if transfer_response:
+            id_transaction = transfer_response.get("idTransaction")
+            # Verificar resposta da API SuitPay
+            response_status = transfer_response.get("response", "").upper()
+            if response_status != "OK":
+                error_messages = {
+                    "ACCOUNT_DOCUMENTS_NOT_VALIDATED": "Conta não validada",
+                    "NO_FUNDS": "Saldo insuficiente no gateway",
+                    "PIX_KEY_NOT_FOUND": "Chave PIX não encontrada",
+                    "UNAUTHORIZED_IP": "IP não autorizado. Cadastre o IP do servidor na SuitPay.",
+                    "DOCUMENT_VALIDATE": "A chave PIX não pertence ao documento informado",
+                    "DUPLICATE_EXTERNAL_ID": "External ID já foi utilizado",
+                    "ERROR": "Erro interno no gateway"
+                }
+                error_msg = error_messages.get(response_status, f"Erro: {response_status}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_msg
+                )
+    
+    if not transfer_response or not id_transaction:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Erro ao processar transferência PIX no gateway. Verifique se o IP do servidor está cadastrado na SuitPay."
-        )
-    
-    # Verificar resposta da API
-    response_status = transfer_response.get("response", "").upper()
-    if response_status != "OK":
-        error_messages = {
-            "ACCOUNT_DOCUMENTS_NOT_VALIDATED": "Conta não validada",
-            "NO_FUNDS": "Saldo insuficiente no gateway",
-            "PIX_KEY_NOT_FOUND": "Chave PIX não encontrada",
-            "UNAUTHORIZED_IP": "IP não autorizado. Cadastre o IP do servidor na SuitPay.",
-            "DOCUMENT_VALIDATE": "A chave PIX não pertence ao documento informado",
-            "DUPLICATE_EXTERNAL_ID": "External ID já foi utilizado",
-            "ERROR": "Erro interno no gateway"
-        }
-        error_msg = error_messages.get(response_status, f"Erro: {response_status}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
+            detail="Erro ao processar transferência PIX no gateway. Verifique as credenciais."
         )
     
     # Criar registro de saque
@@ -236,13 +313,14 @@ async def create_pix_withdrawal(
         amount=request.amount,
         status=TransactionStatus.PENDING,
         transaction_id=str(uuid.uuid4()),
-        external_id=transfer_response.get("idTransaction") or external_id,
+        external_id=id_transaction or external_id,
         metadata_json=json.dumps({
             "pix_key": request.pix_key,
             "pix_key_type": request.pix_key_type,
             "document_validation": request.document_validation,
             "external_id": external_id,
-            "suitpay_response": transfer_response
+            "gateway": gateway.name,
+            "gateway_response": transfer_response
         })
     )
     
@@ -337,6 +415,108 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Erro ao processar webhook PIX Cash-in: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
+
+
+@webhook_router.post("/nxgate/pix-cashin")
+async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook para receber notificações de PIX Cash-in (depósitos) da NXGATE
+    """
+    try:
+        data = await request.json()
+        
+        # Parse do webhook NXGATE
+        parsed = NXGateAPI.parse_webhook_payment(data)
+        id_transaction = parsed.get("idTransaction")
+        status_payment = parsed.get("status", "").lower()
+        
+        if not id_transaction:
+            return {"status": "received", "message": "idTransaction não encontrado"}
+        
+        # Buscar depósito pelo external_id
+        deposit = db.query(Deposit).filter(Deposit.external_id == id_transaction).first()
+        
+        if not deposit:
+            return {"status": "received", "message": "Depósito não encontrado"}
+        
+        # Atualizar status do depósito
+        if status_payment == "paid":
+            if deposit.status != TransactionStatus.APPROVED:
+                deposit.status = TransactionStatus.APPROVED
+                # Adicionar saldo ao usuário
+                user = db.query(User).filter(User.id == deposit.user_id).first()
+                if user:
+                    user.balance += deposit.amount
+        
+        # Atualizar metadata
+        metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+        metadata["webhook_data"] = data
+        metadata["webhook_parsed"] = parsed
+        metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+        deposit.metadata_json = json.dumps(metadata)
+        
+        db.commit()
+        
+        return {"status": "received"}
+    
+    except Exception as e:
+        print(f"Erro ao processar webhook NXGATE PIX Cash-in: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Retornar 200 mesmo em erro para evitar retries desnecessários
+        return {"status": "error", "message": str(e)}
+
+
+@webhook_router.post("/nxgate/pix-cashout")
+async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook para receber notificações de PIX Cash-out (saques) da NXGATE
+    """
+    try:
+        data = await request.json()
+        
+        # Parse do webhook NXGATE
+        parsed = NXGateAPI.parse_webhook_withdrawal(data)
+        id_transaction = parsed.get("idTransaction")
+        status_withdrawal = parsed.get("status", "").upper()
+        withdrawal_type = parsed.get("type", "")
+        
+        if not id_transaction:
+            return {"status": "received", "message": "idTransaction não encontrado"}
+        
+        # Buscar saque pelo external_id
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == id_transaction).first()
+        
+        if not withdrawal:
+            return {"status": "received", "message": "Saque não encontrado"}
+        
+        # Atualizar status do saque
+        if withdrawal_type == "PIX_CASHOUT_SUCCESS" or status_withdrawal == "SUCCESS":
+            withdrawal.status = TransactionStatus.APPROVED
+        elif withdrawal_type == "PIX_CASHOUT_ERROR" or status_withdrawal == "ERROR":
+            # Reverter saldo se foi cancelado
+            if withdrawal.status == TransactionStatus.PENDING:
+                user = db.query(User).filter(User.id == withdrawal.user_id).first()
+                if user:
+                    user.balance += withdrawal.amount
+            withdrawal.status = TransactionStatus.REJECTED
+        
+        # Atualizar metadata
+        metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
+        metadata["webhook_data"] = data
+        metadata["webhook_parsed"] = parsed
+        metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+        withdrawal.metadata_json = json.dumps(metadata)
+        
+        db.commit()
+        
+        return {"status": "received"}
+    
+    except Exception as e:
+        print(f"Erro ao processar webhook NXGATE PIX Cash-out: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 
 @webhook_router.post("/suitpay/pix-cashout")
