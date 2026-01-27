@@ -1963,6 +1963,20 @@ async def test_gold_api():
         "expected_methods": ["user_balance", "transaction"]
     }
 
+# Endpoint também em /api/gold_api para garantir compatibilidade
+@public_router.post("/gold_api")
+async def igamewin_gold_api_public(request: Request, db: Session = Depends(get_db)):
+    """Endpoint /api/public/gold_api para compatibilidade"""
+    print(f"[Gold API Public] ===== REQUEST RECEIVED AT /api/public/gold_api =====")
+    return await igamewin_gold_api(request, db)
+
+# Endpoint também em /api/gold_api (sem /public) para garantir acesso via api.luxbet.site
+@router.post("/gold_api")
+async def igamewin_gold_api_admin(request: Request, db: Session = Depends(get_db)):
+    """Endpoint /api/admin/gold_api - redireciona para função principal"""
+    print(f"[Gold API Admin] ===== REQUEST RECEIVED AT /api/admin/gold_api =====")
+    return await igamewin_gold_api(request, db)
+
 # Endpoint também em /api/public/gold_api para compatibilidade
 @public_router.post("/gold_api")
 async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
