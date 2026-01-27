@@ -126,8 +126,10 @@ export default function Game() {
             src={gameUrl}
             className="w-full h-full border-0"
             title="Jogo"
-            allow="fullscreen; autoplay; payment; geolocation"
+            allow="fullscreen; autoplay; payment; geolocation; microphone; camera"
             allowFullScreen
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+            referrerPolicy="no-referrer-when-downgrade"
           />
         </div>
       )}
