@@ -143,10 +143,20 @@ class IGameWinAPI:
                 )
                 response.raise_for_status()
                 data = response.json()
-                # API de business retorna status 1/0
-                if isinstance(data, dict) and data.get("status") not in (None, 1):
-                    self.last_error = f"status={data.get('status')} msg={data.get('msg')}"
-                    return None
+                
+                # API retorna status 1 para sucesso, 0 para erro
+                # Para métodos que não retornam status (como alguns endpoints), aceitar a resposta
+                # Mas para métodos que devem retornar status, validar explicitamente
+                if isinstance(data, dict):
+                    status = data.get("status")
+                    # Se status existe e não é 1, é um erro
+                    if status is not None and status != 1:
+                        error_msg = data.get("msg", "Erro desconhecido")
+                        self.last_error = f"status={status} msg={error_msg}"
+                        return None
+                    # Se status é 1 ou None (alguns endpoints podem não retornar status), aceitar
+                    return data
+                
                 return data
             except httpx.HTTPError as e:
                 body_preview = ""
@@ -201,16 +211,39 @@ class IGameWinAPI:
         if provider_code:
             payload["provider_code"] = provider_code
         
+        print(f"[IGameWin] Launching game - user_code={user_code}, game_code={game_code}, provider_code={provider_code}, lang={lang}")
+        print(f"[IGameWin] Payload: {json.dumps({**payload, 'agent_token': '***'})}")
+        
         data = await self._post(payload)
         if not data:
+            print(f"[IGameWin] Failed to get response: {self.last_error}")
+            return None
+        
+        print(f"[IGameWin] Response received: {json.dumps(data)}")
+        
+        # Verificar se status é 1 (sucesso) conforme documentação
+        status = data.get("status")
+        if status != 1:
+            error_msg = data.get("msg", "Erro desconhecido")
+            self.last_error = f"status={status} msg={error_msg}"
+            print(f"[IGameWin] Error status: {self.last_error}")
             return None
         
         # A resposta de sucesso tem "launch_url" conforme documentação
         launch_url = data.get("launch_url")
-        if launch_url:
-            return launch_url
+        if not launch_url:
+            self.last_error = "Resposta de sucesso não contém launch_url"
+            print(f"[IGameWin] Missing launch_url in response: {json.dumps(data)}")
+            return None
         
-        return None
+        # Validar que a URL não está vazia
+        if not launch_url.strip():
+            self.last_error = "launch_url está vazio"
+            print(f"[IGameWin] Empty launch_url")
+            return None
+        
+        print(f"[IGameWin] Success! Launch URL: {launch_url[:100]}...")
+        return launch_url
 
 
 def get_igamewin_api(db: Session) -> Optional[IGameWinAPI]:

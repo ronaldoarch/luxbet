@@ -868,6 +868,7 @@ async def launch_game(
                 db.commit()
     
     # Gerar URL de lançamento do jogo usando user_code (username)
+    print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
     launch_url = await api.launch_game(
         user_code=current_user.username,
         game_code=game_code,
@@ -876,9 +877,22 @@ async def launch_game(
     )
     
     if not launch_url:
+        error_detail = api.last_error or 'Erro desconhecido'
+        print(f"[Launch Game] Failed - {error_detail}")
         raise HTTPException(
             status_code=502,
-            detail=f"Não foi possível iniciar o jogo. {api.last_error or 'Erro desconhecido'}"
+            detail=f"Não foi possível iniciar o jogo. {error_detail}"
+        )
+    
+    print(f"[Launch Game] Success - URL length: {len(launch_url)}, starts with: {launch_url[:100]}...")
+    print(f"[Launch Game] Full URL: {launch_url}")
+    
+    # Validar URL antes de retornar
+    if not launch_url.startswith(('http://', 'https://')):
+        print(f"[Launch Game] WARNING: URL inválida - não começa com http:// ou https://")
+        raise HTTPException(
+            status_code=502,
+            detail=f"URL de lançamento inválida retornada pela API IGameWin"
         )
     
     return {
