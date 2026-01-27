@@ -2968,9 +2968,12 @@ function ProviderOrderSection({ token, providers, loadingGames }: { token: strin
       
       // Ordenar provedores baseado nas ordens
       const providerOrders = providers.map((p) => {
-        const code = p.code || p.provider_code || p.name || '';
+        const code = (p.code || p.provider_code || p.name || '').trim().toUpperCase(); // Normalizar para uppercase
         const name = p.name || p.code || p.provider_code || '—';
-        const order = ordersData.find((o: any) => o.provider_code === code);
+        // Normalizar também o código do banco para comparação
+        const order = ordersData.find((o: any) => 
+          (o.provider_code || '').trim().toUpperCase() === code
+        );
         return {
           ...p,
           code,
@@ -3006,7 +3009,7 @@ function ProviderOrderSection({ token, providers, loadingGames }: { token: strin
     setSuccess('');
     try {
       const ordersToSave = sortedProviders.map((p, idx) => ({
-        provider_code: p.code,
+        provider_code: (p.code || p.provider_code || '').trim().toUpperCase(), // Normalizar para uppercase
         display_order: idx + 1,
         is_priority: idx < 3 // Primeiros 3 são prioritários
       }));
