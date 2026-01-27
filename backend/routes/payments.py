@@ -156,11 +156,19 @@ async def create_pix_deposit(
         )
         
         if pix_response:
-            id_transaction = pix_response.get("idTransaction")
+            # Garantir que pix_response é um dict
+            if isinstance(pix_response, str):
+                try:
+                    pix_response = json.loads(pix_response)
+                except:
+                    pass
+            
+            id_transaction = pix_response.get("idTransaction") if isinstance(pix_response, dict) else None
             # SuitPay retorna paymentCode diretamente
-            pix_code = pix_response.get("paymentCode")
+            pix_code = pix_response.get("paymentCode") if isinstance(pix_response, dict) else None
             
             # Log para debug
+            print(f"DEBUG SuitPay response type: {type(pix_response)}")
             print(f"DEBUG SuitPay response: {pix_response}")
             print(f"DEBUG paymentCode extracted: {pix_code}")
     
@@ -171,18 +179,21 @@ async def create_pix_deposit(
         )
     
     # Verificar se o status da resposta indica sucesso
-    response_status = pix_response.get("status", "").lower() if isinstance(pix_response, dict) else ""
-    
-    # Se status é success mas pix_code ainda está vazio, tentar extrair novamente
-    if response_status == "success" and not pix_code:
-        pix_code = pix_response.get("paymentCode")
-        print(f"DEBUG Retry extraction - paymentCode: {pix_code}")
+    if isinstance(pix_response, dict):
+        response_status = pix_response.get("status", "").lower()
+        
+        # Se status é success mas pix_code ainda está vazio, tentar extrair novamente
+        if response_status == "success" and not pix_code:
+            pix_code = pix_response.get("paymentCode")
+            print(f"DEBUG Retry extraction - paymentCode: {pix_code}")
     
     if not pix_code:
         # Log completo da resposta para debug
         print(f"ERROR: PIX code not found in response: {pix_response}")
         print(f"ERROR: Response type: {type(pix_response)}")
-        print(f"ERROR: Response keys: {pix_response.keys() if isinstance(pix_response, dict) else 'Not a dict'}")
+        if isinstance(pix_response, dict):
+            print(f"ERROR: Response keys: {list(pix_response.keys())}")
+            print(f"ERROR: paymentCode value: {pix_response.get('paymentCode')}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Resposta inválida do gateway. Código PIX não encontrado. Resposta: {pix_response}"
