@@ -19,25 +19,32 @@ export default function Profile() {
     }
     if (user) {
       setLoading(false);
-      checkAffiliate();
+      // Verificar afiliado apenas uma vez ao carregar a página
+      // Não verificar novamente quando user muda (para evitar chamadas desnecessárias)
+      if (!isAffiliate) {
+        checkAffiliate();
+      }
     }
-  }, [token, user, navigate]);
+  }, [token, navigate]); // Remover 'user' e 'isAffiliate' das dependências para evitar loops
 
   const checkAffiliate = async () => {
-    if (!token) return;
+    if (!token || isAffiliate) return; // Não verificar se já é afiliado
     try {
       const res = await fetch(`${API_URL}/api/public/affiliate/dashboard`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        // Adicionar signal para poder cancelar se necessário
       });
       if (res.ok) {
         setIsAffiliate(true);
       } else if (res.status === 404) {
         // Usuário não é afiliado - isso é normal, não é erro
+        // Não logar no console para evitar poluição
         setIsAffiliate(false);
       }
-      // Outros erros são silenciados
+      // Outros erros são silenciados - não logar no console
     } catch (err) {
-      // Erro de rede ou outro - silenciar, não é crítico
+      // Erro de rede ou outro - silenciar completamente, não é crítico
+      // Não logar no console para evitar poluição
       setIsAffiliate(false);
     }
   };
@@ -51,16 +58,9 @@ export default function Profile() {
     if (!token) return;
     setSyncingBalance(true);
     try {
-      const res = await fetch(`${API_URL}/api/public/sync-balance`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (res.ok) {
-        // Atualizar dados do usuário após sincronização
-        await refreshUser();
-      }
+      // Chamar diretamente refreshUser em vez de usar sync-balance endpoint
+      // Isso evita chamadas desnecessárias ao endpoint de afiliados
+      await refreshUser();
     } catch (err) {
       console.error('Erro ao sincronizar saldo:', err);
     } finally {
