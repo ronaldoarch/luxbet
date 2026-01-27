@@ -901,6 +901,23 @@ async def launch_game(
     if not launch_url:
         error_detail = api.last_error or 'Erro desconhecido'
         print(f"[Launch Game] Failed - {error_detail}")
+        
+        # Se o erro for ERROR_GET_BALANCE_END_POINT, significa que o IGameWin está tentando chamar nosso /gold_api
+        # mas não consegue acessá-lo. Isso pode ser porque:
+        # 1. O campo "Ponto final do site" não está configurado no painel IGameWin
+        # 2. O endpoint /gold_api não está acessível publicamente
+        if "ERROR_GET_BALANCE_END_POINT" in error_detail:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Erro ao iniciar jogo: {error_detail}. "
+                    "O IGameWin está tentando acessar nosso endpoint /gold_api mas não consegue. "
+                    "Verifique se o campo 'Ponto final do site' está configurado como 'https://luxbet.site' "
+                    "no painel administrativo do IGameWin (Agente de atualização). "
+                    "Aguarde 2-5 minutos após salvar as configurações."
+                )
+            )
+        
         raise HTTPException(
             status_code=502,
             detail=f"Não foi possível iniciar o jogo. {error_detail}"
@@ -1932,12 +1949,19 @@ async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
     Implementa os métodos: user_balance e transaction
     """
     try:
+        # Log da requisição recebida
+        client_host = request.client.host if request.client else "unknown"
+        print(f"[Gold API] ===== REQUEST RECEIVED =====")
+        print(f"[Gold API] Client IP: {client_host}")
+        print(f"[Gold API] Headers: {dict(request.headers)}")
+        
         data = await request.json()
         method = data.get("method")
         agent_code = data.get("agent_code")
         agent_secret = data.get("agent_secret")
         
-        print(f"[Gold API] Received request - method={method}, agent_code={agent_code}")
+        print(f"[Gold API] Method: {method}, Agent Code: {agent_code}")
+        print(f"[Gold API] Full payload: {json.dumps({**data, 'agent_secret': '***' if agent_secret else None})}")
         
         # Validar credenciais do agente
         agent = db.query(IGameWinAgent).filter(
