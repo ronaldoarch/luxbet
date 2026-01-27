@@ -14,6 +14,7 @@ export default function Deposit() {
   const [error, setError] = useState('');
   const [deposit, setDeposit] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [qrCodeError, setQrCodeError] = useState(false);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +74,7 @@ export default function Deposit() {
 
       const data = await response.json();
       setDeposit(data);
+      setQrCodeError(false); // Reset QR code error when new deposit is created
     } catch (err: any) {
       setError(err.message || 'Erro ao processar depósito. Tente novamente.');
     } finally {
@@ -226,23 +228,14 @@ export default function Deposit() {
                   QR Code PIX
                 </h3>
                 <div className="bg-white p-4 rounded-lg inline-block">
-                  {getPixQrCode() && getPixQrCode().trim() ? (
+                  {getPixQrCode() && getPixQrCode().trim() && !qrCodeError ? (
                     <img
                       src={`data:image/png;base64,${getPixQrCode()}`}
                       alt="QR Code PIX"
                       className="w-64 h-64 mx-auto"
-                      onError={(e) => {
-                        // Se a imagem base64 falhar, ocultar e mostrar o QR gerado
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent && getPixCode()) {
-                          const qrDiv = document.createElement('div');
-                          qrDiv.className = 'w-64 h-64 mx-auto flex items-center justify-center';
-                          qrDiv.innerHTML = '';
-                          parent.appendChild(qrDiv);
-                          // Renderizar QRCodeSVG aqui se necessário
-                        }
+                      onError={() => {
+                        // Se a imagem base64 falhar, marcar erro para usar QR gerado
+                        setQrCodeError(true);
                       }}
                     />
                   ) : (
