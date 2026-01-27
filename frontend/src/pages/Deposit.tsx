@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Copy, Check, Loader2, QrCode, AlertCircle } from 'lucide-react';
-import { QRCodeSVG } from 'react-qr-code';
+import QRCodeSVG from 'react-qr-code';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
