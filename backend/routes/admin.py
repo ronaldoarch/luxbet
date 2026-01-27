@@ -607,8 +607,15 @@ def _apply_game_customizations(games: list, db: Session) -> list:
     if not game_codes:
         return games
     
-    customizations = db.query(GameCustomization).filter(GameCustomization.game_code.in_(game_codes)).all()
-    customization_map = {c.game_code: c for c in customizations}
+    # Dividir em lotes para evitar problemas com muitos parâmetros (limite de 1000 por lote)
+    BATCH_SIZE = 1000
+    customization_map = {}
+    
+    for i in range(0, len(game_codes), BATCH_SIZE):
+        batch = game_codes[i:i + BATCH_SIZE]
+        customizations = db.query(GameCustomization).filter(GameCustomization.game_code.in_(batch)).all()
+        for c in customizations:
+            customization_map[c.game_code] = c
     
     # Aplicar customizações
     for game in games:
