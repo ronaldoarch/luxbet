@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from sqlalchemy import desc
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import json
+import time
 
 from database import get_db
 from dependencies import get_current_admin_user, get_current_user
@@ -36,6 +37,45 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
 # Router sem prefixo para endpoints que precisam estar na raiz (como /gold_api para IGameWin)
 root_router = APIRouter(tags=["root"])
+
+# Cache em memória para providers e games da API IGameWin
+# Formato: {chave: {"data": dados, "expires_at": timestamp}}
+_igamewin_cache: Dict[str, Dict[str, Any]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutos de cache
+
+
+def _get_cache_key(prefix: str, *args) -> str:
+    """Gera uma chave de cache única"""
+    return f"{prefix}:{':'.join(str(arg) for arg in args)}"
+
+
+def _get_cached(key: str) -> Optional[Any]:
+    """Obtém dados do cache se ainda válidos"""
+    if key not in _igamewin_cache:
+        return None
+    cache_entry = _igamewin_cache[key]
+    if time.time() > cache_entry["expires_at"]:
+        del _igamewin_cache[key]
+        return None
+    return cache_entry["data"]
+
+
+def _set_cache(key: str, data: Any, ttl: int = CACHE_TTL_SECONDS):
+    """Armazena dados no cache com TTL"""
+    _igamewin_cache[key] = {
+        "data": data,
+        "expires_at": time.time() + ttl
+    }
+
+
+def _clear_cache(pattern: Optional[str] = None):
+    """Limpa o cache. Se pattern fornecido, limpa apenas chaves que começam com pattern"""
+    if pattern:
+        keys_to_delete = [k for k in _igamewin_cache.keys() if k.startswith(pattern)]
+        for k in keys_to_delete:
+            del _igamewin_cache[k]
+    else:
+        _igamewin_cache.clear()
 
 
 # ========== USERS ==========
@@ -717,12 +757,20 @@ async def public_games(
             detail="Nenhum agente IGameWin ativo configurado ou credenciais incompletas (agent_code/agent_key vazios)"
         )
 
-    providers = await api.get_providers()
-    if providers is None:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Não foi possível obter provedores da IGameWin ({api.last_error or 'erro desconhecido'})"
-        )
+    # Verificar cache para providers
+    cache_key_providers = _get_cache_key("providers", api.agent_code)
+    cached_providers = _get_cached(cache_key_providers)
+    
+    if cached_providers is not None:
+        providers = cached_providers
+    else:
+        providers = await api.get_providers()
+        if providers is None:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Não foi possível obter provedores da IGameWin ({api.last_error or 'erro desconhecido'})"
+            )
+        _set_cache(cache_key_providers, providers)
     
     # Ordenar provedores pela ordem definida no banco
     provider_orders = db.query(ProviderOrder).all()
@@ -746,13 +794,23 @@ async def public_games(
     # Se provider_code foi especificado, retorna apenas jogos desse provedor
     if provider_code:
         chosen_provider = _choose_provider(providers, provider_code)
-        games = await api.get_games(provider_code=chosen_provider)
-        if games is None:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Não foi possível obter jogos da IGameWin (verifique provider_code e credenciais do agente). {api.last_error or ''}".strip()
-            )
-        games = _normalize_games(games, chosen_provider)
+        
+        # Verificar cache para games deste provedor
+        cache_key_games = _get_cache_key("games", api.agent_code, chosen_provider)
+        cached_games = _get_cached(cache_key_games)
+        
+        if cached_games is not None:
+            games = cached_games
+        else:
+            games = await api.get_games(provider_code=chosen_provider)
+            if games is None:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Não foi possível obter jogos da IGameWin (verifique provider_code e credenciais do agente). {api.last_error or ''}".strip()
+                )
+            games = _normalize_games(games, chosen_provider)
+            _set_cache(cache_key_games, games)
+        
         games = _apply_game_customizations(games, db)
         public_games = []
         for g in games:
@@ -777,41 +835,60 @@ async def public_games(
         }
     
     # Se não há provider_code, busca jogos de TODOS os provedores
-    all_games = []
-    active_providers = [p for p in providers if str(p.get("status", 1)) in ["1", "true", "True"]] or providers
+    # Verificar cache para todos os games
+    cache_key_all_games = _get_cache_key("all_games", api.agent_code)
+    cached_all_games = _get_cached(cache_key_all_games)
     
-    # Ordenar provedores pela ordem definida no banco (já ordenado acima, mas garantir)
-    active_providers = sorted(active_providers, key=sort_providers)
-    
-    for provider in active_providers:
-        prov_code = provider.get("code") or provider.get("provider_code")
-        if not prov_code:
-            continue
+    if cached_all_games is not None:
+        all_games = cached_all_games
+    else:
+        all_games = []
+        active_providers = [p for p in providers if str(p.get("status", 1)) in ["1", "true", "True"]] or providers
         
-        games = await api.get_games(provider_code=prov_code)
-        if games is None:
-            continue
+        # Ordenar provedores pela ordem definida no banco (já ordenado acima, mas garantir)
+        active_providers = sorted(active_providers, key=sort_providers)
         
-        games = _normalize_games(games, prov_code)
-        games = _apply_game_customizations(games, db)
-        
-        for g in games:
-            status_val = g.get("status")
-            is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
-            if not is_active:
+        for provider in active_providers:
+            prov_code = provider.get("code") or provider.get("provider_code")
+            if not prov_code:
                 continue
-            # Usar o código do provedor diretamente para garantir correspondência com a ordenação
-            game_code = _extract_game_code(g)
-            if not game_code:
-                continue  # Pular jogos sem código válido
-            all_games.append({
-                "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
-                "code": game_code,
-                "provider": prov_code,  # Usar o código do provedor diretamente
-                "provider_code": prov_code,  # Adicionar também como provider_code para referência
-                "banner": g.get("banner") or g.get("image") or g.get("icon"),
-                "status": "active"
-            })
+            
+            # Verificar cache para games deste provedor específico
+            cache_key_provider_games = _get_cache_key("games", api.agent_code, prov_code)
+            cached_provider_games = _get_cached(cache_key_provider_games)
+            
+            if cached_provider_games is not None:
+                games = cached_provider_games
+            else:
+                games = await api.get_games(provider_code=prov_code)
+                if games is None:
+                    continue
+                games = _normalize_games(games, prov_code)
+                _set_cache(cache_key_provider_games, games)
+            
+            # Aplicar customizações antes de processar os jogos
+            games = _apply_game_customizations(games, db)
+            
+            for g in games:
+                status_val = g.get("status")
+                is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
+                if not is_active:
+                    continue
+                # Usar o código do provedor diretamente para garantir correspondência com a ordenação
+                game_code = _extract_game_code(g)
+                if not game_code:
+                    continue  # Pular jogos sem código válido
+                all_games.append({
+                    "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
+                    "code": game_code,
+                    "provider": prov_code,  # Usar o código do provedor diretamente
+                    "provider_code": prov_code,  # Adicionar também como provider_code para referência
+                    "banner": g.get("banner") or g.get("image") or g.get("icon"),
+                    "status": "active"
+                })
+        
+        # Cachear resultado final
+        _set_cache(cache_key_all_games, all_games)
 
     return {
         "providers": providers[:3],  # Limitar a 3 provedores
@@ -2328,6 +2405,9 @@ async def create_game_customization(
         existing.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(existing)
+        # Limpar cache de games para refletir mudanças
+        _clear_cache("games")
+        _clear_cache("all_games")
         return existing
     else:
         # Criar novo
@@ -2335,6 +2415,9 @@ async def create_game_customization(
         db.add(customization)
         db.commit()
         db.refresh(customization)
+        # Limpar cache de games para refletir mudanças
+        _clear_cache("games")
+        _clear_cache("all_games")
         return customization
 
 
@@ -2358,6 +2441,9 @@ async def update_game_customization(
     
     db.commit()
     db.refresh(customization)
+    # Limpar cache de games para refletir mudanças
+    _clear_cache("games")
+    _clear_cache("all_games")
     return customization
 
 
@@ -2374,4 +2460,7 @@ async def delete_game_customization(
     
     db.delete(customization)
     db.commit()
+    # Limpar cache de games para refletir mudanças
+    _clear_cache("games")
+    _clear_cache("all_games")
     return None

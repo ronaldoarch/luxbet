@@ -46,6 +46,8 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
     return () => window.removeEventListener('resize', updateGamesPerPage);
   }, []);
 
+  const [providersOrder, setProvidersOrder] = useState<string[]>([]);
+
   useEffect(() => {
     const fetchGames = async () => {
       setLoading(true);
@@ -53,6 +55,19 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
         const res = await fetch(API_URL);
         if (!res.ok) throw new Error('Falha ao carregar jogos');
         const data = await res.json();
+        
+        // Extrair a ordem dos provedores da resposta da API (mesma chamada)
+        if (data.providers && Array.isArray(data.providers)) {
+          const order = data.providers
+            .map((p: any) => {
+              // Normalizar o código do provedor (uppercase, remover espaços)
+              const code = (p.code || p.provider_code || '').trim().toUpperCase();
+              return code;
+            })
+            .filter((code: string) => code);
+          setProvidersOrder(order);
+        }
+        
         const mapped: Game[] = (data.games || []).map((g: any, idx: number) => ({
           id: g.code || g.name || String(idx),
           title: g.name || g.title || 'Jogo',
@@ -113,33 +128,6 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
   };
 
   const displayedGames = filteredGames.slice(currentIndex, currentIndex + gamesPerPage);
-
-  const [providersOrder, setProvidersOrder] = useState<string[]>([]);
-
-  useEffect(() => {
-    const fetchProvidersOrder = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/public/games`);
-        if (res.ok) {
-          const data = await res.json();
-          // Extrair a ordem dos provedores da resposta da API
-          if (data.providers && Array.isArray(data.providers)) {
-            const order = data.providers
-              .map((p: any) => {
-                // Normalizar o código do provedor (uppercase, remover espaços)
-                const code = (p.code || p.provider_code || '').trim().toUpperCase();
-                return code;
-              })
-              .filter((code: string) => code);
-            setProvidersOrder(order);
-          }
-        }
-      } catch (err) {
-        console.error('Erro ao buscar ordem dos provedores:', err);
-      }
-    };
-    fetchProvidersOrder();
-  }, []);
 
   const gamesByProvider = useMemo(() => {
     return filteredGames.reduce<Record<string, Game[]>>((acc, game) => {
