@@ -18,6 +18,33 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
 - **Problema:** O servidor `igamewin.com` não está enviando o header `Access-Control-Allow-Origin` permitindo `api.igamewin.com`
 - **Observação:** Este é um problema **interno do IGameWin** - eles precisam permitir que seus próprios domínios (`api.igamewin.com`) acessem recursos de `igamewin.com`
 
+### 📋 Recursos Específicos Bloqueados (Exemplo: Starlight Princess)
+
+Os seguintes recursos estão sendo bloqueados quando o jogo tenta carregar:
+
+1. **Scripts de detecção de dispositivo:**
+   - `https://igamewin.com/games/pragmatic/mobile/wurfl.js`
+   - Resultado: Jogo usa fallback UAParser2, mas pode ter problemas de otimização
+
+2. **Estatísticas do jogo:**
+   - `https://igamewin.com/gs2c/stats.do?...`
+   - Resultado: Estatísticas não são enviadas
+
+3. **Arquivos de tradução/localização:**
+   - `https://igamewin.com/gs2c/common/v2/games-html5/games/vs/vs20starlight/mobile/packages/pt_mobile.json`
+   - `https://igamewin.com/gs2c/common/v2/games-html5/games/vs/vs20starlight/mobile/packages/pt_GUI_mobile.json`
+   - Resultado: Jogo pode não carregar traduções corretamente
+
+4. **Arquivos de customização:**
+   - `https://igamewin.com/gs2c/common/v2/games-html5/games/vs/vs20starlight/mobile/customizations.info`
+   - Resultado: Customizações não são aplicadas
+
+5. **Código principal do jogo:**
+   - `https://igamewin.com/gs2c/common/v2/games-html5/games/vs/vs20starlight/mobile/build.js`
+   - Resultado: **Jogo não carrega completamente** - este é o recurso mais crítico
+
+**Todos esses recursos retornam HTTP 200 (OK), mas são bloqueados pelo navegador devido à falta de headers CORS.**
+
 ---
 
 ## 🎯 Causa Raiz
