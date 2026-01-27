@@ -565,6 +565,17 @@ def _choose_provider(providers: list, provider_code: Optional[str]) -> Optional[
     return chosen
 
 
+def _extract_game_code(game: Dict[str, Any]) -> Optional[str]:
+    """Extrai o código do jogo de forma consistente"""
+    return (
+        game.get("game_code") or 
+        game.get("code") or 
+        game.get("game_id") or 
+        game.get("id") or 
+        game.get("slug")
+    )
+
+
 def _normalize_games(games: list, chosen_provider: Optional[str]) -> list:
     if chosen_provider:
         for g in games:
@@ -711,9 +722,12 @@ async def public_games(
             is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
             if not is_active:
                 continue
+            game_code = _extract_game_code(g)
+            if not game_code:
+                continue  # Pular jogos sem código válido
             public_games.append({
                 "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
-                "code": g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug"),
+                "code": game_code,
                 "provider": g.get("provider_code") or g.get("provider") or g.get("provider_name") or g.get("vendor") or g.get("vendor_name") or chosen_provider,
                 "banner": g.get("banner") or g.get("image") or g.get("icon"),
                 "status": "active"
@@ -748,9 +762,12 @@ async def public_games(
             if not is_active:
                 continue
             # Usar o código do provedor diretamente para garantir correspondência com a ordenação
+            game_code = _extract_game_code(g)
+            if not game_code:
+                continue  # Pular jogos sem código válido
             all_games.append({
                 "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
-                "code": g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug"),
+                "code": game_code,
                 "provider": prov_code,  # Usar o código do provedor diretamente
                 "provider_code": prov_code,  # Adicionar também como provider_code para referência
                 "banner": g.get("banner") or g.get("image") or g.get("icon"),
@@ -805,8 +822,8 @@ async def launch_game(
             games = await api.get_games(provider_code=provider_code_to_try)
             if games:
                 for game in games:
-                    game_code_from_api = game.get("game_code") or game.get("code") or game.get("game_id") or game.get("id")
-                    if game_code_from_api == game_code:
+                    game_code_from_api = _extract_game_code(game)
+                    if game_code_from_api and game_code_from_api == game_code:
                         found_provider = provider_code_to_try
                         break
                 if found_provider:
