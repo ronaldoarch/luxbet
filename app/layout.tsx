@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lux Bet - Plataforma de cassino e apostas esportivas",
-  description: "Plataforma de cassino e apostas esportivas",
+  title: "Lux Bet - Cassino Online",
+  description: "Plataforma de cassino online",
 };
 
 export default function RootLayout({

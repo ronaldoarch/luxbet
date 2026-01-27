@@ -7,6 +7,7 @@ import Game from './pages/Game';
 import Deposit from './pages/Deposit';
 import Withdrawal from './pages/Withdrawal';
 import AffiliatePanel from './pages/AffiliatePanel';
+import Promocoes from './pages/Promocoes';
 import AdminRoute from './components/AdminRoute';
 import AdminLoginRoute from './components/AdminLoginRoute';
 
@@ -20,6 +21,7 @@ export default function AppRouter() {
         <Route path="/sacar" element={<Withdrawal />} />
         <Route path="/jogo/:gameCode" element={<Game />} />
         <Route path="/afiliado" element={<AffiliatePanel />} />
+        <Route path="/promocoes" element={<Promocoes />} />
         <Route path="/admin/login" element={
           <AdminLoginRoute>
             <AdminLogin />

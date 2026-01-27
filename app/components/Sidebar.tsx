@@ -22,19 +22,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     'Blackjack ao vivo',
   ];
 
-  const liveGames = ['Jogo Ao Vivo', 'E-Sport'];
-
-  const sportsLeagues = [
-    'Brasileirão Série A',
-    'Série A',
-    'Copa Do Mundo De Clube',
-    'Champions League',
-    'Copa Libertadores',
-    'Copa Sul-Americana',
-    'NBA',
-  ];
-
-  const sportCategories = ['Futebol', 'Basquete', 'Tênis', 'Vôlei', 'Futebol Americano'];
+  const liveGames = ['Jogo Ao Vivo'];
 
   return (
     <>
@@ -65,18 +53,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {/* Promoções */}
           <div className="border-b border-[#0d5d4b]">
             <div className="px-4 py-3 space-y-3">
-              {/* Gire e ganhe - com animação neon e borda amarela */}
-              <button className="neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/0 via-yellow-500/50 to-yellow-500/0 animate-shimmer"></div>
-                <div className="relative flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-gray-400 font-semibold uppercase mb-1.5 leading-tight">Gire e ganhe</div>
-                    <div className="text-base font-bold text-white leading-tight">Slot da Sorte</div>
-                  </div>
-                  <div className="text-3xl ml-2 flex-shrink-0">🎰</div>
-                </div>
-              </button>
-
               {/* Cashback */}
               <button className="w-full bg-blue-600 rounded-lg p-4 text-left hover:bg-blue-700 transition-all duration-200 border-2 border-blue-600 hover:border-blue-500 hover:shadow-lg">
                 <div className="flex items-center justify-between">
@@ -88,23 +64,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </div>
               </button>
 
-              {/* Promoções */}
+              {/* Promoções - com efeito neon */}
               <Link
                 href="/promocoes"
-                className="block w-full bg-blue-600 rounded-lg p-4 text-left hover:bg-blue-700 transition-all duration-200 border-2 border-blue-600 hover:border-blue-500 hover:shadow-lg"
+                className="block neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group"
               >
-                <div className="flex items-center justify-between">
+                <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/0 via-yellow-500/50 to-yellow-500/0 animate-shimmer"></div>
+                <div className="relative flex items-center justify-between">
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-blue-100 font-semibold uppercase mb-1.5 leading-tight">Acesse as</div>
+                    <div className="text-xs text-gray-400 font-semibold uppercase mb-1.5 leading-tight">Acesse as</div>
                     <div className="text-base font-bold text-white leading-tight">Promoções</div>
                   </div>
                   <div className="text-3xl ml-2 flex-shrink-0">🎁</div>
                 </div>
               </Link>
 
-              {/* Chat */}
-              <button className="w-full bg-gray-800 border border-gray-600 rounded-lg p-4 text-left hover:bg-gray-700 transition-all duration-200 hover:border-gray-500">
-                <div className="flex items-center justify-between">
+              {/* Chat - com efeito neon */}
+              <button className="neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/0 via-yellow-500/50 to-yellow-500/0 animate-shimmer"></div>
+                <div className="relative flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-gray-400 font-semibold uppercase mb-1.5 leading-tight">Chat ao vivo</div>
                     <div className="text-base font-bold text-white leading-tight">Suporte 24h</div>
@@ -166,48 +144,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
                     >
                       {game}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </nav>
-
-          {/* Ligas Esportivas */}
-          <nav className="border-b border-[#0d5d4b]">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#0a4d3e]">
-              <h3 className="text-sm font-bold text-[#d4af37] uppercase tracking-wide">Ligas</h3>
-            </div>
-            <div className="px-4 pb-3">
-              <ul className="space-y-1">
-                {sportsLeagues.map((league) => (
-                  <li key={league}>
-                    <Link
-                      href={`/esportes/${league.toLowerCase().replace(/\s+/g, '-')}`}
-                      className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
-                    >
-                      {league}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </nav>
-
-          {/* Categorias de Esportes */}
-          <nav className="border-b border-[#0d5d4b]">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#0a4d3e]">
-              <h3 className="text-sm font-bold text-[#d4af37] uppercase tracking-wide">Esportes</h3>
-            </div>
-            <div className="px-4 pb-3">
-              <ul className="space-y-1">
-                {sportCategories.map((sport) => (
-                  <li key={sport}>
-                    <Link
-                      href={`/esportes/${sport.toLowerCase()}`}
-                      className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
-                    >
-                      {sport}
                     </Link>
                   </li>
                 ))}

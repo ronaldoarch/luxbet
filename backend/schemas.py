@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from models import TransactionStatus, UserRole, MediaType
+from models import TransactionStatus, UserRole, MediaType, PromotionType
 
 
 # User Schemas
@@ -366,6 +366,62 @@ class TrackingConfigUpdate(BaseModel):
 
 
 class TrackingConfigResponse(TrackingConfigBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Promotion Schemas
+class PromotionBase(BaseModel):
+    title: str
+    description: str
+    short_description: Optional[str] = None
+    type: PromotionType = PromotionType.OTHER
+    banner_url: Optional[str] = None
+    is_active: bool = True
+    is_featured: bool = False
+    start_date: datetime
+    end_date: datetime
+    min_deposit: float = 0.0
+    bonus_percentage: float = 0.0
+    max_bonus: float = 0.0
+    cashback_percentage: float = 0.0
+    terms_and_conditions: Optional[str] = None
+    link_url: Optional[str] = None
+    button_text: str = "Participar"
+    position: int = 0
+    metadata_json: Optional[str] = None
+
+
+class PromotionCreate(PromotionBase):
+    pass
+
+
+class PromotionUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    short_description: Optional[str] = None
+    type: Optional[PromotionType] = None
+    banner_url: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    min_deposit: Optional[float] = None
+    bonus_percentage: Optional[float] = None
+    max_bonus: Optional[float] = None
+    cashback_percentage: Optional[float] = None
+    terms_and_conditions: Optional[str] = None
+    link_url: Optional[str] = None
+    button_text: Optional[str] = None
+    position: Optional[int] = None
+    metadata_json: Optional[str] = None
+
+
+class PromotionResponse(PromotionBase):
     id: int
     created_at: datetime
     updated_at: datetime

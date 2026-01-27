@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 import os
 
 # Import routes
-from routes import auth, admin, media, payments
+from routes import auth, admin, media, payments, promotions
 
 # Configurar rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -63,6 +63,8 @@ app.include_router(media.public_router)
 app.include_router(payments.router)
 app.include_router(payments.webhook_router)
 app.include_router(payments.affiliate_router)
+app.include_router(promotions.router)
+app.include_router(promotions.public_router)
 
 
 @app.on_event("startup")

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -12,6 +13,7 @@ interface LoginModalProps {
 
 export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: LoginModalProps) {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -143,8 +145,11 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
               setError('');
               setLoading(true);
               try {
-                await login(email, password);
+                const result = await login(email, password);
                 onClose();
+                if (result && 'isAdmin' in result && result.isAdmin) {
+                  navigate('/admin');
+                }
               } catch (err: any) {
                 setError(err.message || 'Erro ao fazer login');
               } finally {

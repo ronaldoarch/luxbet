@@ -21,7 +21,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<{ isAdmin?: boolean } | void>;
   register: (userData: RegisterData) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const fetchUser = async (authToken: string) => {
+  const fetchUser = async (authToken: string): Promise<User | null> => {
     try {
       const res = await fetch(`${API_URL}/api/auth/me`, {
         headers: {
@@ -65,19 +65,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await res.json();
         setUser(userData);
         setLoading(false);
+        return userData;
       } else {
-        // Token inválido, limpar
         localStorage.removeItem('user_token');
+        localStorage.removeItem('admin_token');
         setToken(null);
         setUser(null);
         setLoading(false);
+        return null;
       }
     } catch (err) {
       console.error('Erro ao buscar usuário:', err);
       localStorage.removeItem('user_token');
+      localStorage.removeItem('admin_token');
       setToken(null);
       setUser(null);
       setLoading(false);
+      return null;
     }
   };
 
@@ -99,7 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authToken = data.access_token;
     localStorage.setItem('user_token', authToken);
     setToken(authToken);
-    await fetchUser(authToken);
+    const userData = await fetchUser(authToken);
+    const isAdmin = userData && String(userData.role || '').toLowerCase() === 'admin';
+    if (isAdmin) {
+      localStorage.setItem('admin_token', authToken);
+      return { isAdmin: true };
+    }
   };
 
   const register = async (userData: RegisterData) => {
@@ -123,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('user_token');
+    localStorage.removeItem('admin_token');
     setToken(null);
     setUser(null);
   };

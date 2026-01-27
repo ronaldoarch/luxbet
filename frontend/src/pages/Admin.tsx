@@ -249,6 +249,12 @@ export default function Admin() {
               onToggle={() => setExpandedSections({...expandedSections, marketing: !expandedSections.marketing})}
             >
               <NavSubItem
+                icon={<Gift />}
+                label="Promoções"
+                active={activeTab === 'promotions'}
+                onClick={() => setActiveTab('promotions')}
+              />
+              <NavSubItem
                 icon={<ShoppingBag />}
                 label="Loja de Coins"
                 active={activeTab === 'coin-store'}
@@ -336,6 +342,7 @@ export default function Admin() {
           {activeTab === 'ggr' && <GGRTab token={token || ''} />}
           {activeTab === 'bets' && <BetsTab token={token || ''} />}
           {activeTab === 'notifications' && <NotificationsTab token={token || ''} />}
+          {activeTab === 'promotions' && <PromotionsTab token={token || ''} />}
         </main>
       </div>
     </div>
@@ -3245,6 +3252,418 @@ function TrackingTab({ token }: { token: string }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PromotionsTab({ token }: { token: string }) {
+  const [promotions, setPromotions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    short_description: '',
+    type: 'bonus',
+    banner_url: '',
+    is_active: true,
+    is_featured: false,
+    start_date: new Date().toISOString().slice(0, 16),
+    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+    min_deposit: 0,
+    bonus_percentage: 0,
+    max_bonus: 0,
+    cashback_percentage: 0,
+    terms_and_conditions: '',
+    link_url: '',
+    button_text: 'Participar',
+    position: 0
+  });
+
+  const fetchPromotions = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/promotions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPromotions(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar promoções:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPromotions();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+    try {
+      const url = editingId 
+        ? `${API_URL}/api/admin/promotions/${editingId}`
+        : `${API_URL}/api/admin/promotions`;
+      const method = editingId ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...form,
+          start_date: new Date(form.start_date).toISOString(),
+          end_date: new Date(form.end_date).toISOString()
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Erro ao salvar promoção');
+      }
+
+      await fetchPromotions();
+      setMessage(editingId ? 'Promoção atualizada!' : 'Promoção criada!');
+      resetForm();
+    } catch (err: any) {
+      setMessage(err.message || 'Erro ao salvar promoção');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setForm({
+      title: '',
+      description: '',
+      short_description: '',
+      type: 'bonus',
+      banner_url: '',
+      is_active: true,
+      is_featured: false,
+      start_date: new Date().toISOString().slice(0, 16),
+      end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+      min_deposit: 0,
+      bonus_percentage: 0,
+      max_bonus: 0,
+      cashback_percentage: 0,
+      terms_and_conditions: '',
+      link_url: '',
+      button_text: 'Participar',
+      position: 0
+    });
+    setEditingId(null);
+  };
+
+  const loadForEdit = (promo: any) => {
+    setForm({
+      title: promo.title,
+      description: promo.description,
+      short_description: promo.short_description || '',
+      type: promo.type,
+      banner_url: promo.banner_url || '',
+      is_active: promo.is_active,
+      is_featured: promo.is_featured,
+      start_date: new Date(promo.start_date).toISOString().slice(0, 16),
+      end_date: new Date(promo.end_date).toISOString().slice(0, 16),
+      min_deposit: promo.min_deposit || 0,
+      bonus_percentage: promo.bonus_percentage || 0,
+      max_bonus: promo.max_bonus || 0,
+      cashback_percentage: promo.cashback_percentage || 0,
+      terms_and_conditions: promo.terms_and_conditions || '',
+      link_url: promo.link_url || '',
+      button_text: promo.button_text || 'Participar',
+      position: promo.position || 0
+    });
+    setEditingId(promo.id);
+  };
+
+  const deletePromotion = async (id: number) => {
+    if (!confirm('Tem certeza que deseja deletar esta promoção?')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/promotions/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Erro ao deletar');
+      await fetchPromotions();
+      setMessage('Promoção deletada!');
+    } catch (err: any) {
+      setMessage(err.message || 'Erro ao deletar promoção');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Gerenciar Promoções</h2>
+        <button
+          onClick={resetForm}
+          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded"
+        >
+          Nova Promoção
+        </button>
+      </div>
+
+      {message && (
+        <div className={`p-3 rounded ${message.includes('Erro') ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+          {message}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="bg-gray-800/60 p-6 rounded border border-gray-700 space-y-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Título *</label>
+            <input
+              type="text"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.title}
+              onChange={e => setForm({...form, title: e.target.value})}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Tipo *</label>
+            <select
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.type}
+              onChange={e => setForm({...form, type: e.target.value})}
+              required
+            >
+              <option value="bonus">Bônus</option>
+              <option value="cashback">Cashback</option>
+              <option value="free_spins">Free Spins</option>
+              <option value="tournament">Torneio</option>
+              <option value="reload">Reload</option>
+              <option value="other">Outro</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Descrição Curta</label>
+            <input
+              type="text"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.short_description}
+              onChange={e => setForm({...form, short_description: e.target.value})}
+              placeholder="Breve descrição para cards"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">URL do Banner</label>
+            <input
+              type="url"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.banner_url}
+              onChange={e => setForm({...form, banner_url: e.target.value})}
+              placeholder="https://..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Data Início *</label>
+            <input
+              type="datetime-local"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.start_date}
+              onChange={e => setForm({...form, start_date: e.target.value})}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Data Fim *</label>
+            <input
+              type="datetime-local"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.end_date}
+              onChange={e => setForm({...form, end_date: e.target.value})}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Depósito Mínimo (R$)</label>
+            <input
+              type="number"
+              step="0.01"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.min_deposit}
+              onChange={e => setForm({...form, min_deposit: parseFloat(e.target.value) || 0})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">% Bônus</label>
+            <input
+              type="number"
+              step="0.01"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.bonus_percentage}
+              onChange={e => setForm({...form, bonus_percentage: parseFloat(e.target.value) || 0})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Bônus Máximo (R$)</label>
+            <input
+              type="number"
+              step="0.01"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.max_bonus}
+              onChange={e => setForm({...form, max_bonus: parseFloat(e.target.value) || 0})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">% Cashback</label>
+            <input
+              type="number"
+              step="0.01"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.cashback_percentage}
+              onChange={e => setForm({...form, cashback_percentage: parseFloat(e.target.value) || 0})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Link URL</label>
+            <input
+              type="url"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.link_url}
+              onChange={e => setForm({...form, link_url: e.target.value})}
+              placeholder="/promocoes/..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Texto do Botão</label>
+            <input
+              type="text"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.button_text}
+              onChange={e => setForm({...form, button_text: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Posição</label>
+            <input
+              type="number"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.position}
+              onChange={e => setForm({...form, position: parseInt(e.target.value) || 0})}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Descrição Completa *</label>
+          <textarea
+            className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+            rows={4}
+            value={form.description}
+            onChange={e => setForm({...form, description: e.target.value})}
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Termos e Condições</label>
+          <textarea
+            className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+            rows={3}
+            value={form.terms_and_conditions}
+            onChange={e => setForm({...form, terms_and_conditions: e.target.value})}
+          />
+        </div>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={e => setForm({...form, is_active: e.target.checked})}
+              className="rounded"
+            />
+            <span className="text-sm">Ativa</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.is_featured}
+              onChange={e => setForm({...form, is_featured: e.target.checked})}
+              className="rounded"
+            />
+            <span className="text-sm">Destaque</span>
+          </label>
+        </div>
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 bg-[#d4af37] hover:bg-[#ffd700] text-black font-semibold rounded disabled:opacity-50"
+          >
+            {loading ? 'Salvando...' : editingId ? 'Atualizar' : 'Criar Promoção'}
+          </button>
+          {editingId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+      </form>
+
+      <div className="bg-gray-800/60 p-4 rounded border border-gray-700">
+        <h3 className="text-lg font-semibold mb-3">Lista de Promoções</h3>
+        {loading && promotions.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">Carregando...</div>
+        ) : promotions.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">Nenhuma promoção cadastrada</div>
+        ) : (
+          <div className="space-y-3">
+            {promotions.map(promo => (
+              <div key={promo.id} className="p-4 bg-gray-700/50 rounded border border-gray-600">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-semibold">{promo.title}</h4>
+                      {promo.is_featured && <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded">Destaque</span>}
+                      {promo.is_active ? (
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">Ativa</span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded">Inativa</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-400 mb-2">{promo.short_description || promo.description.substring(0, 100)}...</p>
+                    <div className="text-xs text-gray-500">
+                      {new Date(promo.start_date).toLocaleDateString('pt-BR')} até {new Date(promo.end_date).toLocaleDateString('pt-BR')}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <button
+                      onClick={() => loadForEdit(promo)}
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => deletePromotion(promo.id)}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
+                    >
+                      Deletar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -8,23 +8,13 @@ export default function Footer() {
     <footer className="w-full bg-[#0a0e0f] border-t border-gray-800 py-6 md:py-8 px-4 mt-8 md:mt-12">
       <div className="container mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 mb-6 md:mb-8">
-          {/* Apostas */}
+          {/* Promoções */}
           <div>
-            <h3 className="text-white font-bold mb-3 md:mb-4 text-base md:text-lg">Apostas</h3>
+            <h3 className="text-white font-bold mb-3 md:mb-4 text-base md:text-lg">Promoções</h3>
             <ul className="space-y-1.5 md:space-y-2">
               <li>
-                <Link href="/apostas-esportivas" className="text-gray-400 hover:text-[#d4af37] transition-colors text-sm md:text-base">
-                  Apostas Esportivas
-                </Link>
-              </li>
-              <li>
-                <Link href="/esportes-ao-vivo" className="text-gray-400 hover:text-[#d4af37] transition-colors text-sm md:text-base">
-                  Esportes ao Vivo
-                </Link>
-              </li>
-              <li>
                 <Link href="/promocoes" className="text-gray-400 hover:text-[#d4af37] transition-colors text-sm md:text-base">
-                  Promoções
+                  Ver Todas as Promoções
                 </Link>
               </li>
             </ul>

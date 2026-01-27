@@ -279,3 +279,38 @@ class TrackingConfig(Base):
     metadata_json = Column(Text)  # JSON com configurações adicionais
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PromotionType(str, enum.Enum):
+    BONUS = "bonus"
+    CASHBACK = "cashback"
+    FREE_SPINS = "free_spins"
+    TOURNAMENT = "tournament"
+    RELOAD = "reload"
+    OTHER = "other"
+
+
+class Promotion(Base):
+    __tablename__ = "promotions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    short_description = Column(String(500))  # Descrição curta para cards
+    type = Column(Enum(PromotionType), default=PromotionType.OTHER, nullable=False)
+    banner_url = Column(String(500))  # URL da imagem do banner
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_featured = Column(Boolean, default=False, nullable=False)  # Destaque na home
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=False)
+    min_deposit = Column(Float, default=0.0)  # Depósito mínimo (se aplicável)
+    bonus_percentage = Column(Float, default=0.0)  # % de bônus (se aplicável)
+    max_bonus = Column(Float, default=0.0)  # Bônus máximo (se aplicável)
+    cashback_percentage = Column(Float, default=0.0)  # % de cashback (se aplicável)
+    terms_and_conditions = Column(Text)  # Termos e condições
+    link_url = Column(String(500))  # Link para mais detalhes ou ação
+    button_text = Column(String(100), default="Participar")  # Texto do botão
+    position = Column(Integer, default=0, nullable=False)  # Ordem de exibição
+    metadata_json = Column(Text)  # JSON com dados adicionais
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
