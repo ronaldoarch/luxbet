@@ -2141,7 +2141,11 @@ async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
 
 
 async def _handle_user_balance(data: Dict[str, Any], agent: IGameWinAgent, db: Session) -> Dict[str, Any]:
-    """Handle user_balance method - retorna saldo do usuário"""
+    """Handle user_balance method - retorna saldo do usuário
+    
+    IMPORTANTE: Em Seamless Mode, o IGameWin usa este saldo como fonte da verdade.
+    O saldo retornado aqui é o que aparece no jogo.
+    """
     user_code = data.get("user_code")
     
     if not user_code:
@@ -2164,8 +2168,11 @@ async def _handle_user_balance(data: Dict[str, Any], agent: IGameWinAgent, db: S
             "msg": "INVALID_USER"
         }
     
+    # IMPORTANTE: Em Seamless Mode, sempre retornamos o saldo do nosso banco
+    # O IGameWin usa este valor como fonte da verdade para o jogo
     balance = float(user.balance)
     print(f"[Gold API] User balance requested - user={user_code}, balance={balance}")
+    print(f"[Gold API] This balance will be used by IGameWin as the game balance")
     
     return {
         "status": 1,
@@ -2305,11 +2312,13 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
         db.commit()
         db.refresh(user)  # Garantir que temos o valor atualizado
         
-        print(f"[Gold API] Transaction processed successfully - final balance: {user.balance}")
+        final_balance = float(user.balance)
+        print(f"[Gold API] Transaction processed successfully - final balance: {final_balance}")
+        print(f"[Gold API] This balance ({final_balance}) is now the source of truth for the game")
         
         return {
             "status": 1,
-            "user_balance": float(user.balance)
+            "user_balance": final_balance
         }
     
     else:

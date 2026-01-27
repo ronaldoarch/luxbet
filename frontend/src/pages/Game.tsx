@@ -136,14 +136,14 @@ export default function Game() {
       
       {/* Atualizar saldo quando usuário volta da página do jogo */}
       {gameUrl && (
-        <GameBalanceUpdater refreshUser={refreshUser} />
+        <GameBalanceUpdater refreshUser={refreshUser} navigate={navigate} />
       )}
     </div>
   );
 }
 
 // Componente para atualizar saldo quando usuário volta do jogo
-function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
+function GameBalanceUpdater({ refreshUser, navigate }: { refreshUser: () => Promise<void>; navigate: (path: string) => void }) {
   useEffect(() => {
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
@@ -162,13 +162,22 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
       refreshUser();
     }, 3000); // 3 segundos durante o jogo - atualização muito frequente
     
+    // Atualizar saldo quando usuário volta para a página (antes de sair do jogo)
+    const handleBeforeUnload = () => {
+      refreshUser();
+    };
+    
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       clearInterval(balanceInterval);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Atualizar saldo uma última vez ao sair da página do jogo
+      refreshUser();
     };
   }, [refreshUser]);
   
