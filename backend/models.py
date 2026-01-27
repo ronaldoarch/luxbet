@@ -315,3 +315,20 @@ class Promotion(Base):
     metadata_json = Column(Text)  # JSON com dados adicionais
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SupportConfig(Base):
+    __tablename__ = "support_configs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    whatsapp_number = Column(String(20))  # Número do WhatsApp (ex: 5511999999999)
+    whatsapp_link = Column(String(500))  # Link completo do WhatsApp
+    phone_number = Column(String(20))  # Telefone de suporte
+    email = Column(String(255))  # Email de suporte
+    chat_link = Column(String(500))  # Link do chat ao vivo
+    welcome_message = Column(Text, default="Bem Vindo a Lux Bet, em que posso ajudar?")  # Mensagem de boas-vindas
+    working_hours = Column(String(100), default="24h")  # Horário de funcionamento
+    is_active = Column(Boolean, default=True, nullable=False)
+    metadata_json = Column(Text)  # JSON com configurações adicionais
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
