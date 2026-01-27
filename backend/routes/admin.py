@@ -962,71 +962,21 @@ async def launch_game(
             detail="provider_code é obrigatório. Não foi possível determinar o provider do jogo."
         )
     
-    # IMPORTANTE: Verificar modo de operação do IGameWin
-    # Se estiver em modo Seamless, o IGameWin vai chamar nosso /gold_api para buscar saldo
-    # Se estiver em modo Transferência, precisamos sincronizar saldo manualmente
+    # VERSÃO SIMPLIFICADA PARA TESTE: Apenas garantir que usuário existe, sem verificar/transferir saldo
+    # Isso pode resolver problemas de CORS se estiverem relacionados às operações de saldo
+    # TODO: Se funcionar, podemos manter assim ou adicionar verificação de saldo de forma diferente
     
-    print(f"[Launch Game] Checking IGameWin mode for user: {current_user.username}")
-    igamewin_balance = await api.get_user_balance(current_user.username)
+    print(f"[Launch Game] Simplified mode - ensuring user exists: {current_user.username}")
+    user_created = await api.create_user(current_user.username, is_demo=False)
+    if not user_created:
+        # Se o erro for DUPLICATED_USER, o usuário já existe - continuar normalmente
+        if api.last_error and "DUPLICATED_USER" not in api.last_error:
+            print(f"[Launch Game] Warning: Could not create user: {api.last_error}")
+            # Não bloquear - tentar lançar mesmo assim (usuário pode já existir)
     
-    # Se get_user_balance retornou None, pode ser erro na API ou usuário não existe
-    if igamewin_balance is None:
-        # Verificar se foi um erro específico indicando modo Seamless
-        if api.last_error and "ERROR_GET_BALANCE_END_POINT" in api.last_error:
-            print(f"[Launch Game] Detected Seamless mode (ERROR_GET_BALANCE_END_POINT). Skipping balance sync.")
-            print(f"[Launch Game] IGameWin will call /gold_api to get balance. Ensuring user exists...")
-            
-            # Em modo Seamless, apenas garantir que o usuário existe no IGameWin
-            # Não precisamos sincronizar saldo - o IGameWin vai buscar via /gold_api
-            user_created = await api.create_user(current_user.username, is_demo=False)
-            if not user_created:
-                # Se já existe, tudo bem - continuar
-                if api.last_error and "DUPLICATED_USER" not in api.last_error:
-                    print(f"[Launch Game] Warning: Could not create user: {api.last_error}")
-                    # Não bloquear - tentar lançar mesmo assim
-            # Não fazer transferência de saldo em modo Seamless
-        else:
-            print(f"[Launch Game] Transfer mode detected. User balance is None, creating user...")
-            # Modo Transferência: criar usuário e transferir saldo
-            user_created = await api.create_user(current_user.username, is_demo=False)
-            if not user_created:
-                # Se o erro for DUPLICATED_USER, o usuário já existe - continuar normalmente
-                if api.last_error and "DUPLICATED_USER" in api.last_error:
-                    print(f"[Launch Game] User already exists in IGameWin (DUPLICATED_USER) - continuing...")
-                else:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Erro ao criar usuário no IGameWin. {api.last_error or 'Erro desconhecido'}"
-                    )
-            # Transferir todo o saldo do jogador para o IGameWin
-            if current_user.balance > 0:
-                transfer_result = await api.transfer_in(current_user.username, current_user.balance)
-                if not transfer_result:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Erro ao transferir saldo para IGameWin. {api.last_error or 'Erro desconhecido'}"
-                    )
-    else:
-        # Modo Transferência: saldo foi retornado, sincronizar se necessário
-        print(f"[Launch Game] Transfer mode detected. IGameWin balance: {igamewin_balance}, Local balance: {current_user.balance}")
-        if igamewin_balance != current_user.balance:
-            # Saldos diferentes, sincronizar
-            balance_diff = current_user.balance - igamewin_balance
-            if balance_diff > 0:
-                # Saldo local maior, transferir diferença para IGameWin
-                transfer_result = await api.transfer_in(current_user.username, balance_diff)
-                if not transfer_result:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Erro ao transferir saldo para IGameWin. {api.last_error or 'Erro desconhecido'}"
-                    )
-            elif balance_diff < 0:
-                # Saldo IGameWin maior, transferir diferença de volta (caso o jogador tenha ganhado)
-                transfer_result = await api.transfer_out(current_user.username, abs(balance_diff))
-                if transfer_result:
-                    # Atualizar saldo local
-                    current_user.balance = igamewin_balance
-                    db.commit()
+    # NÃO fazer verificação de saldo nem transferências antes de lançar
+    # O IGameWin vai gerenciar o saldo através do /gold_api (Seamless Mode)
+    # ou podemos sincronizar depois, se necessário
     
     # Gerar URL de lançamento do jogo usando user_code (username)
     print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
