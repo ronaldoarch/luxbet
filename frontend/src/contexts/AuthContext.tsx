@@ -111,7 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return userData;
       } else {
         // Só limpar tokens se for erro 401 (não autorizado)
-        if (res.status === 401) {
+        // Não limpar em caso de outros erros (500, 502, etc) - pode ser temporário
+        if (res.status === 401 || res.status === 403) {
           localStorage.removeItem('user_token');
           localStorage.removeItem('admin_token');
           setToken(null);
@@ -121,20 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
     } catch (err) {
-      // Não logar erros de rede durante atualização automática (pode ser normal)
-      // Apenas logar se for erro crítico
+      // NUNCA limpar tokens em caso de erro de rede - pode ser temporário
+      // Apenas logar se não for erro de rede
       if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-        // Erro de rede - silenciar durante atualização automática
+        // Erro de rede - não limpar tokens, apenas retornar null
+        // O token pode estar válido, apenas não conseguimos conectar
         return null;
       }
+      // Outros erros também não devem limpar tokens automaticamente
+      // Apenas logar para debug
       console.error('Erro ao buscar usuário:', err);
-      // Só limpar tokens em caso de erro crítico
-      if (err instanceof Error && !err.message.includes('Failed to fetch')) {
-        localStorage.removeItem('user_token');
-        localStorage.removeItem('admin_token');
-        setToken(null);
-        setUser(null);
-      }
       setLoading(false);
       return null;
     }
