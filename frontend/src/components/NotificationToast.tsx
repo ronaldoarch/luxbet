@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { CheckCircle, X, Bell } from 'lucide-react';
 
@@ -16,13 +16,23 @@ interface Notification {
 
 export default function NotificationToast() {
   const { token, user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotification, setShowNotification] = useState(false);
   const [currentNotification, setCurrentNotification] = useState<Notification | null>(null);
-  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
+  const checkedIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!token || !user) return;
+
+    const markAsRead = async (id: number) => {
+      try {
+        await fetch(`${API_URL}/api/public/notifications/${id}/read`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (err) {
+        console.error('Erro ao marcar notificação como lida:', err);
+      }
+    };
 
     const fetchNotifications = async () => {
       try {
@@ -31,16 +41,16 @@ export default function NotificationToast() {
         });
         if (res.ok) {
           const data = await res.json();
-          // Filtrar apenas notificações não lidas e de sucesso
+          // Filtrar apenas notificações não lidas e de sucesso que ainda não foram exibidas
           const unreadSuccess = data.filter((n: Notification) => 
-            !n.is_read && n.type === 'success' && !checkedIds.has(n.id)
+            !n.is_read && n.type === 'success' && !checkedIdsRef.current.has(n.id)
           );
           
           if (unreadSuccess.length > 0) {
             const latest = unreadSuccess[0];
             setCurrentNotification(latest);
             setShowNotification(true);
-            setCheckedIds(prev => new Set([...prev, latest.id]));
+            checkedIdsRef.current.add(latest.id);
             
             // Marcar como lida após 5 segundos
             setTimeout(() => {
@@ -63,20 +73,16 @@ export default function NotificationToast() {
     return () => clearInterval(interval);
   }, [token, user]);
 
-  const markAsRead = async (id: number) => {
-    try {
-      await fetch(`${API_URL}/api/public/notifications/${id}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    } catch (err) {
-      console.error('Erro ao marcar notificação como lida:', err);
-    }
-  };
-
-  const handleClose = () => {
+  const handleClose = async () => {
     if (currentNotification) {
-      markAsRead(currentNotification.id);
+      try {
+        await fetch(`${API_URL}/api/public/notifications/${currentNotification.id}/read`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (err) {
+        console.error('Erro ao marcar notificação como lida:', err);
+      }
     }
     setShowNotification(false);
   };
