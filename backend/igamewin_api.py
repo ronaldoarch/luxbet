@@ -80,15 +80,31 @@ class IGameWinAPI:
             "user_code": user_code
         }
         
+        print(f"[IGameWin] Getting user balance - user_code={user_code}")
         data = await self._post(payload)
         if not data:
+            print(f"[IGameWin] Failed to get user balance: {self.last_error}")
+            return None
+        
+        print(f"[IGameWin] Balance response: {json.dumps(data)}")
+        
+        # Verificar se status é 1 (sucesso)
+        status = data.get("status")
+        if status != 1:
+            error_msg = data.get("msg", "Erro desconhecido")
+            self.last_error = f"status={status} msg={error_msg}"
+            print(f"[IGameWin] Error getting balance: {self.last_error}")
             return None
         
         # A resposta tem estrutura: {"status": 1, "agent": {...}, "user": {"user_code": "...", "balance": ...}}
         user_info = data.get("user")
         if user_info:
-            return user_info.get("balance", 0.0)
+            balance = user_info.get("balance", 0.0)
+            print(f"[IGameWin] User balance: {balance}")
+            return balance
         
+        # Se não tem user_info mas status é 1, pode ser que o usuário não existe ainda
+        print(f"[IGameWin] No user info in response, user may not exist yet")
         return None
     
     async def transfer_in(self, user_code: str, amount: float) -> Optional[Dict[str, Any]]:

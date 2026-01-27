@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from sqlalchemy import desc
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 import json
@@ -827,45 +827,67 @@ async def launch_game(
             detail="provider_code é obrigatório. Não foi possível determinar o provider do jogo."
         )
     
-    # IMPORTANTE: Sincronizar saldo do jogador com IGameWin antes de lançar o jogo
-    # Verificar saldo atual no IGameWin
+    # IMPORTANTE: Verificar modo de operação do IGameWin
+    # Se estiver em modo Seamless, o IGameWin vai chamar nosso /gold_api para buscar saldo
+    # Se estiver em modo Transferência, precisamos sincronizar saldo manualmente
+    
+    print(f"[Launch Game] Checking IGameWin mode for user: {current_user.username}")
     igamewin_balance = await api.get_user_balance(current_user.username)
     
-    # Se o usuário não existe no IGameWin ou tem saldo diferente, sincronizar
+    # Se get_user_balance retornou None, pode ser erro na API ou usuário não existe
     if igamewin_balance is None:
-        # Usuário não existe no IGameWin, criar e transferir saldo
-        user_created = await api.create_user(current_user.username, is_demo=False)
-        if not user_created:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Erro ao criar usuário no IGameWin. {api.last_error or 'Erro desconhecido'}"
-            )
-        # Transferir todo o saldo do jogador para o IGameWin
-        if current_user.balance > 0:
-            transfer_result = await api.transfer_in(current_user.username, current_user.balance)
-            if not transfer_result:
+        # Verificar se foi um erro específico indicando modo Seamless
+        if api.last_error and "ERROR_GET_BALANCE_END_POINT" in api.last_error:
+            print(f"[Launch Game] Detected Seamless mode (ERROR_GET_BALANCE_END_POINT). Skipping balance sync.")
+            print(f"[Launch Game] IGameWin will call /gold_api to get balance. Ensuring user exists...")
+            
+            # Em modo Seamless, apenas garantir que o usuário existe no IGameWin
+            # Não precisamos sincronizar saldo - o IGameWin vai buscar via /gold_api
+            user_created = await api.create_user(current_user.username, is_demo=False)
+            if not user_created:
+                # Se já existe, tudo bem - continuar
+                if api.last_error and "DUPLICATED_USER" not in api.last_error:
+                    print(f"[Launch Game] Warning: Could not create user: {api.last_error}")
+                    # Não bloquear - tentar lançar mesmo assim
+            # Não fazer transferência de saldo em modo Seamless
+        else:
+            print(f"[Launch Game] Transfer mode detected. User balance is None, creating user...")
+            # Modo Transferência: criar usuário e transferir saldo
+            user_created = await api.create_user(current_user.username, is_demo=False)
+            if not user_created:
                 raise HTTPException(
                     status_code=502,
-                    detail=f"Erro ao transferir saldo para IGameWin. {api.last_error or 'Erro desconhecido'}"
+                    detail=f"Erro ao criar usuário no IGameWin. {api.last_error or 'Erro desconhecido'}"
                 )
-    elif igamewin_balance != current_user.balance:
-        # Saldos diferentes, sincronizar
-        balance_diff = current_user.balance - igamewin_balance
-        if balance_diff > 0:
-            # Saldo local maior, transferir diferença para IGameWin
-            transfer_result = await api.transfer_in(current_user.username, balance_diff)
-            if not transfer_result:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Erro ao transferir saldo para IGameWin. {api.last_error or 'Erro desconhecido'}"
-                )
-        elif balance_diff < 0:
-            # Saldo IGameWin maior, transferir diferença de volta (caso o jogador tenha ganhado)
-            transfer_result = await api.transfer_out(current_user.username, abs(balance_diff))
-            if transfer_result:
-                # Atualizar saldo local
-                current_user.balance = igamewin_balance
-                db.commit()
+            # Transferir todo o saldo do jogador para o IGameWin
+            if current_user.balance > 0:
+                transfer_result = await api.transfer_in(current_user.username, current_user.balance)
+                if not transfer_result:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Erro ao transferir saldo para IGameWin. {api.last_error or 'Erro desconhecido'}"
+                    )
+    else:
+        # Modo Transferência: saldo foi retornado, sincronizar se necessário
+        print(f"[Launch Game] Transfer mode detected. IGameWin balance: {igamewin_balance}, Local balance: {current_user.balance}")
+        if igamewin_balance != current_user.balance:
+            # Saldos diferentes, sincronizar
+            balance_diff = current_user.balance - igamewin_balance
+            if balance_diff > 0:
+                # Saldo local maior, transferir diferença para IGameWin
+                transfer_result = await api.transfer_in(current_user.username, balance_diff)
+                if not transfer_result:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Erro ao transferir saldo para IGameWin. {api.last_error or 'Erro desconhecido'}"
+                    )
+            elif balance_diff < 0:
+                # Saldo IGameWin maior, transferir diferença de volta (caso o jogador tenha ganhado)
+                transfer_result = await api.transfer_out(current_user.username, abs(balance_diff))
+                if transfer_result:
+                    # Atualizar saldo local
+                    current_user.balance = igamewin_balance
+                    db.commit()
     
     # Gerar URL de lançamento do jogo usando user_code (username)
     print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
@@ -1897,23 +1919,248 @@ async def mark_notification_as_read(
     db.commit()
     
     return {"status": "success", "message": "Notificação marcada como lida"}
-async def get_public_support_config(db: Session = Depends(get_db)):
-    """Obter configuração de suporte ativa (público)"""
-    config = db.query(SupportConfig).filter(SupportConfig.is_active == True).first()
-    if not config:
-        # Retornar configuração padrão se não existir
-        return SupportConfigResponse(
-            id=0,
-            whatsapp_number=None,
-            whatsapp_link=None,
-            phone_number=None,
-            email=None,
-            chat_link=None,
-            welcome_message="Bem Vindo a Lux Bet, em que posso ajudar?",
-            working_hours="24h",
-            is_active=True,
-            metadata_json=None,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-    return config
+
+
+# ========== IGameWin Seamless API (Gold API) ==========
+# Este endpoint é chamado pelo IGameWin quando está em modo Seamless
+# Documentação: https://igamewin.com/docs (API integrada - API do site)
+
+@public_router.post("/gold_api")
+async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
+    """
+    Endpoint para modo Seamless do IGameWin.
+    Implementa os métodos: user_balance e transaction
+    """
+    try:
+        data = await request.json()
+        method = data.get("method")
+        agent_code = data.get("agent_code")
+        agent_secret = data.get("agent_secret")
+        
+        print(f"[Gold API] Received request - method={method}, agent_code={agent_code}")
+        
+        # Validar credenciais do agente
+        agent = db.query(IGameWinAgent).filter(
+            IGameWinAgent.agent_code == agent_code,
+            IGameWinAgent.is_active == True
+        ).first()
+        
+        if not agent:
+            print(f"[Gold API] Agent not found: {agent_code}")
+            return {
+                "status": 0,
+                "msg": "INVALID_AGENT"
+            }
+        
+        # Verificar agent_secret
+        # O agent_secret pode estar em credentials ou ser o mesmo que agent_key
+        credentials_dict = {}
+        if agent.credentials:
+            try:
+                credentials_dict = json.loads(agent.credentials)
+            except Exception:
+                pass
+        
+        # agent_secret pode estar em credentials ou ser o mesmo que agent_key
+        expected_secret = credentials_dict.get("agent_secret") or agent.agent_key
+        
+        if agent_secret != expected_secret:
+            print(f"[Gold API] Invalid agent_secret for agent: {agent_code}")
+            return {
+                "status": 0,
+                "msg": "INVALID_SECRET"
+            }
+        
+        # Processar métodos
+        if method == "user_balance":
+            return await _handle_user_balance(data, agent, db)
+        elif method == "transaction":
+            return await _handle_transaction(data, agent, db)
+        else:
+            return {
+                "status": 0,
+                "msg": "INVALID_METHOD"
+            }
+            
+    except Exception as e:
+        print(f"[Gold API] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": 0,
+            "msg": "INTERNAL_ERROR",
+            "error": str(e)
+        }
+
+
+async def _handle_user_balance(data: Dict[str, Any], agent: IGameWinAgent, db: Session) -> Dict[str, Any]:
+    """Handle user_balance method - retorna saldo do usuário"""
+    user_code = data.get("user_code")
+    
+    if not user_code:
+        return {
+            "status": 0,
+            "user_balance": 0,
+            "msg": "INVALID_PARAMETER"
+        }
+    
+    print(f"[Gold API] Getting balance for user: {user_code}")
+    
+    # Buscar usuário pelo username (user_code)
+    user = db.query(User).filter(User.username == user_code).first()
+    
+    if not user:
+        print(f"[Gold API] User not found: {user_code}")
+        return {
+            "status": 0,
+            "user_balance": 0,
+            "msg": "INVALID_USER"
+        }
+    
+    balance = float(user.balance)
+    print(f"[Gold API] User balance: {balance}")
+    
+    return {
+        "status": 1,
+        "user_balance": balance
+    }
+
+
+async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Session) -> Dict[str, Any]:
+    """Handle transaction method - registra transação de jogo"""
+    user_code = data.get("user_code")
+    user_balance = data.get("user_balance")
+    agent_balance = data.get("agent_balance")
+    game_type = data.get("game_type")
+    
+    if not user_code:
+        return {
+            "status": 0,
+            "msg": "INVALID_PARAMETER"
+        }
+    
+    print(f"[Gold API] Processing transaction - user={user_code}, game_type={game_type}")
+    
+    # Buscar usuário
+    user = db.query(User).filter(User.username == user_code).first()
+    
+    if not user:
+        return {
+            "status": 0,
+            "msg": "INVALID_USER"
+        }
+    
+    # Processar transação baseado no tipo de jogo
+    if game_type == "slot":
+        slot_data = data.get("slot", {})
+        txn_type = slot_data.get("txn_type", "debit_credit")
+        bet_money = float(slot_data.get("bet_money", slot_data.get("bet", 0)))
+        win_money = float(slot_data.get("win_money", slot_data.get("win", 0)))
+        txn_id = slot_data.get("txn_id")
+        provider_code = slot_data.get("provider_code")
+        game_code = slot_data.get("game_code")
+        game_type_detail = slot_data.get("type", "BASE")
+        
+        print(f"[Gold API] Slot transaction - txn_type={txn_type}, bet={bet_money}, win={win_money}, txn_id={txn_id}")
+        
+        # Calcular novo saldo baseado no tipo de transação
+        if txn_type == "debit":
+            # Apenas aposta (debitar)
+            new_balance = user.balance - bet_money
+            if new_balance < 0:
+                return {
+                    "status": 0,
+                    "user_balance": user.balance,
+                    "msg": "INSUFFICIENT_USER_FUNDS"
+                }
+            user.balance = new_balance
+            
+            # Criar registro de aposta
+            bet = Bet(
+                user_id=user.id,
+                game_id=game_code,
+                game_name=game_code,  # Pode ser melhorado buscando nome do jogo
+                provider=provider_code or "IGameWin",
+                amount=bet_money,
+                win_amount=0.0,
+                status=BetStatus.PENDING,
+                transaction_id=txn_id or str(uuid.uuid4()),
+                external_id=txn_id,
+                metadata_json=json.dumps({
+                    "txn_type": txn_type,
+                    "game_type": game_type_detail,
+                    "provider_code": provider_code,
+                    "game_code": game_code
+                })
+            )
+            db.add(bet)
+            
+        elif txn_type == "credit":
+            # Apenas ganho (creditar)
+            new_balance = user.balance + win_money
+            user.balance = new_balance
+            
+            # Atualizar aposta existente se houver
+            if txn_id:
+                bet = db.query(Bet).filter(Bet.external_id == txn_id).first()
+                if bet:
+                    bet.win_amount = win_money
+                    bet.status = BetStatus.WON if win_money > 0 else BetStatus.LOST
+                    bet.updated_at = datetime.utcnow()
+            
+        elif txn_type == "debit_credit":
+            # Aposta e ganho juntos
+            net_change = win_money - bet_money
+            new_balance = user.balance + net_change
+            
+            if user.balance < bet_money:
+                return {
+                    "status": 0,
+                    "user_balance": user.balance,
+                    "msg": "INSUFFICIENT_USER_FUNDS"
+                }
+            
+            user.balance = new_balance
+            
+            # Criar ou atualizar registro de aposta
+            if txn_id:
+                bet = db.query(Bet).filter(Bet.external_id == txn_id).first()
+                if bet:
+                    bet.win_amount = win_money
+                    bet.status = BetStatus.WON if win_money > bet_money else BetStatus.LOST
+                    bet.updated_at = datetime.utcnow()
+                else:
+                    bet = Bet(
+                        user_id=user.id,
+                        game_id=game_code,
+                        game_name=game_code,
+                        provider=provider_code or "IGameWin",
+                        amount=bet_money,
+                        win_amount=win_money,
+                        status=BetStatus.WON if win_money > bet_money else BetStatus.LOST,
+                        transaction_id=txn_id or str(uuid.uuid4()),
+                        external_id=txn_id,
+                        metadata_json=json.dumps({
+                            "txn_type": txn_type,
+                            "game_type": game_type_detail,
+                            "provider_code": provider_code,
+                            "game_code": game_code
+                        })
+                    )
+                    db.add(bet)
+        
+        db.commit()
+        
+        print(f"[Gold API] Transaction processed - new balance: {user.balance}")
+        
+        return {
+            "status": 1,
+            "user_balance": float(user.balance)
+        }
+    
+    else:
+        # Outros tipos de jogo (pode ser expandido)
+        return {
+            "status": 0,
+            "msg": "UNSUPPORTED_GAME_TYPE"
+        }
