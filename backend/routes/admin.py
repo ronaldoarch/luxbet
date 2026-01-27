@@ -12,7 +12,7 @@ from dependencies import get_current_admin_user, get_current_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType,
-    Affiliate, Theme, ProviderOrder, TrackingConfig, SupportConfig
+    Affiliate, Theme, ProviderOrder, TrackingConfig, SupportConfig, GameCustomization
 )
 from schemas import (
     UserResponse, UserCreate, UserUpdate,
@@ -26,7 +26,8 @@ from schemas import (
     ThemeResponse, ThemeCreate, ThemeUpdate,
     ProviderOrderResponse, ProviderOrderCreate, ProviderOrderUpdate,
     TrackingConfigResponse, TrackingConfigCreate, TrackingConfigUpdate,
-    SupportConfigResponse, SupportConfigCreate, SupportConfigUpdate
+    SupportConfigResponse, SupportConfigCreate, SupportConfigUpdate,
+    GameCustomizationResponse, GameCustomizationCreate, GameCustomizationUpdate
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
@@ -554,6 +555,41 @@ async def delete_igamewin_agent(
 
 
 # ========== IGAMEWIN GAMES ==========
+def _apply_game_customizations(games: list, db: Session) -> list:
+    """Aplica customizações de jogos aos dados retornados"""
+    if not games:
+        return games
+    
+    # Buscar todas as customizações de uma vez
+    game_codes = [g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug") for g in games]
+    game_codes = [code for code in game_codes if code]
+    
+    if not game_codes:
+        return games
+    
+    customizations = db.query(GameCustomization).filter(GameCustomization.game_code.in_(game_codes)).all()
+    customization_map = {c.game_code: c for c in customizations}
+    
+    # Aplicar customizações
+    for game in games:
+        game_code = game.get("game_code") or game.get("code") or game.get("game_id") or game.get("id") or game.get("slug")
+        if game_code and game_code in customization_map:
+            custom = customization_map[game_code]
+            if custom.custom_name:
+                game["name"] = custom.custom_name
+                game["game_name"] = custom.custom_name
+                game["title"] = custom.custom_name
+                game["gameTitle"] = custom.custom_name
+            if custom.custom_provider:
+                game["provider"] = custom.custom_provider
+                game["provider_code"] = custom.custom_provider
+                game["provider_name"] = custom.custom_provider
+                game["vendor"] = custom.custom_provider
+                game["vendor_name"] = custom.custom_provider
+    
+    return games
+
+
 def _choose_provider(providers: list, provider_code: Optional[str]) -> Optional[str]:
     chosen = provider_code
     if not chosen:
@@ -660,6 +696,7 @@ async def list_igamewin_games(
         )
 
     games = _normalize_games(games, chosen_provider)
+    games = _apply_game_customizations(games, db)
 
     return {
         "providers": providers[:3],  # Limitar a 3 provedores
@@ -716,6 +753,7 @@ async def public_games(
                 detail=f"Não foi possível obter jogos da IGameWin (verifique provider_code e credenciais do agente). {api.last_error or ''}".strip()
             )
         games = _normalize_games(games, chosen_provider)
+        games = _apply_game_customizations(games, db)
         public_games = []
         for g in games:
             status_val = g.get("status")
@@ -755,6 +793,7 @@ async def public_games(
             continue
         
         games = _normalize_games(games, prov_code)
+        games = _apply_game_customizations(games, db)
         
         for g in games:
             status_val = g.get("status")
@@ -2245,3 +2284,94 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             "status": 0,
             "msg": "UNSUPPORTED_GAME_TYPE"
         }
+
+
+# ========== GAME CUSTOMIZATION ==========
+@router.get("/game-customizations", response_model=List[GameCustomizationResponse])
+async def get_game_customizations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Lista todas as customizações de jogos"""
+    customizations = db.query(GameCustomization).all()
+    return customizations
+
+
+@router.get("/game-customizations/{game_code}", response_model=GameCustomizationResponse)
+async def get_game_customization(
+    game_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Obtém customização de um jogo específico"""
+    customization = db.query(GameCustomization).filter(GameCustomization.game_code == game_code).first()
+    if not customization:
+        raise HTTPException(status_code=404, detail="Customização não encontrada")
+    return customization
+
+
+@router.post("/game-customizations", response_model=GameCustomizationResponse, status_code=status.HTTP_201_CREATED)
+async def create_game_customization(
+    customization_data: GameCustomizationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Cria ou atualiza customização de um jogo"""
+    existing = db.query(GameCustomization).filter(GameCustomization.game_code == customization_data.game_code).first()
+    
+    if existing:
+        # Atualizar existente
+        if customization_data.custom_name is not None:
+            existing.custom_name = customization_data.custom_name
+        if customization_data.custom_provider is not None:
+            existing.custom_provider = customization_data.custom_provider
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        # Criar novo
+        customization = GameCustomization(**customization_data.dict())
+        db.add(customization)
+        db.commit()
+        db.refresh(customization)
+        return customization
+
+
+@router.put("/game-customizations/{game_code}", response_model=GameCustomizationResponse)
+async def update_game_customization(
+    game_code: str,
+    customization_data: GameCustomizationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualiza customização de um jogo"""
+    customization = db.query(GameCustomization).filter(GameCustomization.game_code == game_code).first()
+    if not customization:
+        raise HTTPException(status_code=404, detail="Customização não encontrada")
+    
+    if customization_data.custom_name is not None:
+        customization.custom_name = customization_data.custom_name
+    if customization_data.custom_provider is not None:
+        customization.custom_provider = customization_data.custom_provider
+    customization.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(customization)
+    return customization
+
+
+@router.delete("/game-customizations/{game_code}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_game_customization(
+    game_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Remove customização de um jogo"""
+    customization = db.query(GameCustomization).filter(GameCustomization.game_code == game_code).first()
+    if not customization:
+        raise HTTPException(status_code=404, detail="Customização não encontrada")
+    
+    db.delete(customization)
+    db.commit()
+    return None

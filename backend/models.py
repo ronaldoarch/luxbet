@@ -332,3 +332,15 @@ class SupportConfig(Base):
     metadata_json = Column(Text)  # JSON com configurações adicionais
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GameCustomization(Base):
+    __tablename__ = "game_customizations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    game_code = Column(String(255), unique=True, nullable=False, index=True)  # Código único do jogo (ex: "XwaysHoarder")
+    custom_name = Column(String(255))  # Nome customizado do jogo
+    custom_provider = Column(String(100))  # Provedor customizado
+    # O game_code original não é alterado, apenas o nome e provider podem ser customizados
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

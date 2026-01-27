@@ -466,3 +466,28 @@ class SupportConfigResponse(SupportConfigBase):
     
     class Config:
         from_attributes = True
+
+
+# Game Customization Schemas
+class GameCustomizationBase(BaseModel):
+    game_code: str
+    custom_name: Optional[str] = None
+    custom_provider: Optional[str] = None
+
+
+class GameCustomizationCreate(GameCustomizationBase):
+    pass
+
+
+class GameCustomizationUpdate(BaseModel):
+    custom_name: Optional[str] = None
+    custom_provider: Optional[str] = None
+
+
+class GameCustomizationResponse(GameCustomizationBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

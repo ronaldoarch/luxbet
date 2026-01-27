@@ -1084,6 +1084,9 @@ function IGameWinTab({ token }: { token: string }) {
   const [agentBalance, setAgentBalance] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceError, setBalanceError] = useState('');
+  const [editingGame, setEditingGame] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ custom_name: '', custom_provider: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchData = async () => {
     setLoading(true); setError('');
@@ -1408,6 +1411,7 @@ function IGameWinTab({ token }: { token: string }) {
                   <th className="px-3 py-2 text-left">Provedor</th>
                   <th className="px-3 py-2 text-left">Código</th>
                   <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -1426,10 +1430,28 @@ function IGameWinTab({ token }: { token: string }) {
                       <td className="px-3 py-2">{g.provider_code || g.provider || g.provider_name || g.vendor || g.vendor_name || providerCode || '—'}</td>
                       <td className="px-3 py-2">{g.game_code || g.code || g.game_id || g.id || g.slug || '—'}</td>
                       <td className="px-3 py-2 capitalize">ativo</td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={() => {
+                            const gameCode = g.game_code || g.code || g.game_id || g.id || g.slug;
+                            setEditingGame({
+                              ...g,
+                              game_code: gameCode
+                            });
+                            setEditForm({
+                              custom_name: g.game_name || g.name || g.title || g.gameTitle || '',
+                              custom_provider: g.provider_code || g.provider || g.provider_name || g.vendor || g.vendor_name || providerCode || ''
+                            });
+                          }}
+                          className="text-[#d4af37] hover:text-[#ffd700] text-sm font-medium"
+                        >
+                          Editar
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 {games.filter((g)=> g.status === 1 || g.status === true || String(g.status).toLowerCase() === 'active').length === 0 && !loadingGames && (
-                  <tr><td className="px-3 py-3 text-gray-400" colSpan={5}>Nenhum jogo retornado.</td></tr>
+                  <tr><td className="px-3 py-3 text-gray-400" colSpan={6}>Nenhum jogo retornado.</td></tr>
                 )}
               </tbody>
             </table>
