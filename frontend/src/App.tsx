@@ -10,6 +10,7 @@ import BottomNav from './components/BottomNav';
 import ChatWidget from './components/ChatWidget';
 import LoginModal from './components/LoginModal';
 import RegisterModal from './components/RegisterModal';
+import NotificationToast from './components/NotificationToast';
 import { applyBrandAssets, applyThemeToDocument, initThemeAndBrandFromStorage } from './utils/themeManager';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -93,6 +94,7 @@ function App() {
       </div>
       <BottomNav />
       <ChatWidget />
+      <NotificationToast />
       
       {/* Modais */}
       <LoginModal 

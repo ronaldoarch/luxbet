@@ -1806,6 +1806,70 @@ async def update_support_config(
 
 
 @public_router.get("/support-config", response_model=SupportConfigResponse)
+async def get_support_config(db: Session = Depends(get_db)):
+    """Obter configuração de suporte ativa"""
+    config = db.query(SupportConfig).filter(SupportConfig.is_active == True).first()
+    if not config:
+        # Retornar valores padrão se não houver configuração
+        return {
+            "id": 0,
+            "whatsapp_number": "",
+            "whatsapp_link": "",
+            "phone_number": "",
+            "email": "",
+            "chat_link": "",
+            "welcome_message": "",
+            "working_hours": "",
+            "is_active": False,
+            "metadata_json": "{}"
+        }
+    return config
+
+
+@public_router.get("/notifications")
+async def get_user_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obter notificações do usuário logado"""
+    notifications = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.is_active == True
+    ).order_by(desc(Notification.created_at)).limit(50).all()
+    
+    return [
+        {
+            "id": notif.id,
+            "title": notif.title,
+            "message": notif.message,
+            "type": notif.type.value,
+            "is_read": notif.is_read,
+            "link": notif.link,
+            "created_at": notif.created_at.isoformat(),
+        }
+        for notif in notifications
+    ]
+
+
+@public_router.put("/notifications/{notification_id}/read")
+async def mark_notification_as_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Marcar notificação como lida"""
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+    
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    
+    notification.is_read = True
+    db.commit()
+    
+    return {"status": "success", "message": "Notificação marcada como lida"}
 async def get_public_support_config(db: Session = Depends(get_db)):
     """Obter configuração de suporte ativa (público)"""
     config = db.query(SupportConfig).filter(SupportConfig.is_active == True).first()
