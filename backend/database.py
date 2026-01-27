@@ -19,7 +19,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
-    """Initialize database tables"""
+    """Initialize database tables (only creates if they don't exist)"""
+    # create_all() só cria tabelas que não existem, não deleta dados existentes
     Base.metadata.create_all(bind=engine)
 
 
