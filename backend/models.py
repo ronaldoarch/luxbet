@@ -42,6 +42,7 @@ class User(Base):
     ftds = relationship("FTD", back_populates="user")
     bets = relationship("Bet", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
+    affiliates = relationship("Affiliate", back_populates="user")
 
 
 class Gateway(Base):
