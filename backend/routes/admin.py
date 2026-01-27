@@ -2165,7 +2165,7 @@ async def _handle_user_balance(data: Dict[str, Any], agent: IGameWinAgent, db: S
         }
     
     balance = float(user.balance)
-    print(f"[Gold API] User balance: {balance}")
+    print(f"[Gold API] User balance requested - user={user_code}, balance={balance}")
     
     return {
         "status": 1,
@@ -2209,18 +2209,21 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
         game_type_detail = slot_data.get("type", "BASE")
         
         print(f"[Gold API] Slot transaction - txn_type={txn_type}, bet={bet_money}, win={win_money}, txn_id={txn_id}")
+        print(f"[Gold API] Current balance before transaction: {user.balance}")
         
         # Calcular novo saldo baseado no tipo de transação
         if txn_type == "debit":
             # Apenas aposta (debitar)
             new_balance = user.balance - bet_money
             if new_balance < 0:
+                print(f"[Gold API] Insufficient funds - current: {user.balance}, bet: {bet_money}")
                 return {
                     "status": 0,
                     "user_balance": user.balance,
                     "msg": "INSUFFICIENT_USER_FUNDS"
                 }
             user.balance = new_balance
+            print(f"[Gold API] Debit applied - bet: {bet_money}, new balance: {user.balance}")
             
             # Criar registro de aposta
             bet = Bet(
@@ -2246,6 +2249,7 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             # Apenas ganho (creditar)
             new_balance = user.balance + win_money
             user.balance = new_balance
+            print(f"[Gold API] Credit applied - win: {win_money}, new balance: {user.balance}")
             
             # Atualizar aposta existente se houver
             if txn_id:
@@ -2261,6 +2265,7 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             new_balance = user.balance + net_change
             
             if user.balance < bet_money:
+                print(f"[Gold API] Insufficient funds - current: {user.balance}, bet: {bet_money}")
                 return {
                     "status": 0,
                     "user_balance": user.balance,
@@ -2268,6 +2273,7 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
                 }
             
             user.balance = new_balance
+            print(f"[Gold API] Debit+Credit applied - bet: {bet_money}, win: {win_money}, net_change: {net_change}, new balance: {user.balance}")
             
             # Criar ou atualizar registro de aposta
             if txn_id:
@@ -2297,8 +2303,9 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
                     db.add(bet)
         
         db.commit()
+        db.refresh(user)  # Garantir que temos o valor atualizado
         
-        print(f"[Gold API] Transaction processed - new balance: {user.balance}")
+        print(f"[Gold API] Transaction processed successfully - final balance: {user.balance}")
         
         return {
             "status": 1,
