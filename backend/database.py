@@ -9,6 +9,13 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fortunevegas.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Log de diagnóstico para identificar qual banco está sendo usado
+if "sqlite" in DATABASE_URL:
+    print("⚠️  WARNING: Using SQLite database! Data will be lost on container recreation.")
+    print("⚠️  Set DATABASE_URL environment variable to use PostgreSQL for persistence.")
+else:
+    print(f"✅ Using PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'configured'}")
+
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
