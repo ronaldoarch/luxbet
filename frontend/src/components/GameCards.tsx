@@ -135,6 +135,13 @@ export default function GameCards() {
                       src={game.banner}
                       alt={game.title}
                       className="absolute inset-0 w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      onError={(e) => {
+                        // Fallback se a imagem falhar ao carregar
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
                     />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-gray-700/50 to-gray-800/50" />

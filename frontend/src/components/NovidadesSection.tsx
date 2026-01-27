@@ -174,6 +174,13 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
             src={game.banner}
             alt={game.title}
             className="absolute inset-0 w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              // Fallback se a imagem falhar ao carregar
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
           />
         ) : (
           <div className="text-5xl md:text-6xl group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 relative z-10">🎮</div>
