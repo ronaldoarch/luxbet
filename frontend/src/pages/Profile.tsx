@@ -58,9 +58,13 @@ export default function Profile() {
     if (!token) return;
     setSyncingBalance(true);
     try {
+      console.log(`[Sync Balance] Atualizando saldo... Saldo atual: R$ ${user?.balance?.toFixed(2)}`);
       // Chamar diretamente refreshUser em vez de usar sync-balance endpoint
       // Isso evita chamadas desnecessárias ao endpoint de afiliados
-      await refreshUser();
+      const updatedUser = await refreshUser();
+      if (updatedUser) {
+        console.log(`[Sync Balance] Saldo atualizado: R$ ${updatedUser.balance?.toFixed(2)}`);
+      }
     } catch (err) {
       console.error('Erro ao sincronizar saldo:', err);
     } finally {

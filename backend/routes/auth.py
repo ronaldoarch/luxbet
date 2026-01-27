@@ -92,6 +92,14 @@ async def get_current_user_info(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Retorna informações do usuário logado.
+    Sempre retorna os dados mais atualizados do banco de dados.
+    """
     # Garantir que temos os dados mais atualizados do banco
     db.refresh(current_user)
+    
+    # Log para debug - verificar saldo retornado
+    print(f"[Auth /me] User: {current_user.username}, Balance: {current_user.balance}")
+    
     return current_user

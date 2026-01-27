@@ -97,15 +97,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = async (authToken: string): Promise<User | null> => {
     try {
-      const res = await fetch(`${API_URL}/api/auth/me`, {
+      const res = await fetch(`${API_URL}/api/auth/me?t=${Date.now()}`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
-        // Adicionar cache: 'no-cache' para garantir dados atualizados
+        // Adicionar cache: 'no-cache' e timestamp para garantir dados atualizados
         cache: 'no-cache',
       });
       if (res.ok) {
         const userData = await res.json();
+        // Log para debug - verificar se saldo está sendo atualizado
+        if (user && Math.abs((user.balance || 0) - (userData.balance || 0)) > 0.01) {
+          console.log(`[Balance Update] Saldo atualizado: R$ ${user.balance?.toFixed(2)} → R$ ${userData.balance?.toFixed(2)}`);
+        }
         setUser(userData);
         setLoading(false);
         return userData;
