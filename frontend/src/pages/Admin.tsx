@@ -6,7 +6,7 @@ import {
   ArrowDownCircle, Activity, RefreshCw,
   Image as ImageIcon, Home, BarChart3,
   ChevronUp, ChevronDown, Percent, FileText, 
-  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical
+  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, Phone, MessageCircle
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -321,6 +321,12 @@ export default function Admin() {
                 active={activeTab === 'tracking'}
                 onClick={() => setActiveTab('tracking')}
               />
+              <NavSubItem
+                icon={<MessageCircle />}
+                label="Suporte"
+                active={activeTab === 'support'}
+                onClick={() => setActiveTab('support')}
+              />
             </NavSection>
           </nav>
         </aside>
@@ -343,6 +349,7 @@ export default function Admin() {
           {activeTab === 'bets' && <BetsTab token={token || ''} />}
           {activeTab === 'notifications' && <NotificationsTab token={token || ''} />}
           {activeTab === 'promotions' && <PromotionsTab token={token || ''} />}
+          {activeTab === 'support' && <SupportTab token={token || ''} />}
         </main>
       </div>
     </div>

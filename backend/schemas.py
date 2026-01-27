@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from models import TransactionStatus, UserRole, MediaType, PromotionType
+from models import TransactionStatus, UserRole, MediaType, PromotionType, SupportConfig
 
 
 # User Schemas
@@ -422,6 +422,44 @@ class PromotionUpdate(BaseModel):
 
 
 class PromotionResponse(PromotionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Support Config Schemas
+class SupportConfigBase(BaseModel):
+    whatsapp_number: Optional[str] = None
+    whatsapp_link: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    chat_link: Optional[str] = None
+    welcome_message: str = "Bem Vindo a Lux Bet, em que posso ajudar?"
+    working_hours: str = "24h"
+    is_active: bool = True
+    metadata_json: Optional[str] = None
+
+
+class SupportConfigCreate(SupportConfigBase):
+    pass
+
+
+class SupportConfigUpdate(BaseModel):
+    whatsapp_number: Optional[str] = None
+    whatsapp_link: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    chat_link: Optional[str] = None
+    welcome_message: Optional[str] = None
+    working_hours: Optional[str] = None
+    is_active: Optional[bool] = None
+    metadata_json: Optional[str] = None
+
+
+class SupportConfigResponse(SupportConfigBase):
     id: int
     created_at: datetime
     updated_at: datetime

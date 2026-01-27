@@ -12,7 +12,7 @@ from dependencies import get_current_admin_user, get_current_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType,
-    Affiliate, Theme, ProviderOrder, TrackingConfig
+    Affiliate, Theme, ProviderOrder, TrackingConfig, SupportConfig
 )
 from schemas import (
     UserResponse, UserCreate, UserUpdate,
@@ -25,7 +25,8 @@ from schemas import (
     AffiliateResponse, AffiliateCreate, AffiliateUpdate,
     ThemeResponse, ThemeCreate, ThemeUpdate,
     ProviderOrderResponse, ProviderOrderCreate, ProviderOrderUpdate,
-    TrackingConfigResponse, TrackingConfigCreate, TrackingConfigUpdate
+    TrackingConfigResponse, TrackingConfigCreate, TrackingConfigUpdate,
+    SupportConfigResponse, SupportConfigCreate, SupportConfigUpdate
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
@@ -1737,3 +1738,91 @@ async def delete_tracking_config(
     
     db.delete(config)
     db.commit()
+
+
+# ========== SUPPORT CONFIG ==========
+
+@router.get("/support-config", response_model=SupportConfigResponse)
+async def get_support_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Obter configuração de suporte (admin)"""
+    config = db.query(SupportConfig).filter(SupportConfig.is_active == True).first()
+    if not config:
+        # Criar configuração padrão se não existir
+        config = SupportConfig()
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+    return config
+
+
+@router.post("/support-config", response_model=SupportConfigResponse, status_code=status.HTTP_201_CREATED)
+async def create_support_config(
+    config_data: SupportConfigCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Criar configuração de suporte"""
+    # Desativar outras configurações se esta for ativa
+    if config_data.is_active:
+        db.query(SupportConfig).filter(SupportConfig.is_active == True).update({"is_active": False})
+    
+    config = SupportConfig(**config_data.model_dump())
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@router.put("/support-config/{config_id}", response_model=SupportConfigResponse)
+async def update_support_config(
+    config_id: int,
+    config_data: SupportConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualizar configuração de suporte"""
+    config = db.query(SupportConfig).filter(SupportConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuração de suporte não encontrada")
+    
+    update_data = config_data.model_dump(exclude_unset=True)
+    
+    # Se estiver ativando esta configuração, desativar outras
+    if update_data.get("is_active") is True:
+        db.query(SupportConfig).filter(
+            SupportConfig.is_active == True,
+            SupportConfig.id != config_id
+        ).update({"is_active": False})
+    
+    for field, value in update_data.items():
+        setattr(config, field, value)
+    
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@public_router.get("/support-config", response_model=SupportConfigResponse)
+async def get_public_support_config(db: Session = Depends(get_db)):
+    """Obter configuração de suporte ativa (público)"""
+    config = db.query(SupportConfig).filter(SupportConfig.is_active == True).first()
+    if not config:
+        # Retornar configuração padrão se não existir
+        return SupportConfigResponse(
+            id=0,
+            whatsapp_number=None,
+            whatsapp_link=None,
+            phone_number=None,
+            email=None,
+            chat_link=None,
+            welcome_message="Bem Vindo a Lux Bet, em que posso ajudar?",
+            working_hours="24h",
+            is_active=True,
+            metadata_json=None,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+    return config
