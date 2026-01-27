@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Copy, Check, Loader2, QrCode, AlertCircle } from 'lucide-react';
+import { QRCodeSVG } from 'react-qr-code';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -30,8 +31,8 @@ export default function Deposit() {
       return;
     }
 
-    if (value < 10) {
-      setError('Valor mínimo de depósito é R$ 10,00');
+    if (value < 2) {
+      setError('Valor mínimo de depósito é R$ 2,00');
       return;
     }
 
@@ -146,7 +147,7 @@ export default function Deposit() {
                 Digite o valor que deseja depositar. O código PIX será gerado automaticamente.
               </p>
               <p className="text-yellow-400 text-sm">
-                ⚠️ Valor mínimo: R$ 10,00
+                ⚠️ Valor mínimo: R$ 2,00
               </p>
             </div>
 
@@ -218,18 +219,36 @@ export default function Deposit() {
             </div>
 
             {/* QR Code */}
-            {getPixQrCode() && (
+            {(getPixQrCode() || getPixCode()) && (
               <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 text-center">
                 <h3 className="text-lg font-bold mb-4 flex items-center justify-center gap-2">
                   <QrCode size={20} className="text-[#d4af37]" />
                   QR Code PIX
                 </h3>
                 <div className="bg-white p-4 rounded-lg inline-block">
-                  <img
-                    src={`data:image/png;base64,${getPixQrCode()}`}
-                    alt="QR Code PIX"
-                    className="w-64 h-64 mx-auto"
-                  />
+                  {getPixQrCode() ? (
+                    <img
+                      src={`data:image/png;base64,${getPixQrCode()}`}
+                      alt="QR Code PIX"
+                      className="w-64 h-64 mx-auto"
+                      onError={(e) => {
+                        // Se a imagem base64 falhar, tentar gerar do código PIX
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
+                  ) : null}
+                  {(!getPixQrCode() || !getPixQrCode().trim()) && getPixCode() && (
+                    <div className="w-64 h-64 mx-auto flex items-center justify-center">
+                      <QRCodeSVG
+                        value={getPixCode()}
+                        size={256}
+                        level="H"
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
