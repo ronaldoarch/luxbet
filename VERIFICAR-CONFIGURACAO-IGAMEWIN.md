@@ -67,19 +67,9 @@ Este é o IP do servidor Coolify conforme documentação do projeto.
 
 ---
 
-### 3. Domínios Permitidos (CORS) - NÃO VISÍVEL NESTA PÁGINA
+### 3. Domínios Permitidos (CORS) - NÃO DISPONÍVEL NESTA INTERFACE
 
-**Problema:** Não vemos campos para "Domínios permitidos" ou "Allowed domains" na página Profile.
-
-**Onde procurar:**
-1. **"Configuration Website"** (no menu lateral)
-   - Esta seção pode ter configurações relacionadas a domínios permitidos
-2. **Outras seções do painel**
-   - Procure por campos como:
-     - "Allowed Domains"
-     - "Site Domains"
-     - "Whitelist Domains"
-     - "CORS Settings"
+**Problema:** A página "Configuration Website" (Profile) não possui campos visíveis para configurar domínios permitidos ou CORS.
 
 **Domínios que precisam ser permitidos:**
 ```
@@ -87,6 +77,19 @@ luxbet.site
 www.luxbet.site
 api.luxbet.site
 ```
+
+**Solução:** Como não há campos visíveis nesta interface, você precisa:
+
+1. **Contatar o suporte do IGameWin** (recomendado)
+   - Solicite que adicionem os domínios acima à lista de domínios permitidos
+   - Informe que está tendo erros de CORS ao carregar recursos dos jogos
+
+2. **Verificar outras seções do painel:**
+   - Procure em outras abas/seções que possam ter configurações avançadas
+   - Verifique se há uma seção de "API Settings" ou "Security Settings"
+
+3. **Verificar documentação da API:**
+   - Consulte a documentação do IGameWin para ver se há um endpoint de API para configurar domínios permitidos
 
 ---
 
@@ -144,7 +147,7 @@ GET /api/admin/igamewin-agents
 - [x] **Agent Status:** `Active` ✅
 - [ ] **IPv4 Whitelist:** Verificar se `147.93.147.33` é o IP correto do servidor
 - [ ] **IPv6 Whitelist:** Remover `welisson4916` e deixar vazio (ou adicionar IPv6 correto)
-- [ ] **Domínios Permitidos:** Procurar em "Configuration Website" e adicionar `luxbet.site`, `www.luxbet.site`, `api.luxbet.site`
+- [ ] **Domínios Permitidos:** Contatar suporte IGameWin para adicionar `luxbet.site`, `www.luxbet.site`, `api.luxbet.site` (não há campo visível na interface)
 
 ### No Banco de Dados (Backend):
 
@@ -172,11 +175,16 @@ curl ifconfig.me
 - Remova `welisson4916` do campo IPv6
 - Deixe vazio (se não usar IPv6)
 
-### 3. Procurar Configuração de Domínios Permitidos
+### 3. Resolver Problema de Domínios Permitidos (CORS)
 
-- Acesse **"Configuration Website"** no menu lateral
-- Procure por campos relacionados a domínios permitidos
-- Adicione: `luxbet.site`, `www.luxbet.site`, `api.luxbet.site`
+**Como a página "Configuration Website" não possui campos para domínios permitidos:**
+
+- **Contate o suporte do IGameWin** e solicite que adicionem os seguintes domínios à lista de domínios permitidos:
+  - `luxbet.site`
+  - `www.luxbet.site`
+  - `api.luxbet.site`
+- Explique que está tendo erros de CORS ao carregar recursos dos jogos
+- Informe o Agent Code: `welisson4916`
 
 ### 4. Verificar Configuração no Backend
 
