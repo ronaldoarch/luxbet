@@ -1948,7 +1948,20 @@ async def mark_notification_as_read(
 @root_router.post("/gold_api")
 async def igamewin_gold_api_root(request: Request, db: Session = Depends(get_db)):
     """Endpoint /gold_api na raiz para IGameWin"""
+    print(f"[Gold API Root] ===== REQUEST RECEIVED AT /gold_api =====")
     return await igamewin_gold_api(request, db)
+
+# Endpoint GET para testar se /gold_api está acessível
+@root_router.get("/gold_api")
+async def test_gold_api():
+    """Endpoint de teste para verificar se /gold_api está acessível"""
+    return {
+        "status": "ok",
+        "message": "Endpoint /gold_api está acessível",
+        "endpoint": "/gold_api",
+        "methods": ["POST"],
+        "expected_methods": ["user_balance", "transaction"]
+    }
 
 # Endpoint também em /api/public/gold_api para compatibilidade
 @public_router.post("/gold_api")
