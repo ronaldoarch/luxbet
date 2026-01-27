@@ -163,19 +163,30 @@ async def create_pix_deposit(
                 except:
                     pass
             
-            id_transaction = pix_response.get("idTransaction") if isinstance(pix_response, dict) else None
-            # SuitPay retorna paymentCode diretamente
-            pix_code = pix_response.get("paymentCode") if isinstance(pix_response, dict) else None
-            
-            # Log para debug
-            print(f"DEBUG SuitPay response type: {type(pix_response)}")
-            print(f"DEBUG SuitPay response: {pix_response}")
-            print(f"DEBUG paymentCode extracted: {pix_code}")
+            if isinstance(pix_response, dict):
+                id_transaction = pix_response.get("idTransaction")
+                # SuitPay retorna paymentCode diretamente
+                pix_code = pix_response.get("paymentCode")
+                
+                # Log para debug
+                print(f"DEBUG SuitPay response type: {type(pix_response)}")
+                print(f"DEBUG SuitPay response keys: {list(pix_response.keys())}")
+                print(f"DEBUG paymentCode value: {pix_response.get('paymentCode')}")
+                print(f"DEBUG paymentCode extracted: {pix_code}")
+            else:
+                print(f"ERROR: pix_response is not a dict: {type(pix_response)}")
+                print(f"ERROR: pix_response value: {pix_response}")
     
-    if not pix_response or not id_transaction:
+    if not pix_response:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Erro ao gerar código PIX no gateway. Verifique as credenciais e se o gateway está ativo."
+        )
+    
+    if not id_transaction:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Erro ao gerar código PIX: idTransaction não encontrado na resposta. Resposta: {pix_response}"
         )
     
     # Verificar se o status da resposta indica sucesso
@@ -185,7 +196,7 @@ async def create_pix_deposit(
         # Se status é success mas pix_code ainda está vazio, tentar extrair novamente
         if response_status == "success" and not pix_code:
             pix_code = pix_response.get("paymentCode")
-            print(f"DEBUG Retry extraction - paymentCode: {pix_code}")
+            print(f"DEBUG Retry extraction after success check - paymentCode: {pix_code}")
     
     if not pix_code:
         # Log completo da resposta para debug
@@ -194,6 +205,7 @@ async def create_pix_deposit(
         if isinstance(pix_response, dict):
             print(f"ERROR: Response keys: {list(pix_response.keys())}")
             print(f"ERROR: paymentCode value: {pix_response.get('paymentCode')}")
+            print(f"ERROR: status value: {pix_response.get('status')}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Resposta inválida do gateway. Código PIX não encontrado. Resposta: {pix_response}"
