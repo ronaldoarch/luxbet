@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
-from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate
+from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Notification, NotificationType
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
@@ -442,6 +442,18 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
                 user = db.query(User).filter(User.id == deposit.user_id).first()
                 if user:
                     user.balance += deposit.amount
+                    
+                    # Criar notificação de sucesso
+                    notification = Notification(
+                        title="Depósito Aprovado!",
+                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
+                        type=NotificationType.SUCCESS,
+                        user_id=user.id,
+                        is_read=False,
+                        is_active=True,
+                        link="/conta"
+                    )
+                    db.add(notification)
         elif status_transaction == "CHARGEBACK":
             if deposit.status == TransactionStatus.APPROVED:
                 # Reverter saldo se já foi aprovado
@@ -495,6 +507,30 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
                 user = db.query(User).filter(User.id == deposit.user_id).first()
                 if user:
                     user.balance += deposit.amount
+                    
+                    # Criar notificação de sucesso
+                    notification = Notification(
+                        title="Depósito Aprovado!",
+                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
+                        type=NotificationType.SUCCESS,
+                        user_id=user.id,
+                        is_read=False,
+                        is_active=True,
+                        link="/conta"
+                    )
+                    db.add(notification)
+                    
+                    # Criar notificação de sucesso
+                    notification = Notification(
+                        title="Depósito Aprovado!",
+                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
+                        type=NotificationType.SUCCESS,
+                        user_id=user.id,
+                        is_read=False,
+                        is_active=True,
+                        link="/conta"
+                    )
+                    db.add(notification)
         
         # Atualizar metadata
         metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
