@@ -157,13 +157,12 @@ async def create_pix_deposit(
         
         if pix_response:
             id_transaction = pix_response.get("idTransaction")
-            # SuitPay pode retornar paymentCode diretamente ou em diferentes formatos
-            pix_code = (
-                pix_response.get("paymentCode") or 
-                pix_response.get("pix_code") or 
-                pix_response.get("qr_code") or
-                pix_response.get("code")
-            )
+            # SuitPay retorna paymentCode diretamente
+            pix_code = pix_response.get("paymentCode")
+            
+            # Log para debug
+            print(f"DEBUG SuitPay response: {pix_response}")
+            print(f"DEBUG paymentCode extracted: {pix_code}")
     
     if not pix_response or not id_transaction:
         raise HTTPException(
@@ -173,16 +172,17 @@ async def create_pix_deposit(
     
     # Verificar se o status da resposta indica sucesso
     response_status = pix_response.get("status", "").lower() if isinstance(pix_response, dict) else ""
+    
+    # Se status é success mas pix_code ainda está vazio, tentar extrair novamente
     if response_status == "success" and not pix_code:
-        # Se status é success mas não tem pix_code, tentar extrair de outros campos
-        pix_code = (
-            pix_response.get("paymentCode") or 
-            pix_response.get("data", {}).get("paymentCode") if isinstance(pix_response.get("data"), dict) else None or
-            pix_response.get("qr_code") or
-            pix_response.get("pix_copy_and_paste")
-        )
+        pix_code = pix_response.get("paymentCode")
+        print(f"DEBUG Retry extraction - paymentCode: {pix_code}")
     
     if not pix_code:
+        # Log completo da resposta para debug
+        print(f"ERROR: PIX code not found in response: {pix_response}")
+        print(f"ERROR: Response type: {type(pix_response)}")
+        print(f"ERROR: Response keys: {pix_response.keys() if isinstance(pix_response, dict) else 'Not a dict'}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Resposta inválida do gateway. Código PIX não encontrado. Resposta: {pix_response}"
