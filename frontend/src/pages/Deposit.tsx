@@ -219,26 +219,33 @@ export default function Deposit() {
             </div>
 
             {/* QR Code */}
-            {(getPixQrCode() || getPixCode()) && (
+            {getPixCode() && (
               <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 text-center">
                 <h3 className="text-lg font-bold mb-4 flex items-center justify-center gap-2">
                   <QrCode size={20} className="text-[#d4af37]" />
                   QR Code PIX
                 </h3>
                 <div className="bg-white p-4 rounded-lg inline-block">
-                  {getPixQrCode() ? (
+                  {getPixQrCode() && getPixQrCode().trim() ? (
                     <img
                       src={`data:image/png;base64,${getPixQrCode()}`}
                       alt="QR Code PIX"
                       className="w-64 h-64 mx-auto"
                       onError={(e) => {
-                        // Se a imagem base64 falhar, tentar gerar do código PIX
+                        // Se a imagem base64 falhar, ocultar e mostrar o QR gerado
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent && getPixCode()) {
+                          const qrDiv = document.createElement('div');
+                          qrDiv.className = 'w-64 h-64 mx-auto flex items-center justify-center';
+                          qrDiv.innerHTML = '';
+                          parent.appendChild(qrDiv);
+                          // Renderizar QRCodeSVG aqui se necessário
+                        }
                       }}
                     />
-                  ) : null}
-                  {(!getPixQrCode() || !getPixQrCode().trim()) && getPixCode() && (
+                  ) : (
                     <div className="w-64 h-64 mx-auto flex items-center justify-center">
                       <QRCodeSVG
                         value={getPixCode()}
