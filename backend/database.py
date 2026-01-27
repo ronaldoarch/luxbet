@@ -19,7 +19,12 @@ else:
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-    echo=True
+    echo=True,
+    # Configurações do pool para evitar esgotamento de conexões
+    pool_size=10,  # Aumentar de 5 para 10
+    max_overflow=20,  # Aumentar de 10 para 20 (total máximo: 30 conexões)
+    pool_pre_ping=True,  # Verificar conexões antes de usar
+    pool_recycle=3600,  # Reciclar conexões após 1 hora
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -36,5 +41,10 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        # Em caso de erro, fazer rollback para liberar a transação
+        db.rollback()
+        raise
     finally:
+        # Sempre fechar a conexão, mesmo em caso de erro
         db.close()
