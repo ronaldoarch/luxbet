@@ -2088,6 +2088,11 @@ async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
     Endpoint para modo Seamless do IGameWin.
     Implementa os métodos: user_balance e transaction
     """
+    # Log MUITO VISÍVEL no início para garantir que capturamos todas as chamadas
+    print("\n" + "="*80)
+    print("[Gold API] ⚡⚡⚡ CHAMADA RECEBIDA NO /gold_api ⚡⚡⚡")
+    print("="*80 + "\n")
+    
     try:
         # Log da requisição recebida
         client_host = request.client.host if request.client else "unknown"
@@ -2163,6 +2168,10 @@ async def _handle_user_balance(data: Dict[str, Any], agent: IGameWinAgent, db: S
     IMPORTANTE: Em Seamless Mode, o IGameWin usa este saldo como fonte da verdade.
     O saldo retornado aqui é o que aparece no jogo.
     """
+    print("\n" + "="*80)
+    print("[Gold API] 💰💰💰 USER_BALANCE REQUEST 💰💰💰")
+    print("="*80 + "\n")
+    
     user_code = data.get("user_code")
     
     if not user_code:
@@ -2207,6 +2216,10 @@ async def _handle_user_balance(data: Dict[str, Any], agent: IGameWinAgent, db: S
 
 async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Session) -> Dict[str, Any]:
     """Handle transaction method - registra transação de jogo"""
+    print("\n" + "="*80)
+    print("[Gold API] 💸💸💸 TRANSACTION REQUEST 💸💸💸")
+    print("="*80 + "\n")
+    
     user_code = data.get("user_code")
     user_balance = data.get("user_balance")
     agent_balance = data.get("agent_balance")
