@@ -16,7 +16,9 @@ router = APIRouter(prefix="/api/admin/media", tags=["media"])
 public_router = APIRouter(prefix="/api/public/media", tags=["public-media"])
 
 # Configuração de uploads
-UPLOAD_BASE_DIR = Path("uploads")
+# Usar variável de ambiente ou caminho padrão (compatível com Coolify volume mount)
+UPLOAD_BASE_PATH = os.getenv("UPLOAD_BASE_PATH", "/app/uploads")
+UPLOAD_BASE_DIR = Path(UPLOAD_BASE_PATH)
 UPLOAD_DIRS = {
     MediaType.LOGO: UPLOAD_BASE_DIR / "logos",
     MediaType.BANNER: UPLOAD_BASE_DIR / "banners",
@@ -25,6 +27,8 @@ UPLOAD_DIRS = {
 # Criar diretórios se não existirem
 for upload_dir in UPLOAD_DIRS.values():
     upload_dir.mkdir(parents=True, exist_ok=True)
+    # Garantir permissões corretas
+    os.chmod(upload_dir, 0o755)
 
 # Tipos de arquivo permitidos
 ALLOWED_MIME_TYPES = {
