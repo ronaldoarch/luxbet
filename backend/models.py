@@ -63,7 +63,7 @@ class IGameWinAgent(Base):
     id = Column(Integer, primary_key=True, index=True)
     agent_code = Column(String(100), unique=True, nullable=False)
     agent_key = Column(String(255), nullable=False)
-    api_url = Column(String(255), default="https://api.igamewin.com", nullable=False)
+    api_url = Column(String(255), default="https://igamewin.com", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     credentials = Column(Text)  # JSON string with additional credentials
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

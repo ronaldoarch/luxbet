@@ -82,7 +82,7 @@ class GatewayResponse(GatewayBase):
 class IGameWinAgentBase(BaseModel):
     agent_code: str
     agent_key: str
-    api_url: str = "https://api.igamewin.com"
+    api_url: str = "https://igamewin.com"
     is_active: bool = True
     credentials: Optional[str] = None
 
