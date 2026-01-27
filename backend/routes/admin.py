@@ -623,11 +623,15 @@ async def list_igamewin_games(
     order_map = {po.provider_code: po.display_order for po in provider_orders}
     priority_providers = {po.provider_code for po in provider_orders if po.is_priority}
     
+    # Normalizar códigos dos provedores para comparação (uppercase, sem espaços)
+    normalized_order_map = {k.upper().strip(): v for k, v in order_map.items()}
+    normalized_priority_providers = {p.upper().strip() for p in priority_providers}
+    
     # Ordenar: primeiro os prioritários por display_order (menor primeiro), depois os outros por display_order
     def sort_providers(p):
-        code = p.get("code") or p.get("provider_code") or ""
-        is_priority = code in priority_providers
-        order = order_map.get(code, 999)
+        code = (p.get("code") or p.get("provider_code") or "").upper().strip()
+        is_priority = code in normalized_priority_providers
+        order = normalized_order_map.get(code, 999)
         # Retorna: (0 se prioritário, 1 se não), depois a ordem específica
         return (0 if is_priority else 1, order)
     
@@ -675,11 +679,15 @@ async def public_games(
     order_map = {po.provider_code: po.display_order for po in provider_orders}
     priority_providers = {po.provider_code for po in provider_orders if po.is_priority}
     
+    # Normalizar códigos dos provedores para comparação (uppercase, sem espaços)
+    normalized_order_map = {k.upper().strip(): v for k, v in order_map.items()}
+    normalized_priority_providers = {p.upper().strip() for p in priority_providers}
+    
     # Ordenar: primeiro os prioritários por display_order (menor primeiro), depois os outros por display_order
     def sort_providers(p):
-        code = p.get("code") or p.get("provider_code") or ""
-        is_priority = code in priority_providers
-        order = order_map.get(code, 999)
+        code = (p.get("code") or p.get("provider_code") or "").upper().strip()
+        is_priority = code in normalized_priority_providers
+        order = normalized_order_map.get(code, 999)
         # Retorna: (0 se prioritário, 1 se não), depois a ordem específica
         return (0 if is_priority else 1, order)
     
