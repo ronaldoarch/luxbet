@@ -1458,6 +1458,103 @@ function IGameWinTab({ token }: { token: string }) {
           </div>
         )}
       </div>
+
+      {/* Modal de Edição de Jogo */}
+      {editingGame && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">Editar Informações do Jogo</h3>
+              <button
+                onClick={() => {
+                  setEditingGame(null);
+                  setEditForm({ custom_name: '', custom_provider: '' });
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Código do Jogo</label>
+                <input
+                  type="text"
+                  value={editingGame.game_code}
+                  disabled
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={editForm.custom_name}
+                  onChange={(e) => setEditForm({ ...editForm, custom_name: e.target.value })}
+                  placeholder={editingGame.game_name || editingGame.name || editingGame.title || editingGame.gameTitle || 'Nome do jogo'}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Fornecedor</label>
+                <input
+                  type="text"
+                  value={editForm.custom_provider}
+                  onChange={(e) => setEditForm({ ...editForm, custom_provider: e.target.value })}
+                  placeholder={editingGame.provider_code || editingGame.provider || editingGame.provider_name || editingGame.vendor || editingGame.vendor_name || providerCode || 'Fornecedor'}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={async () => {
+                    setSavingEdit(true);
+                    try {
+                      const res = await fetch(`${API_URL}/api/admin/game-customizations`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                          game_code: editingGame.game_code,
+                          custom_name: editForm.custom_name || null,
+                          custom_provider: editForm.custom_provider || null
+                        })
+                      });
+                      if (!res.ok) throw new Error('Falha ao salvar');
+                      await fetchGames(providerCode);
+                      setEditingGame(null);
+                      setEditForm({ custom_name: '', custom_provider: '' });
+                    } catch (err: any) {
+                      alert('Erro ao salvar: ' + err.message);
+                    } finally {
+                      setSavingEdit(false);
+                    }
+                  }}
+                  disabled={savingEdit}
+                  className="flex-1 bg-[#d4af37] hover:bg-[#ffd700] text-black font-semibold py-2 rounded disabled:opacity-50"
+                >
+                  {savingEdit ? 'Salvando...' : 'Salvar'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingGame(null);
+                    setEditForm({ custom_name: '', custom_provider: '' });
+                  }}
+                  className="px-4 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
