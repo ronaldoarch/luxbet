@@ -689,6 +689,7 @@ function GatewaysTab({ token }: { token: string }) {
     is_active: true, 
     client_id: '',
     client_secret: '',
+    api_key: '', // Para NXGATE
     sandbox: true
   });
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -706,11 +707,19 @@ function GatewaysTab({ token }: { token: string }) {
   };
 
   const resetForm = () => {
-    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', sandbox: true });
+    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true });
     setEditingId(null);
   };
 
   const prepareCredentials = () => {
+    const gatewayName = form.name.toLowerCase();
+    // NXGATE usa apenas api_key
+    if (gatewayName.includes('nxgate') || gatewayName.includes('nx')) {
+      return JSON.stringify({
+        api_key: form.api_key
+      });
+    }
+    // SuitPay usa client_id e client_secret
     return JSON.stringify({
       client_id: form.client_id,
       client_secret: form.client_secret,
@@ -776,12 +785,14 @@ function GatewaysTab({ token }: { token: string }) {
 
   const loadForEdit = (gateway: any) => {
     setEditingId(gateway.id);
+    const gatewayName = (gateway.name || '').toLowerCase();
     setForm({
       name: gateway.name || '',
       type: gateway.type || 'pix',
       is_active: gateway.is_active ?? true,
       client_id: '',
       client_secret: '',
+      api_key: '',
       sandbox: true
     });
 
@@ -793,6 +804,7 @@ function GatewaysTab({ token }: { token: string }) {
           ...prev,
           client_id: creds.client_id || creds.ci || '',
           client_secret: creds.client_secret || creds.cs || '',
+          api_key: creds.api_key || '',
           sandbox: creds.sandbox !== undefined ? creds.sandbox : true
         }));
       } catch (e) {
@@ -853,37 +865,56 @@ function GatewaysTab({ token }: { token: string }) {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Client ID (ci)</label>
-            <input 
-              type="text"
-              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
-              placeholder="Client ID da SuitPay"
-              value={form.client_id} 
-              onChange={e=>setForm({...form, client_id:e.target.value})}
-            />
-          </div>
+          {/* Campos dinâmicos baseados no nome do gateway */}
+          {(form.name.toLowerCase().includes('nxgate') || form.name.toLowerCase().includes('nx')) ? (
+            // NXGATE - apenas API Key
+            <div className="md:col-span-2">
+              <label className="block text-sm text-gray-400 mb-1">API Key</label>
+              <input 
+                type="password"
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+                placeholder="API Key do NXGATE"
+                value={form.api_key} 
+                onChange={e=>setForm({...form, api_key:e.target.value})}
+              />
+              <p className="text-xs text-gray-500 mt-1">NXGATE usa apenas API Key para autenticação</p>
+            </div>
+          ) : (
+            // SuitPay - Client ID e Client Secret
+            <>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Client ID (ci)</label>
+                <input 
+                  type="text"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+                  placeholder="Client ID da SuitPay"
+                  value={form.client_id} 
+                  onChange={e=>setForm({...form, client_id:e.target.value})}
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Client Secret (cs)</label>
-            <input 
-              type="password"
-              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
-              placeholder="Client Secret da SuitPay"
-              value={form.client_secret} 
-              onChange={e=>setForm({...form, client_secret:e.target.value})}
-            />
-          </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Client Secret (cs)</label>
+                <input 
+                  type="password"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+                  placeholder="Client Secret da SuitPay"
+                  value={form.client_secret} 
+                  onChange={e=>setForm({...form, client_secret:e.target.value})}
+                />
+              </div>
 
-          <div className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              checked={form.sandbox} 
-              onChange={e=>setForm({...form, sandbox:e.target.checked})}
-              className="w-4 h-4"
-            />
-            <label className="text-sm text-gray-300">Ambiente Sandbox</label>
-          </div>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  checked={form.sandbox} 
+                  onChange={e=>setForm({...form, sandbox:e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <label className="text-sm text-gray-300">Ambiente Sandbox</label>
+              </div>
+            </>
+          )}
 
           <div className="flex items-center gap-2">
             <input 
@@ -981,30 +1012,44 @@ function GatewaysTab({ token }: { token: string }) {
                   {/* Credenciais */}
                   {credentials && (
                     <div className="space-y-3 pt-4 border-t border-gray-700/50">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Client ID</span>
-                        <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
-                          {credentials.client_id || credentials.ci || '—'}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Client Secret</span>
-                        <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
-                          {credentials.client_secret || credentials.cs ? '••••••••••••' : '—'}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Ambiente</span>
-                        <span className={`font-semibold text-xs px-2 py-1 rounded ${
-                          credentials.sandbox 
-                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' 
-                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        }`}>
-                          {credentials.sandbox ? 'Sandbox' : 'Produção'}
-                        </span>
-                      </div>
+                      {/* Mostrar campos baseados no tipo de gateway */}
+                      {credentials.api_key ? (
+                        // NXGATE
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-400">API Key</span>
+                          <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                            {credentials.api_key ? '••••••••••••' : '—'}
+                          </span>
+                        </div>
+                      ) : (
+                        // SuitPay
+                        <>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Client ID</span>
+                            <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                              {credentials.client_id || credentials.ci || '—'}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Client Secret</span>
+                            <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                              {credentials.client_secret || credentials.cs ? '••••••••••••' : '—'}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Ambiente</span>
+                            <span className={`font-semibold text-xs px-2 py-1 rounded ${
+                              credentials.sandbox 
+                                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' 
+                                : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            }`}>
+                              {credentials.sandbox ? 'Sandbox' : 'Produção'}
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
