@@ -58,6 +58,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(admin.public_router)
+app.include_router(admin.root_router)  # Router sem prefixo para /gold_api
 app.include_router(media.router)
 app.include_router(media.public_router)
 app.include_router(payments.router)

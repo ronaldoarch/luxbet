@@ -33,6 +33,8 @@ from igamewin_api import get_igamewin_api
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
+# Router sem prefixo para endpoints que precisam estar na raiz (como /gold_api para IGameWin)
+root_router = APIRouter(tags=["root"])
 
 
 # ========== USERS ==========
@@ -1942,6 +1944,13 @@ async def mark_notification_as_read(
 # Este endpoint é chamado pelo IGameWin quando está em modo Seamless
 # Documentação: https://igamewin.com/docs (API integrada - API do site)
 
+# Endpoint também na raiz (/gold_api) - IGameWin espera neste caminho
+@root_router.post("/gold_api")
+async def igamewin_gold_api_root(request: Request, db: Session = Depends(get_db)):
+    """Endpoint /gold_api na raiz para IGameWin"""
+    return await igamewin_gold_api(request, db)
+
+# Endpoint também em /api/public/gold_api para compatibilidade
 @public_router.post("/gold_api")
 async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
     """
