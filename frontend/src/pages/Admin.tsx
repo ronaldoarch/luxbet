@@ -3674,3 +3674,260 @@ function PromotionsTab({ token }: { token: string }) {
     </div>
   );
 }
+
+function SupportTab({ token }: { token: string }) {
+  const [config, setConfig] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [form, setForm] = useState({
+    whatsapp_number: '',
+    whatsapp_link: '',
+    phone_number: '',
+    email: '',
+    chat_link: '',
+    welcome_message: 'Bem Vindo a Lux Bet, em que posso ajudar?',
+    working_hours: '24h',
+    is_active: true
+  });
+
+  useEffect(() => {
+    fetchConfig();
+  }, []);
+
+  const fetchConfig = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/support-config`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConfig(data);
+        setForm({
+          whatsapp_number: data.whatsapp_number || '',
+          whatsapp_link: data.whatsapp_link || '',
+          phone_number: data.phone_number || '',
+          email: data.email || '',
+          chat_link: data.chat_link || '',
+          welcome_message: data.welcome_message || 'Bem Vindo a Lux Bet, em que posso ajudar?',
+          working_hours: data.working_hours || '24h',
+          is_active: data.is_active ?? true
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao buscar configuração de suporte:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+    try {
+      const url = config?.id 
+        ? `${API_URL}/api/admin/support-config/${config.id}`
+        : `${API_URL}/api/admin/support-config`;
+      const method = config?.id ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(form)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Erro ao salvar configuração');
+      }
+
+      await fetchConfig();
+      setMessage('Configuração de suporte salva com sucesso!');
+    } catch (err: any) {
+      setMessage(err.message || 'Erro ao salvar configuração');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateWhatsAppLink = () => {
+    if (form.whatsapp_number) {
+      const number = form.whatsapp_number.replace(/\D/g, ''); // Remove caracteres não numéricos
+      const link = `https://wa.me/${number}`;
+      setForm({...form, whatsapp_link: link});
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Configuração de Suporte</h2>
+      </div>
+
+      {message && (
+        <div className={`p-3 rounded ${message.includes('Erro') ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+          {message}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="bg-gray-800/60 p-6 rounded border border-gray-700 space-y-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Número WhatsApp</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                value={form.whatsapp_number}
+                onChange={e => setForm({...form, whatsapp_number: e.target.value})}
+                placeholder="5511999999999"
+              />
+              <button
+                type="button"
+                onClick={generateWhatsAppLink}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+              >
+                Gerar Link
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Formato: código do país + DDD + número (sem espaços ou caracteres especiais)</p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Link WhatsApp</label>
+            <input
+              type="url"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.whatsapp_link}
+              onChange={e => setForm({...form, whatsapp_link: e.target.value})}
+              placeholder="https://wa.me/5511999999999"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Telefone de Suporte</label>
+            <input
+              type="tel"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.phone_number}
+              onChange={e => setForm({...form, phone_number: e.target.value})}
+              placeholder="(11) 99999-9999"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Email de Suporte</label>
+            <input
+              type="email"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.email}
+              onChange={e => setForm({...form, email: e.target.value})}
+              placeholder="suporte@luxbet.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Link do Chat ao Vivo</label>
+            <input
+              type="url"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.chat_link}
+              onChange={e => setForm({...form, chat_link: e.target.value})}
+              placeholder="https://chat.exemplo.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Horário de Funcionamento</label>
+            <input
+              type="text"
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.working_hours}
+              onChange={e => setForm({...form, working_hours: e.target.value})}
+              placeholder="24h ou Seg-Sex 9h-18h"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Mensagem de Boas-Vindas</label>
+          <textarea
+            className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+            rows={3}
+            value={form.welcome_message}
+            onChange={e => setForm({...form, welcome_message: e.target.value})}
+            placeholder="Bem Vindo a Lux Bet, em que posso ajudar?"
+          />
+        </div>
+
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={e => setForm({...form, is_active: e.target.checked})}
+              className="rounded"
+            />
+            <span className="text-sm">Ativo</span>
+          </label>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 bg-[#d4af37] hover:bg-[#ffd700] text-black font-semibold rounded disabled:opacity-50"
+          >
+            {loading ? 'Salvando...' : 'Salvar Configuração'}
+          </button>
+        </div>
+      </form>
+
+      {config && (
+        <div className="bg-gray-800/60 p-4 rounded border border-gray-700">
+          <h3 className="text-lg font-semibold mb-3">Preview da Configuração</h3>
+          <div className="space-y-2 text-sm">
+            {config.whatsapp_link && (
+              <div>
+                <span className="text-gray-400">WhatsApp: </span>
+                <a href={config.whatsapp_link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                  {config.whatsapp_number || config.whatsapp_link}
+                </a>
+              </div>
+            )}
+            {config.phone_number && (
+              <div>
+                <span className="text-gray-400">Telefone: </span>
+                <span className="text-white">{config.phone_number}</span>
+              </div>
+            )}
+            {config.email && (
+              <div>
+                <span className="text-gray-400">Email: </span>
+                <a href={`mailto:${config.email}`} className="text-blue-400 hover:underline">
+                  {config.email}
+                </a>
+              </div>
+            )}
+            {config.chat_link && (
+              <div>
+                <span className="text-gray-400">Chat: </span>
+                <a href={config.chat_link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                  Acessar Chat
+                </a>
+              </div>
+            )}
+            <div>
+              <span className="text-gray-400">Horário: </span>
+              <span className="text-white">{config.working_hours}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
