@@ -230,7 +230,7 @@ class Affiliate(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user = relationship("User", back_populates="bets")
+    user = relationship("User", back_populates="affiliates")
 
 
 class Theme(Base):
