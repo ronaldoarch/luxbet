@@ -211,6 +211,14 @@ async def create_pix_deposit(
             detail=f"Resposta inválida do gateway. Código PIX não encontrado. Resposta: {pix_response}"
         )
     
+    # Extrair QR code base64 da resposta
+    qr_code_base64 = pix_response.get("paymentCodeBase64") or pix_response.get("base_64_image") or pix_response.get("qr_code_base64")
+    
+    # Log para debug
+    print(f"DEBUG QR Code Base64 disponível: {bool(qr_code_base64)}")
+    if qr_code_base64:
+        print(f"DEBUG QR Code Base64 length: {len(qr_code_base64) if isinstance(qr_code_base64, str) else 'N/A'}")
+    
     # Criar registro de depósito
     deposit = Deposit(
         user_id=user.id,
@@ -221,7 +229,7 @@ async def create_pix_deposit(
         external_id=id_transaction,
         metadata_json=json.dumps({
             "pix_code": pix_code,
-            "pix_qr_code_base64": pix_response.get("paymentCodeBase64") or pix_response.get("base_64_image"),
+            "pix_qr_code_base64": qr_code_base64,
             "gateway": gateway.name,
             "gateway_response": pix_response
         })
