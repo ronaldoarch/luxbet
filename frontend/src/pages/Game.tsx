@@ -9,7 +9,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export default function Game() {
   const { gameCode } = useParams<{ gameCode: string }>();
   const navigate = useNavigate();
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, refreshUser } = useAuth();
   const [gameUrl, setGameUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +133,44 @@ export default function Game() {
           />
         </div>
       )}
+      
+      {/* Atualizar saldo quando usuário volta da página do jogo */}
+      {gameUrl && (
+        <GameBalanceUpdater refreshUser={refreshUser} />
+      )}
     </div>
   );
+}
+
+// Componente para atualizar saldo quando usuário volta do jogo
+function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
+  useEffect(() => {
+    // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
+    const handleFocus = () => {
+      refreshUser();
+    };
+    
+    // Atualizar saldo quando a página fica visível novamente
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        refreshUser();
+      }
+    };
+    
+    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 10 segundos)
+    const balanceInterval = setInterval(() => {
+      refreshUser();
+    }, 10000); // 10 segundos durante o jogo
+    
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      clearInterval(balanceInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshUser]);
+  
+  return null; // Componente invisível
 }
