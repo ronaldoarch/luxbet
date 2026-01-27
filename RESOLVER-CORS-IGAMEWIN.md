@@ -5,12 +5,18 @@
 O jogo está conseguindo iniciar (obter URL de lançamento), mas quando tenta carregar recursos do IGameWin, recebe erros de CORS:
 
 ```
-Access to XMLHttpRequest at 'https://igamewin.com/aviator/demo.json?v=4.2.29-hotfix-5' 
+Access to XMLHttpRequest at 'https://igamewin.com/gs2c/common/v2/games-html5/games/vs/vs10bbbonanza/desktop/customizations.info?key=bdd0b' 
 from origin 'https://api.igamewin.com' has been blocked by CORS policy: 
 No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ```
 
 **Mensagem no jogo:** "Retry limit of client config exceeded!"
+
+**Detalhes técnicos importantes:**
+- **Origem:** `https://api.igamewin.com` (onde o jogo é carregado pelo IGameWin)
+- **Destino:** `https://igamewin.com` (recursos que o jogo tenta carregar)
+- **Problema:** O servidor `igamewin.com` não está enviando o header `Access-Control-Allow-Origin` permitindo `api.igamewin.com`
+- **Observação:** Este é um problema **interno do IGameWin** - eles precisam permitir que seus próprios domínios (`api.igamewin.com`) acessem recursos de `igamewin.com`
 
 ---
 
@@ -97,10 +103,15 @@ Se você não encontrar campos para configurar domínios permitidos no painel:
    - `api.luxbet.site`
 4. **Erro específico:**
    ```
-   Access to XMLHttpRequest at 'https://igamewin.com/aviator/demo.json' 
-   from origin 'https://api.igamewin.com' has been blocked by CORS policy
+   Access to XMLHttpRequest at 'https://igamewin.com/gs2c/common/v2/games-html5/games/vs/vs10bbbonanza/desktop/customizations.info?key=bdd0b' 
+   from origin 'https://api.igamewin.com' has been blocked by CORS policy: 
+   No 'Access-Control-Allow-Origin' header is present on the requested resource.
    ```
-5. **Jogos afetados:** Aviator Core e possivelmente outros jogos
+5. **Problema adicional identificado:** O próprio IGameWin tem problema interno de CORS:
+   - `api.igamewin.com` não consegue acessar recursos de `igamewin.com`
+   - Isso afeta TODOS os jogos, não apenas os do seu site
+   - Precisa que o IGameWin configure CORS internamente entre seus próprios domínios
+6. **Jogos afetados:** Todos os jogos (Big Bass Bonanza, Aviator, etc.)
 
 **Peça para eles:**
 - Adicionar os domínios acima à lista de domínios permitidos
