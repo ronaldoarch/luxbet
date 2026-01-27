@@ -157,10 +157,10 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
       }
     };
     
-    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 10 segundos)
+    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 3 segundos)
     const balanceInterval = setInterval(() => {
       refreshUser();
-    }, 10000); // 10 segundos durante o jogo
+    }, 3000); // 3 segundos durante o jogo - atualização muito frequente
     
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);

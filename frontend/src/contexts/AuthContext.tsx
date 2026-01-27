@@ -58,12 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token || !user) return;
 
-    // Atualizar saldo periodicamente (a cada 15 segundos)
+    // Atualizar saldo periodicamente (a cada 5 segundos para atualização mais rápida)
     const balanceInterval = setInterval(() => {
       if (token) {
         fetchUser(token);
       }
-    }, 15000); // 15 segundos
+    }, 5000); // 5 segundos - atualização mais frequente
 
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
