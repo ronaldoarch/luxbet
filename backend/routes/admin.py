@@ -662,7 +662,7 @@ async def list_igamewin_games(
     games = _normalize_games(games, chosen_provider)
 
     return {
-        "providers": providers,
+        "providers": providers[:3],  # Limitar a 3 provedores
         "provider_code": chosen_provider,
         "games": games
     }
@@ -733,7 +733,7 @@ async def public_games(
                 "status": "active"
             })
         return {
-            "providers": providers,
+            "providers": providers[:3],  # Limitar a 3 provedores
             "provider_code": chosen_provider,
             "games": public_games
         }
@@ -775,7 +775,7 @@ async def public_games(
             })
 
     return {
-        "providers": providers,
+        "providers": providers[:3],  # Limitar a 3 provedores
         "provider_code": None,
         "games": all_games
     }
