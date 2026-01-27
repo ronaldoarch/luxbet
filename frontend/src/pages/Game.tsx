@@ -147,24 +147,35 @@ function GameBalanceUpdater({ refreshUser, navigate }: { refreshUser: () => Prom
   useEffect(() => {
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
-      refreshUser();
+      refreshUser().catch(() => {
+        // Silenciar erros durante atualização automática
+      });
     };
     
     // Atualizar saldo quando a página fica visível novamente
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        refreshUser();
+        refreshUser().catch(() => {
+          // Silenciar erros durante atualização automática
+        });
       }
     };
     
     // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 3 segundos)
     const balanceInterval = setInterval(() => {
-      refreshUser();
+      refreshUser().catch(() => {
+        // Silenciar erros durante atualização automática
+      });
     }, 3000); // 3 segundos durante o jogo - atualização muito frequente
     
     // Atualizar saldo quando usuário volta para a página (antes de sair do jogo)
     const handleBeforeUnload = () => {
-      refreshUser();
+      // Não usar async aqui - beforeunload não espera promises
+      try {
+        refreshUser();
+      } catch (e) {
+        // Silenciar erros
+      }
     };
     
     window.addEventListener('focus', handleFocus);
@@ -177,7 +188,9 @@ function GameBalanceUpdater({ refreshUser, navigate }: { refreshUser: () => Prom
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       // Atualizar saldo uma última vez ao sair da página do jogo
-      refreshUser();
+      refreshUser().catch(() => {
+        // Silenciar erros durante cleanup
+      });
     };
   }, [refreshUser]);
   

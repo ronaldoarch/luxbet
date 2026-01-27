@@ -61,14 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Atualizar saldo periodicamente (a cada 5 segundos para atualização mais rápida)
     const balanceInterval = setInterval(() => {
       if (token) {
-        fetchUser(token);
+        // Usar catch para evitar que erros interrompam o intervalo
+        fetchUser(token).catch(() => {
+          // Silenciar erros durante atualização automática
+        });
       }
     }, 5000); // 5 segundos - atualização mais frequente
 
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
       if (token) {
-        fetchUser(token);
+        fetchUser(token).catch(() => {
+          // Silenciar erros durante atualização automática
+        });
       }
     };
     window.addEventListener('focus', handleFocus);
@@ -76,7 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Atualizar saldo quando a página fica visível novamente
     const handleVisibilityChange = () => {
       if (!document.hidden && token) {
-        fetchUser(token);
+        fetchUser(token).catch(() => {
+          // Silenciar erros durante atualização automática
+        });
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -94,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
+        // Adicionar cache: 'no-cache' para garantir dados atualizados
+        cache: 'no-cache',
       });
       if (res.ok) {
         const userData = await res.json();
@@ -101,19 +110,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return userData;
       } else {
-        localStorage.removeItem('user_token');
-        localStorage.removeItem('admin_token');
-        setToken(null);
-        setUser(null);
+        // Só limpar tokens se for erro 401 (não autorizado)
+        if (res.status === 401) {
+          localStorage.removeItem('user_token');
+          localStorage.removeItem('admin_token');
+          setToken(null);
+          setUser(null);
+        }
         setLoading(false);
         return null;
       }
     } catch (err) {
+      // Não logar erros de rede durante atualização automática (pode ser normal)
+      // Apenas logar se for erro crítico
+      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+        // Erro de rede - silenciar durante atualização automática
+        return null;
+      }
       console.error('Erro ao buscar usuário:', err);
-      localStorage.removeItem('user_token');
-      localStorage.removeItem('admin_token');
-      setToken(null);
-      setUser(null);
+      // Só limpar tokens em caso de erro crítico
+      if (err instanceof Error && !err.message.includes('Failed to fetch')) {
+        localStorage.removeItem('user_token');
+        localStorage.removeItem('admin_token');
+        setToken(null);
+        setUser(null);
+      }
       setLoading(false);
       return null;
     }
