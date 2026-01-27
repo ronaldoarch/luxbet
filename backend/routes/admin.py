@@ -843,11 +843,13 @@ async def public_games(
         all_games = cached_all_games
     else:
         all_games = []
+        all_raw_games = []  # Coletar todos os jogos brutos primeiro
         active_providers = [p for p in providers if str(p.get("status", 1)) in ["1", "true", "True"]] or providers
         
         # Ordenar provedores pela ordem definida no banco (já ordenado acima, mas garantir)
         active_providers = sorted(active_providers, key=sort_providers)
         
+        # Primeiro, coletar todos os jogos brutos de todos os provedores
         for provider in active_providers:
             prov_code = provider.get("code") or provider.get("provider_code")
             if not prov_code:
@@ -866,26 +868,34 @@ async def public_games(
                 games = _normalize_games(games, prov_code)
                 _set_cache(cache_key_provider_games, games)
             
-            # Aplicar customizações antes de processar os jogos
-            games = _apply_game_customizations(games, db)
-            
+            # Adicionar provedor_code a cada jogo para referência posterior
             for g in games:
-                status_val = g.get("status")
-                is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
-                if not is_active:
-                    continue
-                # Usar o código do provedor diretamente para garantir correspondência com a ordenação
-                game_code = _extract_game_code(g)
-                if not game_code:
-                    continue  # Pular jogos sem código válido
-                all_games.append({
-                    "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
-                    "code": game_code,
-                    "provider": prov_code,  # Usar o código do provedor diretamente
-                    "provider_code": prov_code,  # Adicionar também como provider_code para referência
-                    "banner": g.get("banner") or g.get("image") or g.get("icon"),
-                    "status": "active"
-                })
+                g["provider_code"] = prov_code
+            
+            all_raw_games.extend(games)
+        
+        # Aplicar customizações UMA VEZ para todos os jogos coletados
+        all_raw_games = _apply_game_customizations(all_raw_games, db)
+        
+        # Agora processar os jogos customizados
+        for g in all_raw_games:
+            status_val = g.get("status")
+            is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
+            if not is_active:
+                continue
+            # Usar o código do provedor diretamente para garantir correspondência com a ordenação
+            game_code = _extract_game_code(g)
+            if not game_code:
+                continue  # Pular jogos sem código válido
+            prov_code = g.get("provider_code")
+            all_games.append({
+                "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
+                "code": game_code,
+                "provider": prov_code,  # Usar o código do provedor diretamente
+                "provider_code": prov_code,  # Adicionar também como provider_code para referência
+                "banner": g.get("banner") or g.get("image") or g.get("icon"),
+                "status": "active"
+            })
         
         # Cachear resultado final
         _set_cache(cache_key_all_games, all_games)
