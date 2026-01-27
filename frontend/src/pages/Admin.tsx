@@ -6,7 +6,7 @@ import {
   ArrowDownCircle, Activity, RefreshCw,
   Image as ImageIcon, Home, BarChart3,
   ChevronUp, ChevronDown, Percent, FileText, 
-  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, Phone, MessageCircle
+  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, MessageCircle
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
