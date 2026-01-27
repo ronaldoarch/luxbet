@@ -157,12 +157,29 @@ async def create_pix_deposit(
         
         if pix_response:
             id_transaction = pix_response.get("idTransaction")
-            pix_code = pix_response.get("paymentCode")
+            # SuitPay pode retornar paymentCode diretamente ou em diferentes formatos
+            pix_code = (
+                pix_response.get("paymentCode") or 
+                pix_response.get("pix_code") or 
+                pix_response.get("qr_code") or
+                pix_response.get("code")
+            )
     
     if not pix_response or not id_transaction:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Erro ao gerar código PIX no gateway. Verifique as credenciais e se o gateway está ativo."
+        )
+    
+    # Verificar se o status da resposta indica sucesso
+    response_status = pix_response.get("status", "").lower() if isinstance(pix_response, dict) else ""
+    if response_status == "success" and not pix_code:
+        # Se status é success mas não tem pix_code, tentar extrair de outros campos
+        pix_code = (
+            pix_response.get("paymentCode") or 
+            pix_response.get("data", {}).get("paymentCode") if isinstance(pix_response.get("data"), dict) else None or
+            pix_response.get("qr_code") or
+            pix_response.get("pix_copy_and_paste")
         )
     
     if not pix_code:
