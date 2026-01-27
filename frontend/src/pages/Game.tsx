@@ -136,14 +136,14 @@ export default function Game() {
       
       {/* Atualizar saldo quando usuário volta da página do jogo */}
       {gameUrl && (
-        <GameBalanceUpdater refreshUser={refreshUser} navigate={navigate} />
+        <GameBalanceUpdater refreshUser={refreshUser} />
       )}
     </div>
   );
 }
 
 // Componente para atualizar saldo quando usuário volta do jogo
-function GameBalanceUpdater({ refreshUser, navigate }: { refreshUser: () => Promise<void>; navigate: (path: string) => void }) {
+function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
   useEffect(() => {
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
