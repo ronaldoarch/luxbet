@@ -785,7 +785,6 @@ function GatewaysTab({ token }: { token: string }) {
 
   const loadForEdit = (gateway: any) => {
     setEditingId(gateway.id);
-    const gatewayName = (gateway.name || '').toLowerCase();
     setForm({
       name: gateway.name || '',
       type: gateway.type || 'pix',
