@@ -2329,6 +2329,32 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
         }
 
 
+# ========== SINCRONIZAÇÃO DE SALDO ==========
+@public_router.post("/sync-balance")
+async def sync_balance(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Endpoint para forçar sincronização do saldo.
+    Útil quando há dessincronização entre jogo e carteira.
+    """
+    # Buscar saldo atual do banco
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    
+    db.refresh(user)  # Garantir dados atualizados
+    
+    print(f"[Sync Balance] Forcing balance sync for user: {current_user.username}, balance: {user.balance}")
+    
+    return {
+        "status": "success",
+        "balance": float(user.balance),
+        "message": "Saldo sincronizado"
+    }
+
+
 # ========== GAME CUSTOMIZATION ==========
 @router.get("/game-customizations", response_model=List[GameCustomizationResponse])
 async def get_game_customizations(

@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Wallet, User, Mail, Phone, CreditCard, LogOut, ArrowLeft, UserCog } from 'lucide-react';
+import { Wallet, User, Mail, Phone, CreditCard, LogOut, ArrowLeft, UserCog, RefreshCw } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, refreshUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [isAffiliate, setIsAffiliate] = useState(false);
+  const [syncingBalance, setSyncingBalance] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -40,6 +41,27 @@ export default function Profile() {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleSyncBalance = async () => {
+    if (!token) return;
+    setSyncingBalance(true);
+    try {
+      const res = await fetch(`${API_URL}/api/public/sync-balance`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        // Atualizar dados do usuário após sincronização
+        await refreshUser();
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar saldo:', err);
+    } finally {
+      setSyncingBalance(false);
+    }
   };
 
   if (loading || !user) {
@@ -85,6 +107,14 @@ export default function Profile() {
                 </p>
               </div>
             </div>
+            <button
+              onClick={handleSyncBalance}
+              disabled={syncingBalance}
+              className="p-2 hover:bg-[#0d5d4b] rounded transition-colors disabled:opacity-50"
+              title="Sincronizar saldo"
+            >
+              <RefreshCw size={20} className={syncingBalance ? 'animate-spin' : ''} />
+            </button>
           </div>
           <div className="flex gap-3">
             <button
