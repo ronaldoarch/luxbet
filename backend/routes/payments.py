@@ -755,9 +755,14 @@ async def get_affiliate_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Painel do afiliado - retorna dados do afiliado logado"""
+    """Painel do afiliado - retorna dados do afiliado logado
+    
+    Retorna 404 se o usuário não for afiliado (comportamento esperado).
+    O frontend deve tratar 404 como "não é afiliado", não como erro.
+    """
     affiliate = db.query(Affiliate).filter(Affiliate.user_id == current_user.id).first()
     if not affiliate:
+        # 404 é esperado quando usuário não é afiliado - não é um erro crítico
         raise HTTPException(status_code=404, detail="Você não é um afiliado")
     
     return affiliate

@@ -31,9 +31,13 @@ export default function Profile() {
       });
       if (res.ok) {
         setIsAffiliate(true);
+      } else if (res.status === 404) {
+        // Usuário não é afiliado - isso é normal, não é erro
+        setIsAffiliate(false);
       }
+      // Outros erros são silenciados
     } catch (err) {
-      // Usuário não é afiliado
+      // Erro de rede ou outro - silenciar, não é crítico
       setIsAffiliate(false);
     }
   };
