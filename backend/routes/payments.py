@@ -476,7 +476,7 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         # Parse do webhook NXGATE
         parsed = NXGateAPI.parse_webhook_payment(data)
         id_transaction = parsed.get("idTransaction")
-        status_payment = parsed.get("status", "").lower()
+        status_payment = (parsed.get("status") or "").lower() if parsed.get("status") is not None else ""
         
         if not id_transaction:
             return {"status": "received", "message": "idTransaction não encontrado"}
