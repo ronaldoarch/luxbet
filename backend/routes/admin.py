@@ -874,10 +874,14 @@ async def launch_game(
             # Modo Transferência: criar usuário e transferir saldo
             user_created = await api.create_user(current_user.username, is_demo=False)
             if not user_created:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Erro ao criar usuário no IGameWin. {api.last_error or 'Erro desconhecido'}"
-                )
+                # Se o erro for DUPLICATED_USER, o usuário já existe - continuar normalmente
+                if api.last_error and "DUPLICATED_USER" in api.last_error:
+                    print(f"[Launch Game] User already exists in IGameWin (DUPLICATED_USER) - continuing...")
+                else:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Erro ao criar usuário no IGameWin. {api.last_error or 'Erro desconhecido'}"
+                    )
             # Transferir todo o saldo do jogador para o IGameWin
             if current_user.balance > 0:
                 transfer_result = await api.transfer_in(current_user.username, current_user.balance)

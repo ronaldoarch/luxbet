@@ -42,14 +42,31 @@ class IGameWinAPI:
         if is_demo:
             payload["is_demo"] = True
         
+        print(f"[IGameWin] Creating user - user_code={user_code}, is_demo={is_demo}")
         data = await self._post(payload)
         if not data:
+            print(f"[IGameWin] Failed to create user: {self.last_error}")
             return None
         
         # Verificar se status é 1 (sucesso)
-        if data.get("status") == 1:
+        status = data.get("status")
+        msg = data.get("msg", "")
+        
+        if status == 1:
+            print(f"[IGameWin] User created successfully")
             return data
         
+        # Se status é 0 mas a mensagem é DUPLICATED_USER, considerar sucesso (usuário já existe)
+        if status == 0 and "DUPLICATED_USER" in msg:
+            print(f"[IGameWin] User already exists (DUPLICATED_USER) - this is OK")
+            self.last_error = f"DUPLICATED_USER: {msg}"
+            # Retornar um dict indicando que o usuário já existe (mas não é erro)
+            return {"status": 0, "msg": msg, "user_exists": True}
+        
+        # Outros erros
+        error_msg = msg or "Erro desconhecido"
+        self.last_error = f"status={status} msg={error_msg}"
+        print(f"[IGameWin] Error creating user: {self.last_error}")
         return None
     
     async def get_agent_balance(self) -> Optional[float]:
