@@ -56,7 +56,7 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
         const mapped: Game[] = (data.games || []).map((g: any, idx: number) => ({
           id: g.code || g.name || String(idx),
           title: g.name || g.title || 'Jogo',
-          provider: g.provider,
+          provider: (g.provider || g.provider_code || '').trim().toUpperCase(), // Normalizar para uppercase
           banner: g.banner,
           code: g.code,
         }));
@@ -114,6 +114,33 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
 
   const displayedGames = filteredGames.slice(currentIndex, currentIndex + gamesPerPage);
 
+  const [providersOrder, setProvidersOrder] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchProvidersOrder = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/public/games`);
+        if (res.ok) {
+          const data = await res.json();
+          // Extrair a ordem dos provedores da resposta da API
+          if (data.providers && Array.isArray(data.providers)) {
+            const order = data.providers
+              .map((p: any) => {
+                // Normalizar o código do provedor (uppercase, remover espaços)
+                const code = (p.code || p.provider_code || '').trim().toUpperCase();
+                return code;
+              })
+              .filter((code: string) => code);
+            setProvidersOrder(order);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar ordem dos provedores:', err);
+      }
+    };
+    fetchProvidersOrder();
+  }, []);
+
   const gamesByProvider = useMemo(() => {
     return filteredGames.reduce<Record<string, Game[]>>((acc, game) => {
       const key = (game.provider || 'Outros').trim() || 'Outros';
@@ -123,10 +150,28 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
     }, {});
   }, [filteredGames]);
 
-  const providerEntries = useMemo(
-    () => Object.entries(gamesByProvider).sort((a, b) => a[0].localeCompare(b[0])),
-    [gamesByProvider]
-  );
+  const providerEntries = useMemo(() => {
+    const entries = Object.entries(gamesByProvider);
+    // Ordenar pelos provedores na ordem retornada pela API
+    if (providersOrder.length > 0) {
+      return entries.sort((a, b) => {
+        // Normalizar os nomes dos provedores para comparação (uppercase)
+        const providerA = a[0].trim().toUpperCase();
+        const providerB = b[0].trim().toUpperCase();
+        
+        const indexA = providersOrder.findIndex(p => p === providerA || p.includes(providerA) || providerA.includes(p));
+        const indexB = providersOrder.findIndex(p => p === providerB || p.includes(providerB) || providerB.includes(p));
+        
+        // Se não encontrado na ordem, coloca no final
+        if (indexA === -1 && indexB === -1) return a[0].localeCompare(b[0]);
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+    }
+    // Fallback: ordenação alfabética se não houver ordem definida
+    return entries.sort((a, b) => a[0].localeCompare(b[0]));
+  }, [gamesByProvider, providersOrder]);
 
   const renderGameCard = (game: Game) => (
     <a

@@ -623,11 +623,13 @@ async def list_igamewin_games(
     order_map = {po.provider_code: po.display_order for po in provider_orders}
     priority_providers = {po.provider_code for po in provider_orders if po.is_priority}
     
+    # Ordenar: primeiro os prioritários por display_order (menor primeiro), depois os outros por display_order
     def sort_providers(p):
         code = p.get("code") or p.get("provider_code") or ""
         is_priority = code in priority_providers
         order = order_map.get(code, 999)
-        return (not is_priority, order if not is_priority else 0, code)
+        # Retorna: (0 se prioritário, 1 se não), depois a ordem específica
+        return (0 if is_priority else 1, order)
     
     providers = sorted(providers, key=sort_providers)
 
@@ -673,12 +675,13 @@ async def public_games(
     order_map = {po.provider_code: po.display_order for po in provider_orders}
     priority_providers = {po.provider_code for po in provider_orders if po.is_priority}
     
-    # Ordenar: primeiro os prioritários (1, 2, 3), depois os outros por ordem, depois os sem ordem
+    # Ordenar: primeiro os prioritários por display_order (menor primeiro), depois os outros por display_order
     def sort_providers(p):
         code = p.get("code") or p.get("provider_code") or ""
         is_priority = code in priority_providers
         order = order_map.get(code, 999)
-        return (not is_priority, order if not is_priority else 0, code)
+        # Retorna: (0 se prioritário, 1 se não), depois a ordem específica
+        return (0 if is_priority else 1, order)
     
     providers = sorted(providers, key=sort_providers)
     
@@ -734,10 +737,12 @@ async def public_games(
             is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
             if not is_active:
                 continue
+            # Usar o código do provedor diretamente para garantir correspondência com a ordenação
             all_games.append({
                 "name": g.get("game_name") or g.get("name") or g.get("title") or g.get("gameTitle"),
                 "code": g.get("game_code") or g.get("code") or g.get("game_id") or g.get("id") or g.get("slug"),
-                "provider": g.get("provider_code") or g.get("provider") or g.get("provider_name") or g.get("vendor") or g.get("vendor_name") or prov_code,
+                "provider": prov_code,  # Usar o código do provedor diretamente
+                "provider_code": prov_code,  # Adicionar também como provider_code para referência
                 "banner": g.get("banner") or g.get("image") or g.get("icon"),
                 "status": "active"
             })
