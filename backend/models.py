@@ -40,8 +40,8 @@ class User(Base):
     deposits = relationship("Deposit", back_populates="user")
     withdrawals = relationship("Withdrawal", back_populates="user")
     ftds = relationship("FTD", back_populates="user")
-    bets = relationship("Bet")
-    notifications = relationship("Notification")
+    bets = relationship("Bet", back_populates="user")
+    notifications = relationship("Notification", back_populates="user")
 
 
 class Gateway(Base):
@@ -180,7 +180,7 @@ class Bet(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user = relationship("User")
+    user = relationship("User", back_populates="bets")
 
 
 class NotificationType(str, enum.Enum):
@@ -207,7 +207,7 @@ class Notification(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user = relationship("User")
+    user = relationship("User", back_populates="bets")
 
 
 class Affiliate(Base):
@@ -229,7 +229,7 @@ class Affiliate(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user = relationship("User")
+    user = relationship("User", back_populates="bets")
 
 
 class Theme(Base):
