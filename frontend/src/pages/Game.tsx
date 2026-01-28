@@ -145,34 +145,61 @@ export default function Game() {
 // Componente para atualizar saldo quando usuário volta do jogo
 function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    
+    // Função para sincronizar saldo com IGameWin e depois atualizar usuário
+    const syncAndRefresh = async () => {
+      if (!token) return;
+      
+      try {
+        // Primeiro, sincronizar saldo do IGameWin para nosso banco
+        const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          console.log('[Game] Saldo sincronizado:', syncData);
+        }
+      } catch (err) {
+        // Silenciar erros durante sincronização
+        console.warn('[Game] Erro ao sincronizar saldo:', err);
+      }
+      
+      // Depois, atualizar dados do usuário
+      try {
+        await refreshUser();
+      } catch (err) {
+        // Silenciar erros durante atualização
+      }
+    };
+    
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
-      refreshUser().catch(() => {
-        // Silenciar erros durante atualização automática
-      });
+      syncAndRefresh();
     };
     
     // Atualizar saldo quando a página fica visível novamente
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        refreshUser().catch(() => {
-          // Silenciar erros durante atualização automática
-        });
+        syncAndRefresh();
       }
     };
     
-    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 3 segundos)
+    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 5 segundos)
     const balanceInterval = setInterval(() => {
-      refreshUser().catch(() => {
-        // Silenciar erros durante atualização automática
-      });
-    }, 3000); // 3 segundos durante o jogo - atualização muito frequente
+      syncAndRefresh();
+    }, 5000); // 5 segundos durante o jogo
     
     // Atualizar saldo quando usuário volta para a página (antes de sair do jogo)
     const handleBeforeUnload = () => {
       // Não usar async aqui - beforeunload não espera promises
       try {
-        refreshUser();
+        syncAndRefresh();
       } catch (e) {
         // Silenciar erros
       }
@@ -187,10 +214,8 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      // Atualizar saldo uma última vez ao sair da página do jogo
-      refreshUser().catch(() => {
-        // Silenciar erros durante cleanup
-      });
+      // Sincronizar saldo uma última vez ao sair da página do jogo
+      syncAndRefresh();
     };
   }, [refreshUser]);
   
