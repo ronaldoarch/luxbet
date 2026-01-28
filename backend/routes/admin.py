@@ -1182,56 +1182,56 @@ async def sync_balance_from_igamewin(
                 "igamewin_balance": igamewin_balance,
                 "difference": balance_diff
             }
-    
-    # 4. Transferir diferença
-    if balance_diff > 0:  # IGameWin tem mais saldo - transferir para nosso banco
-        print(f"\n[Sync Balance] 💸 Transferindo R$ {balance_diff:.2f} do IGameWin para nosso banco...")
-        transfer_result = await api.transfer_out(current_user.username, balance_diff)
-        if transfer_result:
-            # Adicionar ao nosso banco
-            current_user.balance += balance_diff
-            db.commit()
-            print(f"[Sync Balance] ✅ Transferência concluída!")
-            print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
-            
-            return {
-                "status": "ok",
-                "message": f"Saldo sincronizado com sucesso. Transferidos R$ {balance_diff:.2f} do IGameWin.",
-                "our_balance_before": our_balance,
-                "our_balance_after": float(current_user.balance),
-                "igamewin_balance": igamewin_balance,
-                "transferred": balance_diff
-            }
-        else:
-            print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Erro ao transferir saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
-            )
-    else:  # Nosso banco tem mais saldo - transferir para IGameWin (caso raro, mas pode acontecer)
-        print(f"\n[Sync Balance] 💸 Transferindo R$ {abs(balance_diff):.2f} do nosso banco para IGameWin...")
-        transfer_result = await api.transfer_in(current_user.username, abs(balance_diff))
-        if transfer_result:
-            # Deduzir do nosso banco
-            current_user.balance += balance_diff  # balance_diff é negativo aqui
-            db.commit()
-            print(f"[Sync Balance] ✅ Transferência concluída!")
-            print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
-            
-            return {
-                "status": "ok",
-                "message": f"Saldo sincronizado com sucesso. Transferidos R$ {abs(balance_diff):.2f} para IGameWin.",
-                "our_balance_before": our_balance,
-                "our_balance_after": float(current_user.balance),
-                "igamewin_balance": igamewin_balance,
-                "transferred": balance_diff
-            }
-        else:
-            print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
-            )
+        
+        # 5. Transferir diferença
+        if balance_diff > 0:  # IGameWin tem mais saldo - transferir para nosso banco
+            print(f"\n[Sync Balance] 💸 Transferindo R$ {balance_diff:.2f} do IGameWin para nosso banco...")
+            transfer_result = await api.transfer_out(current_user.username, balance_diff)
+            if transfer_result:
+                # Adicionar ao nosso banco
+                current_user.balance += balance_diff
+                db.commit()
+                print(f"[Sync Balance] ✅ Transferência concluída!")
+                print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+                
+                return {
+                    "status": "ok",
+                    "message": f"Saldo sincronizado com sucesso. Transferidos R$ {balance_diff:.2f} do IGameWin.",
+                    "our_balance_before": our_balance,
+                    "our_balance_after": float(current_user.balance),
+                    "igamewin_balance": igamewin_balance,
+                    "transferred": balance_diff
+                }
+            else:
+                print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Erro ao transferir saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
+                )
+        else:  # Nosso banco tem mais saldo - transferir para IGameWin (caso raro, mas pode acontecer)
+            print(f"\n[Sync Balance] 💸 Transferindo R$ {abs(balance_diff):.2f} do nosso banco para IGameWin...")
+            transfer_result = await api.transfer_in(current_user.username, abs(balance_diff))
+            if transfer_result:
+                # Deduzir do nosso banco
+                current_user.balance += balance_diff  # balance_diff é negativo aqui
+                db.commit()
+                print(f"[Sync Balance] ✅ Transferência concluída!")
+                print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+                
+                return {
+                    "status": "ok",
+                    "message": f"Saldo sincronizado com sucesso. Transferidos R$ {abs(balance_diff):.2f} para IGameWin.",
+                    "our_balance_before": our_balance,
+                    "our_balance_after": float(current_user.balance),
+                    "igamewin_balance": igamewin_balance,
+                    "transferred": balance_diff
+                }
+            else:
+                print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
+                )
     finally:
         # Sempre liberar o lock, mesmo em caso de erro
         _sync_locks[lock_key] = False
