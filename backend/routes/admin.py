@@ -995,6 +995,14 @@ async def launch_game(
     # O IGameWin vai gerenciar o saldo através do /gold_api (Seamless Mode)
     # ou podemos sincronizar depois, se necessário
     
+    # Log do saldo atual do usuário
+    print("\n" + "="*80)
+    print(f"[Launch Game] 💰 SALDO ATUAL DO USUÁRIO: R$ {current_user.balance}")
+    print(f"[Launch Game] 👤 Usuário: {current_user.username}")
+    print(f"[Launch Game] ⚠️  IMPORTANTE: O IGameWin DEVE chamar /gold_api para sincronizar este saldo!")
+    print(f"[Launch Game] 📍 Endpoint esperado: https://luxbet.site/gold_api ou https://api.luxbet.site/gold_api")
+    print("="*80 + "\n")
+    
     # Gerar URL de lançamento do jogo usando user_code (username)
     print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
     launch_url = await api.launch_game(
@@ -1031,6 +1039,22 @@ async def launch_game(
     
     print(f"[Launch Game] Success - URL length: {len(launch_url)}, starts with: {launch_url[:100]}...")
     print(f"[Launch Game] Full URL: {launch_url}")
+    
+    # Aviso importante sobre Seamless Mode
+    print("\n" + "="*80)
+    print("[Launch Game] ⚠️  AVISO CRÍTICO SOBRE SEAMLESS MODE:")
+    print("[Launch Game] O jogo foi lançado, mas o IGameWin DEVE chamar nosso /gold_api")
+    print("[Launch Game] para obter o saldo e processar transações.")
+    print("[Launch Game] ")
+    print("[Launch Game] Se o saldo no jogo não corresponder ao saldo do usuário (R$ {:.2f}),".format(current_user.balance))
+    print("[Launch Game] verifique no painel do IGameWin:")
+    print("[Launch Game] 1. Campo 'Ponto final do site' deve estar configurado como: https://luxbet.site")
+    print("[Launch Game] 2. Modo deve estar configurado como 'Seamless Mode' (não Transfer ou Continuous)")
+    print("[Launch Game] 3. Aguarde 2-5 minutos após salvar as configurações")
+    print("[Launch Game] ")
+    print("[Launch Game] Procure nos logs por: '⚡⚡⚡ CHAMADA RECEBIDA NO /gold_api ⚡⚡⚡'")
+    print("[Launch Game] Se não aparecer, o IGameWin não está chamando nosso endpoint!")
+    print("="*80 + "\n")
     
     # Validar URL antes de retornar
     if not launch_url.startswith(('http://', 'https://')):
@@ -2065,6 +2089,54 @@ async def test_gold_api():
         "endpoint": "/gold_api",
         "methods": ["POST"],
         "expected_methods": ["user_balance", "transaction"]
+    }
+
+# Endpoint de diagnóstico para verificar configuração do Seamless Mode
+@public_router.get("/diagnostics/seamless")
+async def seamless_diagnostics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Endpoint de diagnóstico para verificar configuração do Seamless Mode"""
+    agent = db.query(IGameWinAgent).filter(IGameWinAgent.is_active == True).first()
+    
+    if not agent:
+        return {
+            "status": "error",
+            "message": "Nenhum agente IGameWin ativo encontrado",
+            "user_balance": float(current_user.balance),
+            "username": current_user.username
+        }
+    
+    return {
+        "status": "ok",
+        "user": {
+            "username": current_user.username,
+            "balance": float(current_user.balance),
+            "balance_formatted": f"R$ {current_user.balance:.2f}"
+        },
+        "igamewin_agent": {
+            "agent_code": agent.agent_code,
+            "api_url": agent.api_url,
+            "is_active": agent.is_active
+        },
+        "gold_api_endpoints": [
+            "https://luxbet.site/gold_api",
+            "https://api.luxbet.site/gold_api",
+            "https://luxbet.site/api/public/gold_api",
+            "https://api.luxbet.site/api/admin/gold_api"
+        ],
+        "configuration_checklist": {
+            "site_endpoint": "Configure no painel IGameWin: 'Ponto final do site' = https://luxbet.site",
+            "mode": "Configure como 'Seamless Mode' (não Transfer ou Continuous)",
+            "wait_time": "Aguarde 2-5 minutos após salvar as configurações",
+            "test_endpoint": "Teste acessando: https://luxbet.site/gold_api (deve retornar JSON)"
+        },
+        "what_to_look_for": {
+            "in_logs": "Procure por: '⚡⚡⚡ CHAMADA RECEBIDA NO /gold_api ⚡⚡⚡'",
+            "when_playing": "Quando você jogar, o IGameWin DEVE chamar /gold_api para obter saldo e processar transações",
+            "if_not_working": "Se não aparecer chamadas ao /gold_api nos logs, o IGameWin não está configurado corretamente"
+        }
     }
 
 # Endpoint também em /api/gold_api para garantir compatibilidade
