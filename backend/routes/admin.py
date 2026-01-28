@@ -1013,7 +1013,7 @@ async def launch_game(
     print(f"[Launch Game]   - IGameWin: R$ {igamewin_balance:.2f}")
     print(f"[Launch Game]   - Diferença: R$ {balance_diff:.2f}")
     
-    if balance_diff > 0.01:  # Transferir se diferença > 1 centavo
+    if balance_diff > 0.01:  # Transferir se diferença > 1 centavo (nosso banco tem mais)
         print(f"\n[Launch Game] 💸 Transferindo R$ {balance_diff:.2f} para o IGameWin...")
         transfer_result = await api.transfer_in(current_user.username, balance_diff)
         if transfer_result:
@@ -1028,18 +1028,12 @@ async def launch_game(
                 status_code=502,
                 detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
             )
-    elif balance_diff < -0.01:  # Se IGameWin tem mais saldo, transferir de volta
-        print(f"\n[Launch Game] 💸 Transferindo R$ {abs(balance_diff):.2f} de volta do IGameWin...")
-        transfer_result = await api.transfer_out(current_user.username, abs(balance_diff))
-        if transfer_result:
-            # Adicionar ao nosso banco
-            current_user.balance += abs(balance_diff)
-            db.commit()
-            print(f"[Launch Game] ✅ Transferência de volta concluída!")
-            print(f"[Launch Game] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
-        else:
-            print(f"[Launch Game] ⚠️  Aviso: Não foi possível transferir saldo de volta: {api.last_error}")
-            # Não bloquear - continuar mesmo assim
+    elif balance_diff < -0.01:  # Se IGameWin tem mais saldo, NÃO transferir de volta
+        # O saldo já está no IGameWin de uma sessão anterior - deixar lá
+        # A sincronização de volta será feita pelo endpoint /sync-balance após o jogo
+        print(f"\n[Launch Game] ℹ️  IGameWin tem mais saldo (R$ {abs(balance_diff):.2f} a mais)")
+        print(f"[Launch Game]    O saldo permanecerá no IGameWin para uso no jogo.")
+        print(f"[Launch Game]    Use /api/public/games/sync-balance após jogar para sincronizar de volta.")
     else:
         print(f"\n[Launch Game] ✅ Saldos já estão sincronizados!")
     
