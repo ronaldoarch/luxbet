@@ -436,12 +436,17 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         
         # Atualizar status do depósito
         if status_transaction == "PAID_OUT":
+            # Verificar se já foi processado para evitar duplicação
             if deposit.status != TransactionStatus.APPROVED:
+                print(f"[Webhook SuitPay] Processando depósito {deposit.id} - Status atual: {deposit.status}, Valor: R$ {deposit.amount:.2f}")
                 deposit.status = TransactionStatus.APPROVED
                 # Adicionar saldo ao usuário
                 user = db.query(User).filter(User.id == deposit.user_id).first()
                 if user:
+                    balance_before = user.balance
                     user.balance += deposit.amount
+                    balance_after = user.balance
+                    print(f"[Webhook SuitPay] Saldo atualizado - Antes: R$ {balance_before:.2f}, Depósito: R$ {deposit.amount:.2f}, Depois: R$ {balance_after:.2f}")
                     
                     # Criar notificação de sucesso
                     notification = Notification(
@@ -454,6 +459,8 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
                         link="/conta"
                     )
                     db.add(notification)
+            else:
+                print(f"[Webhook SuitPay] Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
         elif status_transaction == "CHARGEBACK":
             if deposit.status == TransactionStatus.APPROVED:
                 # Reverter saldo se já foi aprovado
@@ -501,14 +508,19 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         
         # Atualizar status do depósito
         if status_payment == "paid":
+            # Verificar se já foi processado para evitar duplicação
             if deposit.status != TransactionStatus.APPROVED:
+                print(f"[Webhook NXGATE] Processando depósito {deposit.id} - Status atual: {deposit.status}, Valor: R$ {deposit.amount:.2f}")
                 deposit.status = TransactionStatus.APPROVED
                 # Adicionar saldo ao usuário
                 user = db.query(User).filter(User.id == deposit.user_id).first()
                 if user:
+                    balance_before = user.balance
                     user.balance += deposit.amount
+                    balance_after = user.balance
+                    print(f"[Webhook NXGATE] Saldo atualizado - Antes: R$ {balance_before:.2f}, Depósito: R$ {deposit.amount:.2f}, Depois: R$ {balance_after:.2f}")
                     
-                    # Criar notificação de sucesso
+                    # Criar notificação de sucesso (apenas uma vez)
                     notification = Notification(
                         title="Depósito Aprovado!",
                         message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
@@ -519,18 +531,8 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
                         link="/conta"
                     )
                     db.add(notification)
-                    
-                    # Criar notificação de sucesso
-                    notification = Notification(
-                        title="Depósito Aprovado!",
-                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
-                        type=NotificationType.SUCCESS,
-                        user_id=user.id,
-                        is_read=False,
-                        is_active=True,
-                        link="/conta"
-                    )
-                    db.add(notification)
+            else:
+                print(f"[Webhook NXGATE] Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
         
         # Atualizar metadata
         metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}

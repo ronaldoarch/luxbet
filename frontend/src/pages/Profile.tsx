@@ -11,6 +11,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [isAffiliate, setIsAffiliate] = useState(false);
   const [syncingBalance, setSyncingBalance] = useState(false);
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [balanceInfo, setBalanceInfo] = useState<any>(null);
 
   useEffect(() => {
     if (!token) {
@@ -24,8 +26,29 @@ export default function Profile() {
       if (!isAffiliate) {
         checkAffiliate();
       }
+      // Buscar informações de saldo disponível
+      fetchAvailableBalance();
     }
   }, [token, navigate]); // Remover 'user' e 'isAffiliate' das dependências para evitar loops
+
+  const fetchAvailableBalance = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/auth/available-balance`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableBalance(data.available_balance || user?.balance || 0);
+        setBalanceInfo(data);
+      }
+    } catch (err) {
+      // Silenciar erros
+      setAvailableBalance(user?.balance || 0);
+    }
+  };
 
   const checkAffiliate = async () => {
     if (!token || isAffiliate) return; // Não verificar se já é afiliado
@@ -60,11 +83,29 @@ export default function Profile() {
     try {
       const balanceBefore = user?.balance;
       console.log(`[Sync Balance] Atualizando saldo... Saldo atual: R$ ${balanceBefore?.toFixed(2)}`);
-      // Chamar refreshUser - ele atualiza o estado user automaticamente
+      
+      // Sincronizar saldo do IGameWin primeiro
+      try {
+        const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (syncRes.ok) {
+          console.log('[Sync Balance] Saldo do IGameWin sincronizado');
+        }
+      } catch (err) {
+        console.warn('[Sync Balance] Erro ao sincronizar IGameWin:', err);
+      }
+      
+      // Depois atualizar dados do usuário
       await refreshUser();
-      // O estado user será atualizado automaticamente pelo AuthContext
-      // Não precisamos verificar o retorno pois refreshUser retorna void
-      console.log(`[Sync Balance] Solicitação de atualização enviada. O saldo será atualizado automaticamente.`);
+      // Atualizar informações de saldo disponível
+      await fetchAvailableBalance();
+      
+      console.log(`[Sync Balance] Sincronização concluída.`);
     } catch (err) {
       console.error('Erro ao sincronizar saldo:', err);
     } finally {
@@ -111,8 +152,13 @@ export default function Profile() {
               <div>
                 <p className="text-gray-300 text-sm">Saldo Disponível</p>
                 <p className="text-3xl font-bold text-white">
-                  R$ {user.balance.toFixed(2).replace('.', ',')}
+                  R$ {(availableBalance !== null ? availableBalance : user.balance).toFixed(2).replace('.', ',')}
                 </p>
+                {balanceInfo && balanceInfo.needs_sync && (
+                  <p className="text-yellow-400 text-xs mt-1">
+                    ⚠️ Sincronize o saldo do IGameWin para sacar R$ {balanceInfo.total_balance?.toFixed(2).replace('.', ',')}
+                  </p>
+                )}
               </div>
             </div>
             <button

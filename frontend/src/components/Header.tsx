@@ -14,8 +14,9 @@ interface HeaderProps {
 
 export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: HeaderProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchLogo = async () => {
@@ -43,6 +44,36 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
     const interval = setInterval(fetchLogo, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Buscar saldo disponível quando usuário está logado
+  useEffect(() => {
+    if (!user || !token) {
+      setAvailableBalance(null);
+      return;
+    }
+
+    const fetchAvailableBalance = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/auth/available-balance`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableBalance(data.available_balance || user.balance);
+        }
+      } catch (err) {
+        // Silenciar erros - usar saldo do user como fallback
+        setAvailableBalance(user.balance);
+      }
+    };
+
+    fetchAvailableBalance();
+    // Atualizar a cada 10 segundos
+    const interval = setInterval(fetchAvailableBalance, 10000);
+    return () => clearInterval(interval);
+  }, [user, token]);
 
   return (
     <header className="w-full bg-[#0a4d3e] text-white sticky top-0 z-40 shadow-md">
@@ -90,10 +121,11 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
                 <button
                   onClick={() => navigate('/conta')}
                   className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#0d5d4b] hover:bg-[#0f6d5b] rounded-md transition-colors"
+                  title="Ver saldo completo"
                 >
                   <Wallet size={18} className="text-[#d4af37]" />
                   <span className="text-sm font-semibold">
-                    R$ {user.balance.toFixed(2).replace('.', ',')}
+                    R$ {(availableBalance !== null ? availableBalance : user.balance).toFixed(2).replace('.', ',')}
                   </span>
                 </button>
                 {/* Perfil */}

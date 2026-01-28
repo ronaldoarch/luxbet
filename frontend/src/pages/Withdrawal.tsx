@@ -39,11 +39,6 @@ export default function Withdrawal() {
       return;
     }
 
-    if (user.balance < value) {
-      setError('Saldo insuficiente para realizar o saque.');
-      return;
-    }
-
     if (!pixKey.trim()) {
       setError('Digite a chave PIX de destino.');
       return;
@@ -52,6 +47,49 @@ export default function Withdrawal() {
     setLoading(true);
 
     try {
+      // 1. Verificar saldo disponível (pode incluir saldo no IGameWin)
+      const balanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (balanceRes.ok) {
+        const balanceData = await balanceRes.json();
+        
+        // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro
+        if (balanceData.needs_sync) {
+          console.log('[Withdrawal] Sincronizando saldo do IGameWin antes do saque...');
+          const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (syncRes.ok) {
+            console.log('[Withdrawal] Saldo sincronizado com sucesso');
+            // Atualizar dados do usuário após sincronização
+            // O AuthContext atualizará automaticamente
+          }
+        }
+
+        // Verificar saldo disponível após sincronização
+        const availableBalance = balanceData.available_balance || user.balance;
+        if (availableBalance < value) {
+          const totalBalance = balanceData.total_balance || user.balance;
+          if (totalBalance >= value && balanceData.needs_sync) {
+            setError(`Saldo insuficiente no momento. Você tem R$ ${totalBalance.toFixed(2)} no total, mas precisa sincronizar primeiro. Tente novamente em alguns segundos.`);
+          } else {
+            setError(`Saldo insuficiente. Disponível: R$ ${availableBalance.toFixed(2)}`);
+          }
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 2. Processar saque
       const response = await fetch(`${API_URL}/api/public/payments/withdrawal/pix`, {
         method: 'POST',
         headers: {
