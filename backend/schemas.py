@@ -124,7 +124,7 @@ class DepositPixRequest(BaseModel):
     """Request body para criar depósito PIX"""
     amount: float
     payer_name: str
-    payer_tax_id: str
+    payer_tax_id: Optional[str] = None  # CPF será gerado automaticamente se não fornecido
     payer_email: str
     payer_phone: Optional[str] = None
 

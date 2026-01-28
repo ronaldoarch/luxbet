@@ -11,6 +11,7 @@ from nxgate_api import NXGateAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
 from dependencies import get_current_user
 from igamewin_api import get_igamewin_api
+from utils import generate_fake_cpf, clean_cpf
 from datetime import datetime, timedelta
 import json
 import uuid
@@ -101,12 +102,13 @@ async def create_pix_deposit(
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
     
-    # Validar CPF/CNPJ (não pode estar vazio conforme SuitPay)
-    if not request.payer_tax_id or not request.payer_tax_id.strip():
-        raise HTTPException(
-            status_code=400, 
-            detail="CPF/CNPJ é obrigatório para gerar código PIX. Por favor, complete seu cadastro."
-        )
+    # Gerar CPF falso automaticamente se não fornecido
+    payer_tax_id = request.payer_tax_id
+    if not payer_tax_id or not payer_tax_id.strip():
+        # Gerar CPF falso válido para o depósito
+        fake_cpf = generate_fake_cpf()
+        payer_tax_id = clean_cpf(fake_cpf)  # Remover formatação para enviar ao gateway
+        print(f"[Deposit] CPF não fornecido. Gerando CPF falso para depósito: {fake_cpf}")
     
     # Buscar gateway PIX ativo
     gateway = get_active_pix_gateway(db)
@@ -129,7 +131,7 @@ async def create_pix_deposit(
         callback_url = f"{webhook_url}/api/webhooks/nxgate/pix-cashin"
         pix_response = await payment_client.generate_pix_payment(
             nome_pagador=request.payer_name,
-            documento_pagador=request.payer_tax_id,
+            documento_pagador=payer_tax_id,
             valor=request.amount,
             webhook=callback_url
         )
@@ -149,7 +151,7 @@ async def create_pix_deposit(
             due_date=due_date,
             amount=request.amount,
             client_name=request.payer_name,
-            client_document=request.payer_tax_id,
+            client_document=payer_tax_id,
             client_email=request.payer_email,
             client_phone=request.payer_phone,
             callback_url=callback_url

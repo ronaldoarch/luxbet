@@ -49,7 +49,7 @@ export default function Deposit() {
         body: JSON.stringify({
           amount: value,
           payer_name: user.username || user.email,
-          payer_tax_id: user.cpf || '',
+          payer_tax_id: user.cpf || '', // CPF será gerado automaticamente no backend se não fornecido
           payer_email: user.email,
           payer_phone: user.phone || undefined
         })
