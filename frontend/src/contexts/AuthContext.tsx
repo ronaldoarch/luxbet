@@ -58,15 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token || !user) return;
 
-    // Atualizar saldo periodicamente (a cada 5 segundos para atualização mais rápida)
+    // Variável para evitar múltiplas chamadas simultâneas
+    let isFetching = false;
+
+    // Atualizar saldo periodicamente (a cada 15 segundos para evitar sobrecarga)
     const balanceInterval = setInterval(() => {
-      if (token) {
+      if (token && !isFetching) {
+        isFetching = true;
         // Usar catch para evitar que erros interrompam o intervalo
-        fetchUser(token).catch(() => {
-          // Silenciar erros durante atualização automática
+        fetchUser(token).finally(() => {
+          isFetching = false;
         });
       }
-    }, 5000); // 5 segundos - atualização mais frequente
+    }, 15000); // 15 segundos - reduzido de 5 para evitar race conditions
 
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {

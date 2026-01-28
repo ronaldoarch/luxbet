@@ -190,10 +190,18 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
       }
     };
     
-    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 5 segundos)
+    // Variável para evitar múltiplas chamadas simultâneas
+    let isSyncing = false;
+
+    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 10 segundos)
     const balanceInterval = setInterval(() => {
-      syncAndRefresh();
-    }, 5000); // 5 segundos durante o jogo
+      if (!isSyncing) {
+        isSyncing = true;
+        syncAndRefresh().finally(() => {
+          isSyncing = false;
+        });
+      }
+    }, 10000); // 10 segundos durante o jogo - reduzido de 5 para evitar race conditions
     
     // Atualizar saldo quando usuário volta para a página (antes de sair do jogo)
     const handleBeforeUnload = () => {

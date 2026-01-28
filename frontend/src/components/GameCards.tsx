@@ -113,7 +113,7 @@ export default function GameCards() {
             Array.from({ length: 5 }).map((_, idx) => (
               <div
                 key={idx}
-                className="flex-shrink-0 w-36 h-36 bg-gray-800/50 rounded-2xl animate-pulse"
+                className="flex-shrink-0 w-28 h-28 bg-gray-800/50 rounded-xl animate-pulse"
               />
             ))
           ) : games.length === 0 ? (
@@ -127,7 +127,7 @@ export default function GameCards() {
                 <a
                   key={game.id}
                   href={gameUrl}
-                  className="flex-shrink-0 w-36 h-36 bg-gradient-to-br from-gray-800/90 via-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl overflow-hidden cursor-pointer hover:scale-110 hover:-translate-y-2 transition-all duration-300 relative border border-gray-700/50 hover:border-[#d4af37]/50 hover:shadow-2xl hover:shadow-[#d4af37]/20 group"
+                  className="flex-shrink-0 w-28 h-28 bg-gradient-to-br from-gray-800/90 via-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-xl overflow-hidden cursor-pointer hover:scale-105 hover:-translate-y-1 transition-all duration-300 relative border border-gray-700/50 hover:border-[#d4af37]/50 hover:shadow-xl hover:shadow-[#d4af37]/20 group"
                 >
                   {/* Banner do jogo */}
                   {game.banner ? (
@@ -156,17 +156,17 @@ export default function GameCards() {
                   {/* Tag */}
                   {game.tag && (
                     <div
-                      className={`absolute top-2 right-2 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide ${getTagStyles(
+                      className={`absolute top-1.5 right-1.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide ${getTagStyles(
                         game.tagColor
-                      )} z-10 animate-pulse shadow-lg`}
+                      )} z-10 animate-pulse shadow-md`}
                     >
                       {game.tag}
                     </div>
                   )}
                   
                   {/* Título do jogo */}
-                  <div className="absolute bottom-0 left-0 right-0 p-3 z-10">
-                    <div className="text-white text-xs font-bold text-center line-clamp-2 leading-tight group-hover:text-[#d4af37] transition-colors duration-300 drop-shadow-lg">
+                  <div className="absolute bottom-0 left-0 right-0 p-2 z-10">
+                    <div className="text-white text-[10px] font-bold text-center line-clamp-2 leading-tight group-hover:text-[#d4af37] transition-colors duration-300 drop-shadow-lg">
                       {game.title}
                     </div>
                   </div>

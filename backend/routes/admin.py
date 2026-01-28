@@ -1110,6 +1110,9 @@ async def launch_game(
     }
 
 
+# Cache para evitar sincronizações simultâneas do mesmo usuário
+_sync_locks: Dict[str, bool] = {}
+
 @public_router.post("/games/sync-balance")
 async def sync_balance_from_igamewin(
     db: Session = Depends(get_db),
@@ -1118,50 +1121,67 @@ async def sync_balance_from_igamewin(
     """
     Sincroniza o saldo do IGameWin de volta para nosso banco de dados.
     Use este endpoint após jogar para atualizar o saldo do usuário.
+    Protegido contra chamadas simultâneas para evitar race conditions.
     """
-    api = get_igamewin_api(db)
-    if not api:
-        raise HTTPException(
-            status_code=400,
-            detail="Nenhum agente IGameWin ativo configurado"
-        )
-    
-    print("\n" + "="*80)
-    print(f"[Sync Balance] 🔄 Sincronizando saldo do IGameWin")
-    print(f"[Sync Balance] 👤 Usuário: {current_user.username}")
-    print("="*80 + "\n")
-    
-    # 1. Obter saldo atual do nosso banco
-    our_balance = float(current_user.balance)
-    print(f"[Sync Balance] Saldo no nosso banco: R$ {our_balance:.2f}")
-    
-    # 2. Obter saldo atual do IGameWin
-    igamewin_balance = await api.get_user_balance(current_user.username)
-    if igamewin_balance is None:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Não foi possível obter saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
-        )
-    
-    print(f"[Sync Balance] Saldo no IGameWin: R$ {igamewin_balance:.2f}")
-    
-    # 3. Calcular diferença
-    balance_diff = igamewin_balance - our_balance
-    
-    print(f"\n[Sync Balance] 📊 Análise:")
-    print(f"[Sync Balance]   - Nosso banco: R$ {our_balance:.2f}")
-    print(f"[Sync Balance]   - IGameWin: R$ {igamewin_balance:.2f}")
-    print(f"[Sync Balance]   - Diferença: R$ {balance_diff:.2f}")
-    
-    if abs(balance_diff) < 0.01:  # Diferença menor que 1 centavo
-        print(f"\n[Sync Balance] ✅ Saldos já estão sincronizados!")
+    # Verificar se já está sincronizando para este usuário
+    lock_key = f"sync_{current_user.username}"
+    if _sync_locks.get(lock_key, False):
+        print(f"[Sync Balance] ⚠️  Sincronização já em andamento para {current_user.username}. Ignorando chamada duplicada.")
         return {
-            "status": "ok",
-            "message": "Saldos já estão sincronizados",
-            "our_balance": our_balance,
-            "igamewin_balance": igamewin_balance,
-            "difference": balance_diff
+            "status": "pending",
+            "message": "Sincronização já em andamento. Aguarde alguns segundos."
         }
+    
+    # Bloquear sincronização para este usuário
+    _sync_locks[lock_key] = True
+    
+    try:
+        api = get_igamewin_api(db)
+        if not api:
+            raise HTTPException(
+                status_code=400,
+                detail="Nenhum agente IGameWin ativo configurado"
+            )
+        
+        print("\n" + "="*80)
+        print(f"[Sync Balance] 🔄 Sincronizando saldo do IGameWin")
+        print(f"[Sync Balance] 👤 Usuário: {current_user.username}")
+        print("="*80 + "\n")
+        
+        # 1. Obter saldo atual do nosso banco (refresh para garantir dados atualizados)
+        db.refresh(current_user)
+        our_balance = float(current_user.balance)
+        print(f"[Sync Balance] Saldo no nosso banco: R$ {our_balance:.2f}")
+        
+        # 2. Obter saldo atual do IGameWin
+        igamewin_balance = await api.get_user_balance(current_user.username)
+        if igamewin_balance is None:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Não foi possível obter saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
+            )
+        
+        print(f"[Sync Balance] Saldo no IGameWin: R$ {igamewin_balance:.2f}")
+        
+        # 3. Calcular diferença
+        balance_diff = igamewin_balance - our_balance
+        
+        print(f"\n[Sync Balance] 📊 Análise:")
+        print(f"[Sync Balance]   - Nosso banco: R$ {our_balance:.2f}")
+        print(f"[Sync Balance]   - IGameWin: R$ {igamewin_balance:.2f}")
+        print(f"[Sync Balance]   - Diferença: R$ {balance_diff:.2f}")
+        
+        # 4. Validar diferença - ignorar diferenças muito pequenas (menos de 5 centavos)
+        # Isso evita transferências desnecessárias por arredondamentos ou pequenas discrepâncias
+        if abs(balance_diff) < 0.05:  # Diferença menor que 5 centavos
+            print(f"\n[Sync Balance] ✅ Saldos já estão sincronizados! (diferença de R$ {abs(balance_diff):.2f} é muito pequena)")
+            return {
+                "status": "ok",
+                "message": "Saldos já estão sincronizados",
+                "our_balance": our_balance,
+                "igamewin_balance": igamewin_balance,
+                "difference": balance_diff
+            }
     
     # 4. Transferir diferença
     if balance_diff > 0:  # IGameWin tem mais saldo - transferir para nosso banco

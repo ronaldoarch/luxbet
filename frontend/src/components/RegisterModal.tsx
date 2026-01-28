@@ -99,31 +99,9 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
         {/* Form */}
         <div className="px-8 pb-8 space-y-4">
-          {/* CPF */}
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">CPF</label>
-            <div className="relative">
-              <input
-                type="text"
-                name="cpf"
-                value={formData.cpf}
-                onChange={handleChange}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
-                placeholder="000.000.000-00"
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
-                aria-label="Verificar CPF"
-              >
-                <Search size={20} />
-              </button>
-            </div>
-          </div>
-
           {/* Nome completo */}
           <div>
-            <label className="block text-gray-300 text-sm mb-2">Nome completo</label>
+            <label className="block text-gray-300 text-sm mb-2">Nome completo <span className="text-red-400">*</span></label>
             <input
               type="text"
               name="nome"
@@ -131,12 +109,14 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
               onChange={handleChange}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
               placeholder="Seu nome completo"
+              required
+              autoFocus
             />
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-gray-300 text-sm mb-2">E-mail</label>
+            <label className="block text-gray-300 text-sm mb-2">E-mail <span className="text-red-400">*</span></label>
             <input
               type="email"
               name="email"
@@ -144,12 +124,13 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
               onChange={handleChange}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
               placeholder="seu@email.com"
+              required
             />
           </div>
 
-          {/* Telefone */}
+          {/* Telefone - Opcional */}
           <div>
-            <label className="block text-gray-300 text-sm mb-2">+55 Telefone com DDD</label>
+            <label className="block text-gray-300 text-sm mb-2">Telefone <span className="text-gray-500 text-xs">(opcional)</span></label>
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center w-12 h-12 bg-gray-800 border border-gray-700 rounded-lg">
                 <span className="text-xl">🇧🇷</span>
@@ -165,17 +146,32 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
             </div>
           </div>
 
+          {/* CPF - Opcional */}
+          <div>
+            <label className="block text-gray-300 text-sm mb-2">CPF <span className="text-gray-500 text-xs">(opcional)</span></label>
+            <input
+              type="text"
+              name="cpf"
+              value={formData.cpf}
+              onChange={handleChange}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
+              placeholder="000.000.000-00"
+            />
+          </div>
+
           {/* Password */}
           <div>
-            <label className="block text-gray-300 text-sm mb-2">Senha</label>
+            <label className="block text-gray-300 text-sm mb-2">Senha <span className="text-red-400">*</span></label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 name="senha"
                 value={formData.senha}
                 onChange={handleChange}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
-                placeholder="Sua senha"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
+              placeholder="Mínimo 6 caracteres"
+              required
+              minLength={6}
               />
               <button
                 type="button"
@@ -221,7 +217,11 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                 return;
               }
               if (!formData.nome || !formData.email || !formData.senha) {
-                setError('Preencha todos os campos obrigatórios');
+                setError('Preencha todos os campos obrigatórios (Nome, E-mail e Senha)');
+                return;
+              }
+              if (formData.senha.length < 6) {
+                setError('A senha deve ter no mínimo 6 caracteres');
                 return;
               }
               setError('');
