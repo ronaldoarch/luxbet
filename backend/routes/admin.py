@@ -979,11 +979,15 @@ async def launch_game(
             detail="provider_code é obrigatório. Não foi possível determinar o provider do jogo."
         )
     
-    # VERSÃO SIMPLIFICADA PARA TESTE: Apenas garantir que usuário existe, sem verificar/transferir saldo
-    # Isso pode resolver problemas de CORS se estiverem relacionados às operações de saldo
-    # TODO: Se funcionar, podemos manter assim ou adicionar verificação de saldo de forma diferente
+    # MODO TRANSFER: Transferir saldo do nosso banco para o IGameWin antes de lançar
+    print("\n" + "="*80)
+    print(f"[Launch Game] 🔄 MODO TRANSFER - Sincronizando saldo")
+    print(f"[Launch Game] 👤 Usuário: {current_user.username}")
+    print(f"[Launch Game] 💰 Saldo no nosso banco: R$ {current_user.balance}")
+    print("="*80 + "\n")
     
-    print(f"[Launch Game] Simplified mode - ensuring user exists: {current_user.username}")
+    # 1. Garantir que o usuário existe no IGameWin
+    print(f"[Launch Game] Criando/verificando usuário no IGameWin...")
     user_created = await api.create_user(current_user.username, is_demo=False)
     if not user_created:
         # Se o erro for DUPLICATED_USER, o usuário já existe - continuar normalmente
@@ -991,16 +995,61 @@ async def launch_game(
             print(f"[Launch Game] Warning: Could not create user: {api.last_error}")
             # Não bloquear - tentar lançar mesmo assim (usuário pode já existir)
     
-    # NÃO fazer verificação de saldo nem transferências antes de lançar
-    # O IGameWin vai gerenciar o saldo através do /gold_api (Seamless Mode)
-    # ou podemos sincronizar depois, se necessário
+    # 2. Verificar saldo atual do usuário no IGameWin
+    print(f"[Launch Game] Verificando saldo do usuário no IGameWin...")
+    igamewin_balance = await api.get_user_balance(current_user.username)
+    if igamewin_balance is None:
+        print(f"[Launch Game] Warning: Não foi possível obter saldo do IGameWin, assumindo 0.0")
+        igamewin_balance = 0.0
+    else:
+        print(f"[Launch Game] Saldo no IGameWin: R$ {igamewin_balance}")
     
-    # Log do saldo atual do usuário
+    # 3. Calcular diferença e transferir se necessário
+    our_balance = float(current_user.balance)
+    balance_diff = our_balance - igamewin_balance
+    
+    print(f"\n[Launch Game] 📊 Análise de saldo:")
+    print(f"[Launch Game]   - Nosso banco: R$ {our_balance:.2f}")
+    print(f"[Launch Game]   - IGameWin: R$ {igamewin_balance:.2f}")
+    print(f"[Launch Game]   - Diferença: R$ {balance_diff:.2f}")
+    
+    if balance_diff > 0.01:  # Transferir se diferença > 1 centavo
+        print(f"\n[Launch Game] 💸 Transferindo R$ {balance_diff:.2f} para o IGameWin...")
+        transfer_result = await api.transfer_in(current_user.username, balance_diff)
+        if transfer_result:
+            # Deduzir do nosso banco
+            current_user.balance -= balance_diff
+            db.commit()
+            print(f"[Launch Game] ✅ Transferência concluída!")
+            print(f"[Launch Game] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+        else:
+            print(f"[Launch Game] ❌ Erro na transferência: {api.last_error}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
+            )
+    elif balance_diff < -0.01:  # Se IGameWin tem mais saldo, transferir de volta
+        print(f"\n[Launch Game] 💸 Transferindo R$ {abs(balance_diff):.2f} de volta do IGameWin...")
+        transfer_result = await api.transfer_out(current_user.username, abs(balance_diff))
+        if transfer_result:
+            # Adicionar ao nosso banco
+            current_user.balance += abs(balance_diff)
+            db.commit()
+            print(f"[Launch Game] ✅ Transferência de volta concluída!")
+            print(f"[Launch Game] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+        else:
+            print(f"[Launch Game] ⚠️  Aviso: Não foi possível transferir saldo de volta: {api.last_error}")
+            # Não bloquear - continuar mesmo assim
+    else:
+        print(f"\n[Launch Game] ✅ Saldos já estão sincronizados!")
+    
+    # 4. Verificar saldo final no IGameWin para confirmar
+    final_igamewin_balance = await api.get_user_balance(current_user.username)
+    if final_igamewin_balance is not None:
+        print(f"[Launch Game] Saldo final no IGameWin: R$ {final_igamewin_balance:.2f}")
+    
     print("\n" + "="*80)
-    print(f"[Launch Game] 💰 SALDO ATUAL DO USUÁRIO: R$ {current_user.balance}")
-    print(f"[Launch Game] 👤 Usuário: {current_user.username}")
-    print(f"[Launch Game] ⚠️  IMPORTANTE: O IGameWin DEVE chamar /gold_api para sincronizar este saldo!")
-    print(f"[Launch Game] 📍 Endpoint esperado: https://luxbet.site/gold_api ou https://api.luxbet.site/gold_api")
+    print(f"[Launch Game] ✅ Saldo sincronizado! Pronto para lançar o jogo.")
     print("="*80 + "\n")
     
     # Gerar URL de lançamento do jogo usando user_code (username)
@@ -1040,20 +1089,13 @@ async def launch_game(
     print(f"[Launch Game] Success - URL length: {len(launch_url)}, starts with: {launch_url[:100]}...")
     print(f"[Launch Game] Full URL: {launch_url}")
     
-    # Aviso importante sobre Seamless Mode
+    # Aviso sobre Transfer Mode
     print("\n" + "="*80)
-    print("[Launch Game] ⚠️  AVISO CRÍTICO SOBRE SEAMLESS MODE:")
-    print("[Launch Game] O jogo foi lançado, mas o IGameWin DEVE chamar nosso /gold_api")
-    print("[Launch Game] para obter o saldo e processar transações.")
+    print("[Launch Game] ✅ JOGO LANÇADO EM MODO TRANSFER")
     print("[Launch Game] ")
-    print("[Launch Game] Se o saldo no jogo não corresponder ao saldo do usuário (R$ {:.2f}),".format(current_user.balance))
-    print("[Launch Game] verifique no painel do IGameWin:")
-    print("[Launch Game] 1. Campo 'Ponto final do site' deve estar configurado como: https://luxbet.site")
-    print("[Launch Game] 2. Modo deve estar configurado como 'Seamless Mode' (não Transfer ou Continuous)")
-    print("[Launch Game] 3. Aguarde 2-5 minutos após salvar as configurações")
-    print("[Launch Game] ")
-    print("[Launch Game] Procure nos logs por: '⚡⚡⚡ CHAMADA RECEBIDA NO /gold_api ⚡⚡⚡'")
-    print("[Launch Game] Se não aparecer, o IGameWin não está chamando nosso endpoint!")
+    print("[Launch Game] O saldo foi transferido para o IGameWin antes de lançar o jogo.")
+    print("[Launch Game] Após jogar, use o endpoint /api/public/games/sync-balance para")
+    print("[Launch Game] sincronizar o saldo de volta do IGameWin para nosso banco.")
     print("="*80 + "\n")
     
     # Validar URL antes de retornar
@@ -1072,6 +1114,110 @@ async def launch_game(
         "username": current_user.username,
         "user_code": current_user.username
     }
+
+
+@public_router.post("/games/sync-balance")
+async def sync_balance_from_igamewin(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Sincroniza o saldo do IGameWin de volta para nosso banco de dados.
+    Use este endpoint após jogar para atualizar o saldo do usuário.
+    """
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    print("\n" + "="*80)
+    print(f"[Sync Balance] 🔄 Sincronizando saldo do IGameWin")
+    print(f"[Sync Balance] 👤 Usuário: {current_user.username}")
+    print("="*80 + "\n")
+    
+    # 1. Obter saldo atual do nosso banco
+    our_balance = float(current_user.balance)
+    print(f"[Sync Balance] Saldo no nosso banco: R$ {our_balance:.2f}")
+    
+    # 2. Obter saldo atual do IGameWin
+    igamewin_balance = await api.get_user_balance(current_user.username)
+    if igamewin_balance is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Não foi possível obter saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
+        )
+    
+    print(f"[Sync Balance] Saldo no IGameWin: R$ {igamewin_balance:.2f}")
+    
+    # 3. Calcular diferença
+    balance_diff = igamewin_balance - our_balance
+    
+    print(f"\n[Sync Balance] 📊 Análise:")
+    print(f"[Sync Balance]   - Nosso banco: R$ {our_balance:.2f}")
+    print(f"[Sync Balance]   - IGameWin: R$ {igamewin_balance:.2f}")
+    print(f"[Sync Balance]   - Diferença: R$ {balance_diff:.2f}")
+    
+    if abs(balance_diff) < 0.01:  # Diferença menor que 1 centavo
+        print(f"\n[Sync Balance] ✅ Saldos já estão sincronizados!")
+        return {
+            "status": "ok",
+            "message": "Saldos já estão sincronizados",
+            "our_balance": our_balance,
+            "igamewin_balance": igamewin_balance,
+            "difference": balance_diff
+        }
+    
+    # 4. Transferir diferença
+    if balance_diff > 0:  # IGameWin tem mais saldo - transferir para nosso banco
+        print(f"\n[Sync Balance] 💸 Transferindo R$ {balance_diff:.2f} do IGameWin para nosso banco...")
+        transfer_result = await api.transfer_out(current_user.username, balance_diff)
+        if transfer_result:
+            # Adicionar ao nosso banco
+            current_user.balance += balance_diff
+            db.commit()
+            print(f"[Sync Balance] ✅ Transferência concluída!")
+            print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+            
+            return {
+                "status": "ok",
+                "message": f"Saldo sincronizado com sucesso. Transferidos R$ {balance_diff:.2f} do IGameWin.",
+                "our_balance_before": our_balance,
+                "our_balance_after": float(current_user.balance),
+                "igamewin_balance": igamewin_balance,
+                "transferred": balance_diff
+            }
+        else:
+            print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Erro ao transferir saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
+            )
+    else:  # Nosso banco tem mais saldo - transferir para IGameWin (caso raro, mas pode acontecer)
+        print(f"\n[Sync Balance] 💸 Transferindo R$ {abs(balance_diff):.2f} do nosso banco para IGameWin...")
+        transfer_result = await api.transfer_in(current_user.username, abs(balance_diff))
+        if transfer_result:
+            # Deduzir do nosso banco
+            current_user.balance += balance_diff  # balance_diff é negativo aqui
+            db.commit()
+            print(f"[Sync Balance] ✅ Transferência concluída!")
+            print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+            
+            return {
+                "status": "ok",
+                "message": f"Saldo sincronizado com sucesso. Transferidos R$ {abs(balance_diff):.2f} para IGameWin.",
+                "our_balance_before": our_balance,
+                "our_balance_after": float(current_user.balance),
+                "igamewin_balance": igamewin_balance,
+                "transferred": balance_diff
+            }
+        else:
+            print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
+            )
 
 
 # ========== STATS ==========
