@@ -1232,6 +1232,9 @@ async def sync_balance_from_igamewin(
                 status_code=502,
                 detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
             )
+    finally:
+        # Sempre liberar o lock, mesmo em caso de erro
+        _sync_locks[lock_key] = False
 
 
 # ========== STATS ==========
