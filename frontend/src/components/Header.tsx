@@ -117,14 +117,14 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
           <div className="flex items-center gap-2 md:gap-3">
             {user ? (
               <>
-                {/* Saldo */}
+                {/* Saldo - Mobile e Desktop */}
                 <button
                   onClick={() => navigate('/conta')}
-                  className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#0d5d4b] hover:bg-[#0f6d5b] rounded-md transition-colors"
+                  className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 bg-[#0d5d4b] hover:bg-[#0f6d5b] rounded-md transition-colors"
                   title="Ver saldo completo"
                 >
-                  <Wallet size={18} className="text-[#d4af37]" />
-                  <span className="text-sm font-semibold">
+                  <Wallet size={16} className="md:w-[18px] md:h-[18px] text-[#d4af37]" />
+                  <span className="text-xs md:text-sm font-semibold whitespace-nowrap">
                     R$ {(availableBalance !== null ? availableBalance : user.balance).toFixed(2).replace('.', ',')}
                   </span>
                 </button>
