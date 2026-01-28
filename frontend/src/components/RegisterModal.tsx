@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Eye, EyeOff, Search } from 'lucide-react';
+import { X, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -17,9 +17,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
   const [loading, setLoading] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    cpf: '',
     nome: '',
-    email: '',
     telefone: '',
     senha: '',
     termos: false,
@@ -114,23 +112,9 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
             />
           </div>
 
-          {/* Email */}
+          {/* Telefone */}
           <div>
-            <label className="block text-gray-300 text-sm mb-2">E-mail <span className="text-red-400">*</span></label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
-              placeholder="seu@email.com"
-              required
-            />
-          </div>
-
-          {/* Telefone - Opcional */}
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">Telefone <span className="text-gray-500 text-xs">(opcional)</span></label>
+            <label className="block text-gray-300 text-sm mb-2">Telefone <span className="text-red-400">*</span></label>
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center w-12 h-12 bg-gray-800 border border-gray-700 rounded-lg">
                 <span className="text-xl">🇧🇷</span>
@@ -142,21 +126,9 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                 onChange={handleChange}
                 className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
                 placeholder="(00) 00000-0000"
+                required
               />
             </div>
-          </div>
-
-          {/* CPF - Opcional */}
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">CPF <span className="text-gray-500 text-xs">(opcional)</span></label>
-            <input
-              type="text"
-              name="cpf"
-              value={formData.cpf}
-              onChange={handleChange}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
-              placeholder="000.000.000-00"
-            />
           </div>
 
           {/* Password */}
@@ -216,8 +188,8 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                 setError('Você precisa aceitar os Termos e Condições');
                 return;
               }
-              if (!formData.nome || !formData.email || !formData.senha) {
-                setError('Preencha todos os campos obrigatórios (Nome, E-mail e Senha)');
+              if (!formData.nome || !formData.telefone || !formData.senha) {
+                setError('Preencha todos os campos obrigatórios (Nome, Telefone e Senha)');
                 return;
               }
               if (formData.senha.length < 6) {
@@ -227,12 +199,15 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
               setError('');
               setLoading(true);
               try {
+                // Usar telefone como username e email temporário
+                const username = formData.telefone.replace(/\D/g, ''); // Remove caracteres não numéricos
+                const email = `${username}@luxbet.temp`; // Email temporário baseado no telefone
+                
                 await register({
-                  username: formData.nome.toLowerCase().replace(/\s+/g, '_'),
-                  email: formData.email,
+                  username: username,
+                  email: email,
                   password: formData.senha,
-                  cpf: formData.cpf || undefined,
-                  phone: formData.telefone || undefined,
+                  phone: formData.telefone,
                 });
                 onClose();
               } catch (err: any) {
