@@ -27,18 +27,36 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Username already registered"
         )
     
-    # Verificar se email já existe
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+    # Verificar se email já existe (apenas se fornecido)
+    if user_data.email:
+        existing_user = db.query(User).filter(User.email == user_data.email).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+    
+    # Gerar email temporário se não fornecido (baseado no telefone ou username)
+    import re
+    email = user_data.email
+    if not email:
+        # Usar telefone ou username para gerar email temporário único
+        identifier = user_data.phone or user_data.username
+        # Remove caracteres não numéricos do telefone
+        clean_identifier = re.sub(r'\D', '', identifier) if identifier else user_data.username
+        # Garantir que o email seja único adicionando timestamp se necessário
+        import time
+        email = f"{clean_identifier}_{int(time.time())}@luxbet.temp"
+        
+        # Verificar se o email temporário já existe (improvável, mas verificar)
+        existing_temp_email = db.query(User).filter(User.email == email).first()
+        if existing_temp_email:
+            email = f"{clean_identifier}_{int(time.time() * 1000)}@luxbet.temp"
     
     # Criar novo usuário
     new_user = User(
         username=user_data.username,
-        email=user_data.email,
+        email=email,
         cpf=user_data.cpf,
         phone=user_data.phone,
         password_hash=get_password_hash(user_data.password),
