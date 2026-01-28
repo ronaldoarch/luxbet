@@ -167,13 +167,13 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
       href={`/jogo/${game.code || game.id}`}
       className="group relative bg-gradient-to-br from-gray-800/90 via-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-xl overflow-hidden border border-gray-700/50 hover:border-[#d4af37]/60 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-[#d4af37]/20 flex flex-col"
     >
-      <div className="bg-gradient-to-br from-gray-700/50 to-gray-800/50 flex items-center justify-center relative overflow-hidden w-full" style={{ minHeight: '120px', maxHeight: '180px' }}>
+      <div className="bg-gradient-to-br from-gray-700/50 to-gray-800/50 flex items-center justify-center relative overflow-hidden w-full flex-shrink-0 py-2">
         <div className="absolute inset-0 bg-gradient-to-br from-[#d4af37]/0 to-transparent group-hover:from-[#d4af37]/10 group-hover:to-transparent transition-all duration-300"></div>
         {game.banner ? (
           <img
             src={game.banner}
             alt={game.title}
-            className="w-full h-auto object-contain max-h-[180px]"
+            className="w-full h-auto object-contain"
             loading="lazy"
             decoding="async"
             onError={(e) => {
@@ -183,7 +183,7 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
             }}
           />
         ) : (
-          <div className="text-3xl md:text-4xl group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 relative z-10">🎮</div>
+          <div className="text-2xl md:text-3xl group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 relative z-10 py-8">🎮</div>
         )}
         <button
           className="absolute top-3 right-3 p-2 bg-black/70 backdrop-blur-sm rounded-full hover:bg-red-600/80 transition-all duration-200 opacity-0 group-hover:opacity-100 z-20 hover:scale-110"
@@ -195,10 +195,10 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
           <Heart size={18} className="text-white" />
         </button>
       </div>
-      <div className="p-3 bg-gradient-to-b from-gray-900/90 to-gray-950/90 flex-1 flex flex-col justify-center">
-        <h3 className="text-white font-bold text-xs md:text-sm truncate group-hover:text-[#d4af37] transition-colors duration-300">{game.title}</h3>
+      <div className="p-2 md:p-3 bg-gradient-to-b from-gray-900/90 to-gray-950/90 flex-1 flex flex-col justify-center min-h-[60px]">
+        <h3 className="text-white font-bold text-[10px] md:text-xs lg:text-sm truncate group-hover:text-[#d4af37] transition-colors duration-300 leading-tight">{game.title}</h3>
         {game.provider && (
-          <p className="text-gray-400 text-[10px] md:text-xs mt-1 font-medium uppercase tracking-wide">{game.provider}</p>
+          <p className="text-gray-400 text-[9px] md:text-[10px] lg:text-xs mt-0.5 md:mt-1 font-medium uppercase tracking-wide truncate">{game.provider}</p>
         )}
       </div>
     </a>
@@ -240,12 +240,13 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+        <div className="grid grid-cols-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-3">
           {loading && games.length === 0 && (
             <>
-              <div className="bg-gray-800/50 rounded-xl animate-pulse" style={{ minHeight: '180px' }}></div>
-              <div className="bg-gray-800/50 rounded-xl animate-pulse" style={{ minHeight: '180px' }}></div>
-              <div className="bg-gray-800/50 rounded-xl animate-pulse" style={{ minHeight: '180px' }}></div>
+              <div className="bg-gray-800/50 rounded-xl animate-pulse h-[200px]"></div>
+              <div className="bg-gray-800/50 rounded-xl animate-pulse h-[200px]"></div>
+              <div className="bg-gray-800/50 rounded-xl animate-pulse h-[200px]"></div>
+              <div className="bg-gray-800/50 rounded-xl animate-pulse h-[200px]"></div>
             </>
           )}
           {!loading && displayedGames.map(renderGameCard)}
@@ -282,7 +283,7 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
                         </span>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 md:gap-4">
+                    <div className="grid grid-cols-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
                       {limitedGames.map(renderGameCard)}
                     </div>
                   </div>
