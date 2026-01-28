@@ -77,34 +77,34 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
 
   return (
     <header className="w-full bg-[#0a4d3e] text-white sticky top-0 z-40 shadow-md">
-      <div className="container mx-auto px-3 md:px-4 py-2 md:py-3">
-        <div className="flex items-center justify-between">
+      <div className="w-full px-2 md:px-4 py-2 md:py-3">
+        <div className="flex items-center justify-between gap-1 md:gap-3">
           {/* Logo e Menu Mobile */}
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-1 md:gap-3 flex-shrink-0">
             {onMenuClick && (
               <button
                 onClick={onMenuClick}
-                className="md:hidden p-1.5 hover:bg-[#0d5d4b] rounded transition-colors"
+                className="md:hidden p-1 hover:bg-[#0d5d4b] rounded transition-colors flex-shrink-0"
                 aria-label="Abrir menu"
               >
-                <MenuIcon size={20} />
+                <MenuIcon size={18} />
               </button>
             )}
-            <a href="/" className="flex items-center gap-1 md:gap-2 hover:opacity-80 transition-opacity">
+            <a href="/" className="flex items-center gap-1 hover:opacity-80 transition-opacity flex-shrink-0">
               {logoUrl ? (
-                <img src={logoUrl} alt="Lux Bet" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
+                <img src={logoUrl} alt="Lux Bet" className="w-8 h-8 md:w-12 md:h-12 object-contain" />
               ) : (
                 <>
-                  <div className="text-lg md:text-2xl font-bold tracking-tight">LUX</div>
-                  <div className="text-base md:text-xl font-semibold hidden sm:block">BET</div>
+                  <div className="text-base md:text-2xl font-bold tracking-tight">LUX</div>
+                  <div className="text-sm md:text-xl font-semibold hidden sm:block">BET</div>
                 </>
               )}
-              <Gift className="text-[#d4af37] w-4 h-4 md:w-5 md:h-5" />
+              <Gift className="text-[#d4af37] w-3 h-3 md:w-5 md:h-5 flex-shrink-0" />
             </a>
           </div>
           
           {/* Navegação CASSINO - Na mesma linha */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-6 flex-shrink-0">
             <a 
               href="/cassino" 
               className="py-2 px-3 border-b-2 border-[#ff6b35] text-white font-medium text-sm md:text-base hover:text-[#d4af37] transition-colors"
@@ -114,40 +114,40 @@ export default function Header({ onMenuClick, onLoginClick, onRegisterClick }: H
           </nav>
 
           {/* Botões de Ação */}
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-1 md:gap-3 flex-shrink-0 min-w-0">
             {user ? (
               <>
                 {/* Saldo - Mobile e Desktop */}
                 <button
                   onClick={() => navigate('/conta')}
-                  className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 bg-[#0d5d4b] hover:bg-[#0f6d5b] rounded-md transition-colors"
+                  className="flex items-center gap-1 md:gap-2 px-1.5 md:px-3 py-1 md:py-1.5 bg-[#0d5d4b] hover:bg-[#0f6d5b] rounded-md transition-colors flex-shrink-0"
                   title="Ver saldo completo"
                 >
-                  <Wallet size={16} className="md:w-[18px] md:h-[18px] text-[#d4af37]" />
-                  <span className="text-xs md:text-sm font-semibold whitespace-nowrap">
+                  <Wallet size={14} className="md:w-[18px] md:h-[18px] text-[#d4af37] flex-shrink-0" />
+                  <span className="text-[10px] md:text-sm font-semibold whitespace-nowrap">
                     R$ {(availableBalance !== null ? availableBalance : user.balance).toFixed(2).replace('.', ',')}
                   </span>
                 </button>
                 {/* Perfil */}
                 <button
                   onClick={() => navigate('/conta')}
-                  className="p-2 hover:bg-[#0d5d4b] rounded transition-colors"
+                  className="p-1.5 md:p-2 hover:bg-[#0d5d4b] rounded transition-colors flex-shrink-0"
                   aria-label="Minha conta"
                 >
-                  <User size={20} />
+                  <User size={18} className="md:w-5 md:h-5" />
                 </button>
               </>
             ) : (
               <>
                 <button 
                   onClick={onLoginClick}
-                  className="px-2 md:px-4 py-1.5 md:py-2 text-sm md:text-base hover:text-[#d4af37] transition-colors font-medium"
+                  className="px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-base hover:text-[#d4af37] transition-colors font-medium"
                 >
                   Entrar
                 </button>
                 <button 
                   onClick={onRegisterClick}
-                  className="px-3 md:px-6 py-1.5 md:py-2 bg-[#ff6b35] rounded-md hover:bg-[#ff7b35] transition-colors font-semibold text-sm md:text-base"
+                  className="px-2 md:px-6 py-1.5 md:py-2 bg-[#ff6b35] rounded-md hover:bg-[#ff7b35] transition-colors font-semibold text-xs md:text-base"
                 >
                   Registre-se
                 </button>
