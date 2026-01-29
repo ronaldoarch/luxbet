@@ -1048,7 +1048,8 @@ async def launch_game(
     else:
         print(f"[Launch Game] Saldo no IGameWin: R$ {igamewin_balance}")
     
-    # 3. Calcular diferença e transferir se necessário
+    # 3. Calcular diferença e sincronizar ANTES de lançar
+    # IMPORTANTE: Sempre sincronizar para garantir que o jogo use apenas o saldo do nosso banco
     our_balance = float(current_user.balance)
     balance_diff = our_balance - igamewin_balance
     
@@ -1063,7 +1064,9 @@ async def launch_game(
         if transfer_result:
             # Deduzir do nosso banco
             current_user.balance -= balance_diff
+            db.flush()
             db.commit()
+            db.refresh(current_user)
             print(f"[Launch Game] ✅ Transferência concluída!")
             print(f"[Launch Game] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
         else:
@@ -1072,12 +1075,55 @@ async def launch_game(
                 status_code=502,
                 detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
             )
-    elif balance_diff < -0.01:  # Se IGameWin tem mais saldo, NÃO transferir de volta
-        # O saldo já está no IGameWin de uma sessão anterior - deixar lá
-        # A sincronização de volta será feita pelo endpoint /sync-balance após o jogo
-        print(f"\n[Launch Game] ℹ️  IGameWin tem mais saldo (R$ {abs(balance_diff):.2f} a mais)")
-        print(f"[Launch Game]    O saldo permanecerá no IGameWin para uso no jogo.")
-        print(f"[Launch Game]    Use /api/public/games/sync-balance após jogar para sincronizar de volta.")
+    elif balance_diff < -0.01:  # Se IGameWin tem mais saldo, SINCRONIZAR de volta primeiro
+        # IMPORTANTE: Em Transfer Mode, sempre sincronizar saldo do IGameWin para nosso banco primeiro
+        # Isso garante que o jogo sempre use apenas o saldo do nosso banco
+        print(f"\n[Launch Game] ⚠️  IGameWin tem mais saldo (R$ {abs(balance_diff):.2f} a mais)")
+        print(f"[Launch Game] 🔄 Sincronizando saldo do IGameWin para nosso banco primeiro...")
+        
+        transfer_back_result = await api.transfer_out(current_user.username, abs(balance_diff))
+        if transfer_back_result:
+            # Adicionar ao nosso banco
+            db.refresh(current_user)
+            our_balance_before = float(current_user.balance)
+            current_user.balance += abs(balance_diff)
+            db.flush()
+            db.commit()
+            db.refresh(current_user)
+            our_balance_after_sync = float(current_user.balance)
+            print(f"[Launch Game] ✅ Saldo sincronizado!")
+            print(f"[Launch Game] Saldo antes: R$ {our_balance_before:.2f}")
+            print(f"[Launch Game] Saldo após sincronização: R$ {our_balance_after_sync:.2f}")
+            
+            # Agora transferir de volta para IGameWin apenas o que temos no nosso banco
+            print(f"[Launch Game] 💸 Transferindo R$ {our_balance_after_sync:.2f} para o IGameWin...")
+            transfer_result = await api.transfer_in(current_user.username, our_balance_after_sync)
+            if transfer_result:
+                current_user.balance = 0.0
+                db.flush()
+                db.commit()
+                db.refresh(current_user)
+                print(f"[Launch Game] ✅ Transferência concluída!")
+                print(f"[Launch Game] Saldo no nosso banco após transferência: R$ {current_user.balance:.2f}")
+            else:
+                print(f"[Launch Game] ❌ Erro ao transferir para IGameWin: {api.last_error}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
+                )
+        else:
+            print(f"[Launch Game] ⚠️  Não foi possível sincronizar saldo do IGameWin: {api.last_error}")
+            print(f"[Launch Game] Tentando continuar com o saldo atual...")
+            # Tentar transferir apenas o que temos no nosso banco mesmo assim
+            if our_balance > 0.01:
+                print(f"[Launch Game] 💸 Transferindo R$ {our_balance:.2f} do nosso banco para IGameWin...")
+                transfer_result = await api.transfer_in(current_user.username, our_balance)
+                if transfer_result:
+                    current_user.balance = 0.0
+                    db.flush()
+                    db.commit()
+                    db.refresh(current_user)
+                    print(f"[Launch Game] ✅ Transferência parcial concluída!")
     else:
         print(f"\n[Launch Game] ✅ Saldos já estão sincronizados!")
     
