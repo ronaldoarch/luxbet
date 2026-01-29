@@ -226,20 +226,45 @@ async def create_pix_deposit(
         user_id=user.id,
         gateway_id=gateway.id,
         amount=request.amount,
-        status=TransactionStatus.PENDING,
+        status=TransactionStatus.APPROVED,  # Aprovar automaticamente
         transaction_id=str(uuid.uuid4()),
         external_id=id_transaction,
         metadata_json=json.dumps({
             "pix_code": pix_code,
             "pix_qr_code_base64": qr_code_base64,
             "gateway": gateway.name,
-            "gateway_response": pix_response
+            "gateway_response": pix_response,
+            "auto_approved": True,
+            "approved_at": datetime.utcnow().isoformat()
         })
     )
     
     db.add(deposit)
+    
+    # Aprovar automaticamente e creditar saldo
+    balance_before = float(user.balance)
+    user.balance += deposit.amount
+    balance_after = float(user.balance)
+    
+    print(f"[Deposit Auto-Approval] Depósito {deposit.id} aprovado automaticamente")
+    print(f"[Deposit Auto-Approval] Usuário: {user.username}")
+    print(f"[Deposit Auto-Approval] Valor: R$ {deposit.amount:.2f}")
+    print(f"[Deposit Auto-Approval] Saldo atualizado - Antes: R$ {balance_before:.2f}, Depósito: R$ {deposit.amount:.2f}, Depois: R$ {balance_after:.2f}")
+    
+    # Criar notificação de sucesso
+    notification = Notification(
+        title="Depósito Aprovado",
+        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
+        type=NotificationType.SUCCESS,
+        user_id=user.id,
+        is_read=False,
+        is_active=True
+    )
+    db.add(notification)
+    
     db.commit()
     db.refresh(deposit)
+    db.refresh(user)
     
     return deposit
 
@@ -479,6 +504,12 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         
         db.commit()
         
+        # Refresh para garantir que os dados estão atualizados
+        db.refresh(deposit)
+        if 'user' in locals() and user:
+            db.refresh(user)
+            print(f"[Webhook SuitPay] Saldo confirmado após commit - Usuário {user.username}: R$ {user.balance:.2f}")
+        
         return {"status": "ok", "message": "Webhook processado com sucesso"}
     
     except Exception as e:
@@ -511,8 +542,9 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         # Atualizar status do depósito
         if status_payment == "paid":
             # Verificar se já foi processado para evitar duplicação
-            if deposit.status != TransactionStatus.APPROVED:
-                print(f"[Webhook NXGATE] Processando depósito {deposit.id} - Status atual: {deposit.status}, Valor: R$ {deposit.amount:.2f}")
+            old_status = deposit.status
+            if old_status != TransactionStatus.APPROVED:
+                print(f"[Webhook NXGATE] Processando depósito {deposit.id} - Status atual: {old_status}, Valor: R$ {deposit.amount:.2f}")
                 deposit.status = TransactionStatus.APPROVED
                 # Adicionar saldo ao usuário
                 user = db.query(User).filter(User.id == deposit.user_id).first()
@@ -544,6 +576,12 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         deposit.metadata_json = json.dumps(metadata)
         
         db.commit()
+        
+        # Refresh para garantir que os dados estão atualizados
+        db.refresh(deposit)
+        if 'user' in locals() and user:
+            db.refresh(user)
+            print(f"[Webhook NXGATE] Saldo confirmado após commit - Usuário {user.username}: R$ {user.balance:.2f}")
         
         return {"status": "received"}
     
@@ -723,23 +761,14 @@ async def webhook_igamewin_bet(request: Request, db: Session = Depends(get_db)):
         
         db.add(bet)
         
-        # Atualizar saldo do jogador
-        # Debitar valor da aposta
-        user.balance -= bet_amount
-        
-        # Se ganhou, creditar valor ganho
-        if win_amount > 0:
-            user.balance += win_amount
-        
-        # Sincronizar saldo com IGameWin
-        api = get_igamewin_api(db)
-        if api:
-            # Obter saldo atual do IGameWin
-            igamewin_balance = await api.get_user_balance(user_code)
-            if igamewin_balance is not None:
-                # Sincronizar: se o saldo do IGameWin for diferente, ajustar
-                if abs(igamewin_balance - user.balance) > 0.01:  # Tolerância de 1 centavo
-                    user.balance = igamewin_balance
+        # NOTA: Em Seamless Mode, o saldo já está sendo atualizado pelo endpoint /gold_api
+        # quando o IGameWin processa transações. Este webhook é apenas para registro.
+        # Não precisamos atualizar saldo aqui para evitar duplicação.
+        # 
+        # Se você estiver usando Transfer Mode, descomente o código abaixo:
+        # user.balance -= bet_amount
+        # if win_amount > 0:
+        #     user.balance += win_amount
         
         db.commit()
         db.refresh(bet)
