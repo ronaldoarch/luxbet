@@ -221,12 +221,13 @@ async def create_pix_deposit(
     if qr_code_base64:
         print(f"DEBUG QR Code Base64 length: {len(qr_code_base64) if isinstance(qr_code_base64, str) else 'N/A'}")
     
-    # Criar registro de depósito
+    # Criar registro de depósito com status PENDING
+    # IMPORTANTE: O saldo só será creditado quando o webhook confirmar o pagamento
     deposit = Deposit(
         user_id=user.id,
         gateway_id=gateway.id,
         amount=request.amount,
-        status=TransactionStatus.APPROVED,  # Aprovar automaticamente
+        status=TransactionStatus.PENDING,  # Aguardar confirmação do pagamento via webhook
         transaction_id=str(uuid.uuid4()),
         external_id=id_transaction,
         metadata_json=json.dumps({
@@ -234,31 +235,30 @@ async def create_pix_deposit(
             "pix_qr_code_base64": qr_code_base64,
             "gateway": gateway.name,
             "gateway_response": pix_response,
-            "auto_approved": True,
-            "approved_at": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat(),
+            "waiting_payment": True
         })
     )
     
     db.add(deposit)
     
-    # Aprovar automaticamente e creditar saldo
-    balance_before = float(user.balance)
-    user.balance += deposit.amount
-    balance_after = float(user.balance)
+    # NÃO creditar saldo aqui - aguardar confirmação via webhook
+    print(f"[Deposit] Depósito {deposit.id} criado com status PENDING")
+    print(f"[Deposit] Usuário: {user.username}")
+    print(f"[Deposit] Valor: R$ {deposit.amount:.2f}")
+    print(f"[Deposit] ⚠️  Saldo NÃO será creditado até confirmação do pagamento via webhook")
+    print(f"[Deposit] QR Code gerado. Aguardando pagamento...")
     
-    print(f"[Deposit Auto-Approval] Depósito {deposit.id} aprovado automaticamente")
-    print(f"[Deposit Auto-Approval] Usuário: {user.username}")
-    print(f"[Deposit Auto-Approval] Valor: R$ {deposit.amount:.2f}")
-    print(f"[Deposit Auto-Approval] Saldo atualizado - Antes: R$ {balance_before:.2f}, Depósito: R$ {deposit.amount:.2f}, Depois: R$ {balance_after:.2f}")
-    
-    # Criar notificação de sucesso
+    # Criar notificação informando que o QR code foi gerado
+    # A notificação de aprovação será criada pelo webhook quando o pagamento for confirmado
     notification = Notification(
-        title="Depósito Aprovado",
-        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
-        type=NotificationType.SUCCESS,
+        title="QR Code PIX Gerado",
+        message=f"QR Code PIX de R$ {deposit.amount:.2f} gerado. Efetue o pagamento para creditar o saldo.",
+        type=NotificationType.INFO,
         user_id=user.id,
         is_read=False,
-        is_active=True
+        is_active=True,
+        link="/deposito"
     )
     db.add(notification)
     
