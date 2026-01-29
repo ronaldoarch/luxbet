@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Copy, Check, Loader2, QrCode, AlertCircle } from 'lucide-react';
@@ -8,13 +8,14 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function Deposit() {
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user, token, refreshUser } = useAuth();
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [deposit, setDeposit] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [qrCodeError, setQrCodeError] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +123,65 @@ export default function Deposit() {
     return '';
   };
 
+  // Verificar confirmação de pagamento via notificações quando há depósito pendente
+  useEffect(() => {
+    if (!deposit || !token || paymentConfirmed) return;
+
+    // Verificar se o depósito está pendente
+    const isPending = deposit.status === 'pending';
+    if (!isPending) {
+      // Se já foi aprovado, atualizar saldo e marcar como confirmado
+      if (deposit.status === 'approved') {
+        setPaymentConfirmed(true);
+        refreshUser().catch(err => {
+          console.warn('[Deposit] Erro ao atualizar saldo:', err);
+        });
+      }
+      return;
+    }
+
+    // Verificar notificações de depósito aprovado a cada 3 segundos quando pendente
+    const checkPaymentConfirmation = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/public/notifications`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (res.ok) {
+          const notifications = await res.json();
+          
+          // Procurar notificação de depósito aprovado recente
+          const depositNotification = notifications.find((n: any) => 
+            n.type === 'success' && 
+            (n.title.includes('Depósito') || n.message.includes('depósito')) &&
+            n.message.includes(deposit.amount.toFixed(2))
+          );
+          
+          if (depositNotification) {
+            console.log('[Deposit] ✅ Pagamento confirmado via notificação! Atualizando saldo...');
+            setPaymentConfirmed(true);
+            
+            // Atualizar saldo do usuário
+            await refreshUser();
+            
+            // Limpar erro se houver
+            setError('');
+          }
+        }
+      } catch (err) {
+        console.warn('[Deposit] Erro ao verificar notificações:', err);
+      }
+    };
+
+    // Verificar imediatamente e depois a cada 3 segundos
+    checkPaymentConfirmation();
+    const interval = setInterval(checkPaymentConfirmation, 3000);
+
+    return () => clearInterval(interval);
+  }, [deposit, token, paymentConfirmed, refreshUser]);
+
   return (
     <div className="min-h-screen bg-[#0a0e0f] text-white">
       {/* Header */}
@@ -201,24 +261,51 @@ export default function Deposit() {
           </form>
         ) : (
           <div className="space-y-6">
-            {/* Sucesso */}
-            <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 rounded-2xl p-6 border border-green-500/30">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-green-500/20 p-2 rounded-lg">
-                  <Check className="text-green-400" size={24} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold">Código PIX Gerado!</h2>
-                  <p className="text-gray-300 text-sm">Escaneie o QR Code ou copie o código PIX</p>
+            {/* Mensagem de Pagamento Confirmado */}
+            {paymentConfirmed && (
+              <div className="bg-gradient-to-br from-green-900/50 to-green-800/50 rounded-2xl p-6 border-2 border-green-500 animate-pulse">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="bg-green-500/30 p-2 rounded-lg">
+                    <Check className="text-green-400" size={24} />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-xl font-bold text-green-400">✅ Pagamento Confirmado!</h2>
+                    <p className="text-gray-200 text-sm mt-1">
+                      Seu depósito de R$ {deposit.amount.toFixed(2).replace('.', ',')} foi aprovado e creditado na sua conta.
+                    </p>
+                    {user && (
+                      <p className="text-[#d4af37] font-semibold mt-2">
+                        Saldo atual: R$ {user.balance.toFixed(2).replace('.', ',')}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="bg-gray-900 rounded-lg p-4">
-                <p className="text-sm text-gray-400 mb-1">Valor a pagar:</p>
-                <p className="text-2xl font-bold text-[#d4af37]">
-                  R$ {deposit.amount.toFixed(2).replace('.', ',')}
-                </p>
+            )}
+
+            {/* Sucesso - QR Code Gerado */}
+            {!paymentConfirmed && (
+              <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 rounded-2xl p-6 border border-green-500/30">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="bg-green-500/20 p-2 rounded-lg">
+                    <Check className="text-green-400" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Código PIX Gerado!</h2>
+                    <p className="text-gray-300 text-sm">Escaneie o QR Code ou copie o código PIX</p>
+                    <p className="text-yellow-400 text-xs mt-1">
+                      ⏳ Aguardando confirmação do pagamento...
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-gray-900 rounded-lg p-4">
+                  <p className="text-sm text-gray-400 mb-1">Valor a pagar:</p>
+                  <p className="text-2xl font-bold text-[#d4af37]">
+                    R$ {deposit.amount.toFixed(2).replace('.', ',')}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* QR Code */}
             {getPixCode() && (

@@ -465,20 +465,33 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         if status_transaction == "PAID_OUT":
             # Verificar se já foi processado para evitar duplicação
             if deposit.status != TransactionStatus.APPROVED:
-                print(f"[Webhook SuitPay] Processando depósito {deposit.id} - Status atual: {deposit.status}, Valor: R$ {deposit.amount:.2f}")
+                print(f"\n{'='*80}")
+                print(f"[Webhook SuitPay] ✅ PAGAMENTO CONFIRMADO!")
+                print(f"[Webhook SuitPay] Depósito ID: {deposit.id}")
+                print(f"[Webhook SuitPay] Status anterior: {deposit.status}")
+                print(f"[Webhook SuitPay] Valor: R$ {deposit.amount:.2f}")
+                print(f"{'='*80}\n")
+                
                 deposit.status = TransactionStatus.APPROVED
+                
                 # Adicionar saldo ao usuário
                 user = db.query(User).filter(User.id == deposit.user_id).first()
                 if user:
-                    balance_before = user.balance
+                    db.refresh(user)  # Garantir dados atualizados
+                    balance_before = float(user.balance)
                     user.balance += deposit.amount
-                    balance_after = user.balance
-                    print(f"[Webhook SuitPay] Saldo atualizado - Antes: R$ {balance_before:.2f}, Depósito: R$ {deposit.amount:.2f}, Depois: R$ {balance_after:.2f}")
+                    db.flush()  # Garantir que a mudança é enviada antes do commit
+                    balance_after = float(user.balance)
+                    
+                    print(f"[Webhook SuitPay] 💰 SALDO ATUALIZADO:")
+                    print(f"[Webhook SuitPay]   - Saldo anterior: R$ {balance_before:.2f}")
+                    print(f"[Webhook SuitPay]   - Depósito: R$ {deposit.amount:.2f}")
+                    print(f"[Webhook SuitPay]   - Saldo atual: R$ {balance_after:.2f}")
                     
                     # Criar notificação de sucesso
                     notification = Notification(
-                        title="Depósito Aprovado!",
-                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
+                        title="✅ Depósito Aprovado!",
+                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta. Saldo atual: R$ {balance_after:.2f}",
                         type=NotificationType.SUCCESS,
                         user_id=user.id,
                         is_read=False,
@@ -486,8 +499,10 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
                         link="/conta"
                     )
                     db.add(notification)
+                    
+                    print(f"[Webhook SuitPay] 📧 Notificação criada para o usuário")
             else:
-                print(f"[Webhook SuitPay] Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
+                print(f"[Webhook SuitPay] ⚠️  Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
         elif status_transaction == "CHARGEBACK":
             if deposit.status == TransactionStatus.APPROVED:
                 # Reverter saldo se já foi aprovado
@@ -500,6 +515,8 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
         metadata["webhook_data"] = data
         metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+        if status_transaction == "PAID_OUT":
+            metadata["approved_at"] = datetime.utcnow().isoformat()
         deposit.metadata_json = json.dumps(metadata)
         
         db.commit()
@@ -508,7 +525,11 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         db.refresh(deposit)
         if 'user' in locals() and user:
             db.refresh(user)
-            print(f"[Webhook SuitPay] Saldo confirmado após commit - Usuário {user.username}: R$ {user.balance:.2f}")
+            print(f"[Webhook SuitPay] ✅ CONFIRMAÇÃO FINAL:")
+            print(f"[Webhook SuitPay]   - Depósito {deposit.id} status: {deposit.status}")
+            print(f"[Webhook SuitPay]   - Usuário {user.username}")
+            print(f"[Webhook SuitPay]   - Saldo confirmado: R$ {user.balance:.2f}")
+            print(f"[Webhook SuitPay] ✅ Processamento concluído com sucesso!\n")
         
         return {"status": "ok", "message": "Webhook processado com sucesso"}
     
@@ -544,20 +565,33 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
             # Verificar se já foi processado para evitar duplicação
             old_status = deposit.status
             if old_status != TransactionStatus.APPROVED:
-                print(f"[Webhook NXGATE] Processando depósito {deposit.id} - Status atual: {old_status}, Valor: R$ {deposit.amount:.2f}")
+                print(f"\n{'='*80}")
+                print(f"[Webhook NXGATE] ✅ PAGAMENTO CONFIRMADO!")
+                print(f"[Webhook NXGATE] Depósito ID: {deposit.id}")
+                print(f"[Webhook NXGATE] Status anterior: {old_status}")
+                print(f"[Webhook NXGATE] Valor: R$ {deposit.amount:.2f}")
+                print(f"{'='*80}\n")
+                
                 deposit.status = TransactionStatus.APPROVED
+                
                 # Adicionar saldo ao usuário
                 user = db.query(User).filter(User.id == deposit.user_id).first()
                 if user:
-                    balance_before = user.balance
+                    db.refresh(user)  # Garantir dados atualizados
+                    balance_before = float(user.balance)
                     user.balance += deposit.amount
-                    balance_after = user.balance
-                    print(f"[Webhook NXGATE] Saldo atualizado - Antes: R$ {balance_before:.2f}, Depósito: R$ {deposit.amount:.2f}, Depois: R$ {balance_after:.2f}")
+                    db.flush()  # Garantir que a mudança é enviada antes do commit
+                    balance_after = float(user.balance)
+                    
+                    print(f"[Webhook NXGATE] 💰 SALDO ATUALIZADO:")
+                    print(f"[Webhook NXGATE]   - Saldo anterior: R$ {balance_before:.2f}")
+                    print(f"[Webhook NXGATE]   - Depósito: R$ {deposit.amount:.2f}")
+                    print(f"[Webhook NXGATE]   - Saldo atual: R$ {balance_after:.2f}")
                     
                     # Criar notificação de sucesso (apenas uma vez)
                     notification = Notification(
-                        title="Depósito Aprovado!",
-                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi aprovado e creditado na sua conta.",
+                        title="✅ Depósito Aprovado!",
+                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta. Saldo atual: R$ {balance_after:.2f}",
                         type=NotificationType.SUCCESS,
                         user_id=user.id,
                         is_read=False,
@@ -565,14 +599,18 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
                         link="/conta"
                     )
                     db.add(notification)
+                    
+                    print(f"[Webhook NXGATE] 📧 Notificação criada para o usuário")
             else:
-                print(f"[Webhook NXGATE] Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
+                print(f"[Webhook NXGATE] ⚠️  Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
         
         # Atualizar metadata
         metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
         metadata["webhook_data"] = data
         metadata["webhook_parsed"] = parsed
         metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+        if status_payment == "paid":
+            metadata["approved_at"] = datetime.utcnow().isoformat()
         deposit.metadata_json = json.dumps(metadata)
         
         db.commit()
@@ -581,7 +619,11 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         db.refresh(deposit)
         if 'user' in locals() and user:
             db.refresh(user)
-            print(f"[Webhook NXGATE] Saldo confirmado após commit - Usuário {user.username}: R$ {user.balance:.2f}")
+            print(f"[Webhook NXGATE] ✅ CONFIRMAÇÃO FINAL:")
+            print(f"[Webhook NXGATE]   - Depósito {deposit.id} status: {deposit.status}")
+            print(f"[Webhook NXGATE]   - Usuário {user.username}")
+            print(f"[Webhook NXGATE]   - Saldo confirmado: R$ {user.balance:.2f}")
+            print(f"[Webhook NXGATE] ✅ Processamento concluído com sucesso!\n")
         
         return {"status": "received"}
     

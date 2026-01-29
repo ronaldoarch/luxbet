@@ -15,7 +15,7 @@ interface Notification {
 }
 
 export default function NotificationToast() {
-  const { token, user } = useAuth();
+  const { token, user, refreshUser } = useAuth();
   const [showNotification, setShowNotification] = useState(false);
   const [currentNotification, setCurrentNotification] = useState<Notification | null>(null);
   const checkedIdsRef = useRef<Set<number>>(new Set());
@@ -51,6 +51,14 @@ export default function NotificationToast() {
             setCurrentNotification(latest);
             setShowNotification(true);
             checkedIdsRef.current.add(latest.id);
+            
+            // Se for notificação de depósito aprovado, atualizar saldo imediatamente
+            if (latest.title.includes('Depósito') || latest.message.includes('depósito')) {
+              console.log('[Notification] Depósito aprovado detectado - atualizando saldo...');
+              refreshUser().catch(err => {
+                console.warn('[Notification] Erro ao atualizar saldo:', err);
+              });
+            }
             
             // Marcar como lida após 5 segundos
             setTimeout(() => {
