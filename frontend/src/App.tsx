@@ -92,7 +92,7 @@ function App() {
           <Footer />
         </div>
       </div>
-      <BottomNav />
+      <BottomNav onMenuClick={() => setSidebarOpen(true)} />
       <ChatWidget />
       <NotificationToast />
       

@@ -1,4 +1,5 @@
 import { X, Search, ChevronDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,20 +10,38 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, providers = [] }: SidebarProps) {
+  const navigate = useNavigate();
+  
+  // Manter apenas: Fortune Tiger, Mine, Gate of Olympus e Aviator
+  // Mapeamento: nome do jogo -> código do jogo para URL
   const popularGames = [
-    'Fortune Tiger',
-    'Aviator',
-    'Fortune Snake',
-    'Mine',
-    'Fortune Rabbit',
-    'Sugar Rush 1000',
-    'Roleta Brasileira',
-    'Bac Bo',
-    'Football Studio',
-    'Blackjack ao vivo',
+    { name: 'Fortune Tiger', code: 'fortune-tiger' },
+    { name: 'Mine', code: 'mine' },
+    { name: 'Gate of Olympus', code: 'gate-of-olympus' },
+    { name: 'Aviator', code: 'aviator_core' },
   ];
 
-  const liveGames = ['Jogo Ao Vivo'];
+  const handleSupportClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onClose(); // Fechar sidebar primeiro
+    // Scroll para o topo e tentar abrir o chat widget
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const chatButton = document.querySelector('[aria-label="Abrir chat"]') as HTMLElement;
+      if (chatButton) {
+        chatButton.click();
+      } else {
+        // Se não encontrar o botão, apenas navegar para home onde o chat está disponível
+        navigate('/');
+      }
+    }, 100);
+  };
+
+  const handlePromocoesClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onClose(); // Fechar sidebar primeiro
+    navigate('/promocoes');
+  };
 
   return (
     <>
@@ -54,7 +73,14 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
           <div className="border-b border-[#0d5d4b]">
             <div className="px-4 py-3 space-y-3">
               {/* Cashback */}
-              <button className="w-full bg-blue-600 rounded-lg p-4 text-left hover:bg-blue-700 transition-all duration-200 border-2 border-blue-600 hover:border-blue-500 hover:shadow-lg">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  onClose();
+                  navigate('/depositar');
+                }}
+                className="w-full bg-blue-600 rounded-lg p-4 text-left hover:bg-blue-700 transition-all duration-200 border-2 border-blue-600 hover:border-blue-500 hover:shadow-lg"
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-blue-100 font-semibold uppercase mb-1.5 leading-tight">Cashback 25%</div>
@@ -64,9 +90,9 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
               </button>
 
               {/* Promoções - com efeito neon */}
-              <a
-                href="/promocoes"
-                className="block neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group"
+              <button
+                onClick={handlePromocoesClick}
+                className="neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/0 via-yellow-500/50 to-yellow-500/0 animate-shimmer"></div>
                 <div className="relative flex items-center justify-between">
@@ -76,10 +102,13 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
                   </div>
                   <div className="text-3xl ml-2 flex-shrink-0">🎁</div>
                 </div>
-              </a>
+              </button>
 
               {/* Chat - com efeito neon */}
-              <button className="neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group">
+              <button
+                onClick={handleSupportClick}
+                className="neon-button w-full relative bg-gray-800 border-2 border-yellow-500 rounded-lg p-4 text-left hover:border-yellow-400 transition-all duration-200 overflow-hidden group"
+              >
                 <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/0 via-yellow-500/50 to-yellow-500/0 animate-shimmer"></div>
                 <div className="relative flex items-center justify-between">
                   <div className="flex-1 min-w-0">
@@ -129,12 +158,16 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
             <div className="px-4 pb-3">
               <ul className="space-y-1">
                 {popularGames.map((game) => (
-                  <li key={game}>
+                  <li key={game.code}>
                     <a
-                      href={`/jogo/${game.toLowerCase().replace(/\s+/g, '-')}`}
+                      href={`/jogo/${game.code}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.href = `/jogo/${game.code}`;
+                      }}
                       className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
                     >
-                      {game}
+                      {game.name}
                     </a>
                   </li>
                 ))}
@@ -142,45 +175,24 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
             </div>
           </nav>
 
-          {/* Jogos Ao Vivo */}
-          <nav className="border-b border-[#0d5d4b]">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#0a4d3e]">
-              <h3 className="text-sm font-bold text-[#d4af37] uppercase tracking-wide">Ao Vivo</h3>
-            </div>
-            <div className="px-4 pb-3">
-              <ul className="space-y-1">
-                {liveGames.map((game) => (
-                  <li key={game}>
-                    <a
-                      href={`/${game.toLowerCase().replace(/\s+/g, '-')}`}
-                      className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
-                    >
-                      {game}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </nav>
-
-          {/* Links de Suporte */}
+          {/* Links de Suporte e Promoções */}
           <nav className="px-4 pt-4 pb-6">
             <ul className="space-y-1">
               <li>
-                <a
-                  href="/suporte"
-                  className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
+                <button
+                  onClick={handleSupportClick}
+                  className="block w-full text-left px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
                 >
                   Suporte Ao Vivo
-                </a>
+                </button>
               </li>
               <li>
-                <a
-                  href="/promocoes"
-                  className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
+                <button
+                  onClick={handlePromocoesClick}
+                  className="block w-full text-left px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
                 >
                   Promoções
-                </a>
+                </button>
               </li>
             </ul>
           </nav>
