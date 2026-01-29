@@ -1,5 +1,6 @@
 import { X, Search, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,17 +10,75 @@ interface SidebarProps {
   providers?: string[];
 }
 
+// Backend FastAPI - usa variável de ambiente ou fallback para localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+interface Game {
+  name: string;
+  code: string;
+}
+
 export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, providers = [] }: SidebarProps) {
   const navigate = useNavigate();
+  const [popularGames, setPopularGames] = useState<Game[]>([]);
+  const [loadingGames, setLoadingGames] = useState(true);
   
-  // Manter apenas: Fortune Tiger, Mine, Gate of Olympus e Aviator
-  // Mapeamento: nome do jogo -> código do jogo para URL
-  const popularGames = [
-    { name: 'Fortune Tiger', code: 'fortune-tiger' },
-    { name: 'Mine', code: 'mine' },
-    { name: 'Gate of Olympus', code: 'gate-of-olympus' },
-    { name: 'Aviator', code: 'aviator_core' },
+  // Nomes dos jogos que queremos exibir no menu
+  const gameNamesToShow = [
+    'Fortune Tiger',
+    'Mine',
+    'Gate of Olympus',
+    'Aviator',
   ];
+
+  useEffect(() => {
+    const fetchGames = async () => {
+      setLoadingGames(true);
+      try {
+        const res = await fetch(`${API_URL}/api/public/games`);
+        if (!res.ok) throw new Error('Falha ao carregar jogos');
+        const data = await res.json();
+        const allGames: Game[] = (data.games || []).map((g: any) => ({
+          name: g.name || g.title || '',
+          code: g.code || '',
+        }));
+
+        // Filtrar e mapear os jogos que queremos exibir
+        const matchedGames: Game[] = [];
+        for (const gameName of gameNamesToShow) {
+          // Buscar jogo que corresponde ao título (busca parcial, case-insensitive)
+          const normalizedGameName = gameName.toLowerCase().trim();
+          const matchedGame = allGames.find((g) => {
+            const normalizedGameTitle = g.name.toLowerCase().trim();
+            return normalizedGameTitle.includes(normalizedGameName) || 
+                   normalizedGameName.includes(normalizedGameTitle);
+          });
+
+          if (matchedGame && matchedGame.code) {
+            matchedGames.push({
+              name: matchedGame.name,
+              code: matchedGame.code,
+            });
+          }
+        }
+
+        setPopularGames(matchedGames);
+      } catch (err) {
+        console.error('Erro ao buscar jogos para o menu', err);
+        // Em caso de erro, usar lista estática como fallback
+        setPopularGames([
+          { name: 'Fortune Tiger', code: 'fortune-tiger' },
+          { name: 'Mine', code: 'mine' },
+          { name: 'Gate of Olympus', code: 'gate-of-olympus' },
+          { name: 'Aviator', code: 'aviator' },
+        ]);
+      } finally {
+        setLoadingGames(false);
+      }
+    };
+
+    fetchGames();
+  }, []);
 
   const handleSupportClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -156,22 +215,29 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
               <h3 className="text-sm font-bold text-[#d4af37] uppercase tracking-wide">Jogos Populares</h3>
             </div>
             <div className="px-4 pb-3">
-              <ul className="space-y-1">
-                {popularGames.map((game) => (
-                  <li key={game.code}>
-                    <a
-                      href={`/jogo/${game.code}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.href = `/jogo/${game.code}`;
-                      }}
-                      className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
-                    >
-                      {game.name}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {loadingGames ? (
+                <div className="text-center py-4">
+                  <div className="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-[#d4af37]"></div>
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {popularGames.map((game) => (
+                    <li key={game.code}>
+                      <a
+                        href={`/jogo/${game.code}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onClose();
+                          navigate(`/jogo/${game.code}`);
+                        }}
+                        className="block px-1 py-2 rounded-md text-xs hover:bg-[#0d5d4b] transition-all duration-200 text-gray-100 hover:text-white"
+                      >
+                        {game.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </nav>
 

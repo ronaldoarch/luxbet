@@ -42,10 +42,23 @@ export default function Promocoes() {
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setPromotions(data);
+        // Garantir que data é um array
+        if (Array.isArray(data)) {
+          setPromotions(data);
+        } else if (data.promotions && Array.isArray(data.promotions)) {
+          setPromotions(data.promotions);
+        } else {
+          console.warn('Formato de resposta inesperado:', data);
+          setPromotions([]);
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({ detail: 'Erro ao buscar promoções' }));
+        console.error('Erro ao buscar promoções:', errorData);
+        setPromotions([]);
       }
     } catch (err) {
       console.error('Erro ao buscar promoções:', err);
+      setPromotions([]);
     } finally {
       setLoading(false);
     }
