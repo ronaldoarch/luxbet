@@ -2460,20 +2460,21 @@ function AffiliatesTab({ token }: { token: string }) {
         loading={loading}
         error={error}
         onRefresh={fetchAffiliates}
-        columns={['ID', 'Usuário', 'Código', 'CPA (R$)', 'Revshare (%)', 'Total Ganho', 'Indicações', 'Status', 'Ações']}
+        columns={['ID', 'Usuário', 'Código', 'CPA (R$)', 'Revshare (%)', 'Trouxe (depósitos)', 'Total Ganho', 'Indicações', 'Status', 'Ações']}
         rows={affiliates.map(a => [
           a.id,
           a.user_id,
           a.affiliate_code,
-          `R$ ${a.cpa_amount.toFixed(2)}`,
-          `${a.revshare_percentage.toFixed(2)}%`,
-          `R$ ${a.total_earnings.toFixed(2)}`,
-          a.total_referrals,
+          `R$ ${(a.cpa_amount ?? 0).toFixed(2)}`,
+          `${(a.revshare_percentage ?? 0).toFixed(2)}%`,
+          `R$ ${(a.total_deposits ?? 0).toFixed(2)}`,
+          `R$ ${(a.total_earnings ?? 0).toFixed(2)}`,
+          a.total_referrals ?? 0,
           a.is_active ? 'Ativo' : 'Inativo',
           <div key={a.id} className="flex gap-2">
             <button onClick={() => loadForEdit(a)} className="text-blue-400 hover:text-blue-300 text-xs">Editar</button>
             <button onClick={() => deleteAffiliate(a.id)} className="text-red-400 hover:text-red-300 text-xs">Deletar</button>
-      </div>
+          </div>
         ])}
       />
     </div>

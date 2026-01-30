@@ -7,7 +7,7 @@ from database import get_db
 from schemas import LoginRequest, Token, UserResponse, UserCreate
 from auth import authenticate_user, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash, get_user_by_username
 from dependencies import get_current_user
-from models import User, UserRole
+from models import User, UserRole, Affiliate
 from igamewin_api import get_igamewin_api
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -53,6 +53,16 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         if existing_temp_email:
             email = f"{clean_identifier}_{int(time.time() * 1000)}@luxbet.temp"
     
+    # Afiliado: se veio com ref (affiliate_code), vincular ao afiliado
+    referred_by_affiliate_id = None
+    if getattr(user_data, "affiliate_code", None) and user_data.affiliate_code.strip():
+        aff = db.query(Affiliate).filter(
+            Affiliate.affiliate_code == user_data.affiliate_code.strip(),
+            Affiliate.is_active == True
+        ).first()
+        if aff:
+            referred_by_affiliate_id = aff.id
+
     # Criar novo usuário
     new_user = User(
         username=user_data.username,
@@ -63,12 +73,20 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         role=UserRole.USER,
         balance=0.0,
         is_active=True,
-        is_verified=False
+        is_verified=False,
+        referred_by_affiliate_id=referred_by_affiliate_id
     )
     
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # Atualizar total de indicações do afiliado
+    if referred_by_affiliate_id:
+        aff = db.query(Affiliate).filter(Affiliate.id == referred_by_affiliate_id).first()
+        if aff:
+            aff.total_referrals = (aff.total_referrals or 0) + 1
+            db.commit()
     
     return new_user
 

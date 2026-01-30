@@ -202,12 +202,15 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                 // Usar telefone como username e email temporário
                 const username = formData.telefone.replace(/\D/g, ''); // Remove caracteres não numéricos
                 const email = `${username}@luxbet.temp`; // Email temporário baseado no telefone
-                
+                // Ref do afiliado na URL (?ref=CODIGO)
+                const params = new URLSearchParams(window.location.search);
+                const ref = params.get('ref') || undefined;
                 await register({
                   username: username,
                   email: email,
                   password: formData.senha,
                   phone: formData.telefone,
+                  affiliate_code: ref,
                 });
                 onClose();
               } catch (err: any) {

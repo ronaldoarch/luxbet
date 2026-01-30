@@ -3,9 +3,10 @@ Rotas públicas para pagamentos (depósitos e saques) usando SuitPay
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional
 from database import get_db
-from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Notification, NotificationType, FTDSettings
+from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, FTD, Notification, NotificationType, FTDSettings
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
@@ -81,6 +82,46 @@ def get_payment_client(gateway: Gateway):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Credenciais do gateway inválidas"
         )
+
+
+def update_affiliate_on_deposit_approved(db: Session, user: User, deposit: Deposit) -> None:
+    """
+    Chamado quando um depósito é aprovado.
+    Atualiza totais do afiliado (total_deposits, FTD/CPA, revshare) e credita o saldo sacável
+    do usuário afiliado (CPA e revshare são sacáveis).
+    """
+    if not getattr(user, "referred_by_affiliate_id", None):
+        return
+    affiliate = db.query(Affiliate).filter(Affiliate.id == user.referred_by_affiliate_id).first()
+    if not affiliate or not affiliate.is_active:
+        return
+    affiliate_user = db.query(User).filter(User.id == affiliate.user_id).first()
+    if not affiliate_user:
+        return
+    # Total depositado pelos indicados
+    affiliate.total_deposits = (affiliate.total_deposits or 0) + float(deposit.amount)
+    # Revshare sobre este depósito → credita no saldo do afiliado (sacável)
+    revshare_pct = (affiliate.revshare_percentage or 0) / 100.0
+    revshare_amount = float(deposit.amount) * revshare_pct
+    affiliate.total_revshare_earned = (affiliate.total_revshare_earned or 0) + revshare_amount
+    affiliate.total_earnings = (affiliate.total_earnings or 0) + revshare_amount
+    affiliate_user.balance = (affiliate_user.balance or 0) + revshare_amount
+    # Primeiro depósito (FTD): criar FTD e creditar CPA → credita no saldo do afiliado (sacável)
+    existing_ftd = db.query(FTD).filter(FTD.user_id == user.id).first()
+    if not existing_ftd:
+        ftd = FTD(
+            user_id=user.id,
+            deposit_id=deposit.id,
+            amount=deposit.amount,
+            is_first_deposit=True,
+            pass_rate=0.0,
+            status=TransactionStatus.APPROVED
+        )
+        db.add(ftd)
+        cpa = float(affiliate.cpa_amount or 0)
+        affiliate.total_cpa_earned = (affiliate.total_cpa_earned or 0) + cpa
+        affiliate.total_earnings = (affiliate.total_earnings or 0) + cpa
+        affiliate_user.balance = (affiliate_user.balance or 0) + cpa
 
 
 @router.post("/deposit/pix", response_model=DepositResponse, status_code=status.HTTP_201_CREATED)
@@ -517,7 +558,8 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
                         link="/conta"
                     )
                     db.add(notification)
-                    
+                    # Afiliado: atualizar totais e FTD/CPA/revshare
+                    update_affiliate_on_deposit_approved(db, user, deposit)
                     print(f"[Webhook SuitPay] 📧 Notificação criada para o usuário")
             else:
                 print(f"[Webhook SuitPay] ⚠️  Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
@@ -617,7 +659,8 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
                         link="/conta"
                     )
                     db.add(notification)
-                    
+                    # Afiliado: atualizar totais e FTD/CPA/revshare
+                    update_affiliate_on_deposit_approved(db, user, deposit)
                     print(f"[Webhook NXGATE] 📧 Notificação criada para o usuário")
             else:
                 print(f"[Webhook NXGATE] ⚠️  Depósito {deposit.id} já foi processado anteriormente (status: {deposit.status}). Ignorando webhook duplicado.")
@@ -861,20 +904,146 @@ async def get_affiliate_dashboard(
     return affiliate
 
 
+def _affiliate_period_bounds(period: str):
+    """Retorna (start_dt, end_dt) em UTC para o período. end_dt é inclusive (fim do dia)."""
+    now = datetime.utcnow()
+    today = now.date()
+    if period == "this_week":
+        # Segunda a hoje
+        start = datetime.combine(today - timedelta(days=now.weekday()), datetime.min.time())
+        end = now
+    elif period == "last_week":
+        start = datetime.combine(today - timedelta(days=now.weekday() + 7), datetime.min.time())
+        end = datetime.combine(today - timedelta(days=now.weekday() + 1), datetime.min.time()) + timedelta(days=1) - timedelta(seconds=1)
+    elif period == "this_month":
+        start = datetime.combine(today.replace(day=1), datetime.min.time())
+        end = now
+    elif period == "last_month":
+        first_this = today.replace(day=1)
+        first_last = (first_this - timedelta(days=1)).replace(day=1)
+        last_day_last = first_this - timedelta(days=1)
+        start = datetime.combine(first_last, datetime.min.time())
+        end = datetime.combine(last_day_last, datetime.max.time())
+    else:
+        # default this_month
+        start = datetime.combine(today.replace(day=1), datetime.min.time())
+        end = now
+    return start, end
+
+
+@affiliate_router.get("/meus-dados")
+async def get_affiliate_meus_dados(
+    period: str = "this_month",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Dados do subordinado (métricas do afiliado) com filtro de período.
+    period: this_week | last_week | this_month | last_month
+    """
+    affiliate = db.query(Affiliate).filter(Affiliate.user_id == current_user.id).first()
+    if not affiliate:
+        raise HTTPException(status_code=404, detail="Você não é um afiliado")
+    start_dt, end_dt = _affiliate_period_bounds(period)
+
+    # Subordinados = usuários com referred_by_affiliate_id = affiliate.id
+    novos_subordinados = db.query(User).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        User.created_at >= start_dt,
+        User.created_at <= end_dt
+    ).count()
+
+    # Depósitos (count e valor) dos subordinados no período
+    q_dep = db.query(Deposit).join(User, Deposit.user_id == User.id).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        Deposit.status == TransactionStatus.APPROVED,
+        Deposit.created_at >= start_dt,
+        Deposit.created_at <= end_dt
+    )
+    depositos_count = q_dep.count()
+    valor_deposito = q_dep.with_entities(func.coalesce(func.sum(Deposit.amount), 0)).scalar() or 0.0
+
+    # Primeiros depósitos (FTD) dos subordinados no período
+    q_ftd = db.query(FTD).join(User, FTD.user_id == User.id).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        FTD.created_at >= start_dt,
+        FTD.created_at <= end_dt
+    )
+    primeiros_depositos_count = q_ftd.count()
+    valor_primeiro_deposito = q_ftd.with_entities(func.coalesce(func.sum(FTD.amount), 0)).scalar() or 0.0
+
+    # Usuários registrados com 1º depósito (no período) = quem fez FTD no período
+    usuarios_com_1_deposito = primeiros_depositos_count  # mesmo que primeiros_depositos_count (um FTD por usuário)
+
+    # Registro e 1º depósito (valor) - mesmo que valor do primeiro depósito
+    registro_e_1_deposito = valor_primeiro_deposito
+
+    # Saques dos subordinados no período
+    q_w = db.query(Withdrawal).join(User, Withdrawal.user_id == User.id).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        Withdrawal.status == TransactionStatus.APPROVED,
+        Withdrawal.created_at >= start_dt,
+        Withdrawal.created_at <= end_dt
+    )
+    numero_saques = q_w.count()
+    valor_saque = q_w.with_entities(func.coalesce(func.sum(Withdrawal.amount), 0)).scalar() or 0.0
+
+    # Receber recompensas (CPA + Revshare no período)
+    cpa_no_periodo = primeiros_depositos_count * float(affiliate.cpa_amount or 0)
+    revshare_no_periodo = valor_deposito * (float(affiliate.revshare_percentage or 0) / 100.0)
+    receber_recompensas = cpa_no_periodo + revshare_no_periodo
+
+    # Apostas válidas (soma dos valores apostados pelos subordinados no período)
+    apostas_validas = db.query(func.coalesce(func.sum(Bet.amount), 0)).join(User, Bet.user_id == User.id).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        Bet.status != BetStatus.CANCELLED,
+        Bet.created_at >= start_dt,
+        Bet.created_at <= end_dt
+    ).scalar() or 0.0
+
+    # V/D diretas = GGR (valor apostado - valor ganho) dos subordinados no período
+    total_apostado = db.query(func.coalesce(func.sum(Bet.amount), 0)).join(User, Bet.user_id == User.id).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        Bet.status != BetStatus.CANCELLED,
+        Bet.created_at >= start_dt,
+        Bet.created_at <= end_dt
+    ).scalar() or 0.0
+    total_ganho = db.query(func.coalesce(func.sum(Bet.win_amount), 0)).join(User, Bet.user_id == User.id).filter(
+        User.referred_by_affiliate_id == affiliate.id,
+        Bet.status != BetStatus.CANCELLED,
+        Bet.created_at >= start_dt,
+        Bet.created_at <= end_dt
+    ).scalar() or 0.0
+    vd_diretas = float(total_apostado) - float(total_ganho)  # positivo = casa ganhou
+
+    return {
+        "period": period,
+        "start": start_dt.isoformat(),
+        "end": end_dt.isoformat(),
+        "novos_subordinados": novos_subordinados,
+        "depositos": depositos_count,
+        "primeiros_depositos": primeiros_depositos_count,
+        "usuarios_registrados_com_1_deposito": usuarios_com_1_deposito,
+        "valor_deposito": round(valor_deposito, 2),
+        "valor_primeiro_deposito": round(valor_primeiro_deposito, 2),
+        "registro_e_1_deposito": round(registro_e_1_deposito, 2),
+        "valor_saque": round(valor_saque, 2),
+        "numero_saques": numero_saques,
+        "receber_recompensas": round(receber_recompensas, 2),
+        "apostas_validas": round(apostas_validas, 2),
+        "vd_diretas": round(vd_diretas, 2),
+    }
+
+
 @affiliate_router.get("/stats")
 async def get_affiliate_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Estatísticas do afiliado"""
+    """Estatísticas do afiliado (totais gerais)"""
     affiliate = db.query(Affiliate).filter(Affiliate.user_id == current_user.id).first()
     if not affiliate:
         raise HTTPException(status_code=404, detail="Você não é um afiliado")
-    
-    # Buscar usuários referenciados por este afiliado (via affiliate_code no metadata)
-    # Isso depende de como você armazena a referência do afiliado nos usuários
-    # Por enquanto, retornamos os dados do afiliado
-    
     return {
         "affiliate_code": affiliate.affiliate_code,
         "cpa_amount": affiliate.cpa_amount,
