@@ -43,7 +43,8 @@ class User(Base):
     ftds = relationship("FTD", back_populates="user")
     bets = relationship("Bet", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
-    affiliates = relationship("Affiliate", back_populates="user")
+    # primaryjoin: User.affiliates = Affiliate(s) onde Affiliate.user_id == User.id (não referred_by_affiliate_id)
+    affiliates = relationship("Affiliate", back_populates="user", primaryjoin="User.id==Affiliate.user_id")
 
 
 class Gateway(Base):
@@ -232,7 +233,7 @@ class Affiliate(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
+    # Relationships (user = dono da conta afiliado)
     user = relationship("User", back_populates="affiliates")
 
 
