@@ -233,8 +233,8 @@ class Affiliate(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships (user = dono da conta afiliado)
-    user = relationship("User", back_populates="affiliates")
+    # Relationships (user = dono da conta afiliado; foreign_keys desambigua de User.referred_by_affiliate_id)
+    user = relationship("User", back_populates="affiliates", foreign_keys=[user_id])
 
 
 class Theme(Base):
