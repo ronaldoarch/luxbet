@@ -23,16 +23,11 @@ export default function NotificationToast() {
   useEffect(() => {
     if (!token || !user) return;
 
-    const markAsRead = async (id: number) => {
-      try {
-        await fetch(`${API_URL}/api/public/notifications/${id}/read`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      } catch (err) {
-        console.error('Erro ao marcar notificação como lida:', err);
-      }
-    };
+    const markAsRead = (id: number) =>
+      fetch(`${API_URL}/api/public/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {}); // 404 para notificação global é esperado
 
     const fetchNotifications = async () => {
       try {
@@ -41,30 +36,27 @@ export default function NotificationToast() {
         });
         if (res.ok) {
           const data = await res.json();
-          // Filtrar apenas notificações não lidas e de sucesso que ainda não foram exibidas
-          const unreadSuccess = data.filter((n: Notification) => 
-            !n.is_read && n.type === 'success' && !checkedIdsRef.current.has(n.id)
+          // Todas as notificações não lidas que ainda não foram exibidas (qualquer tipo: info, success, warning, error, promotion)
+          const unread = data.filter((n: Notification) => 
+            !n.is_read && !checkedIdsRef.current.has(n.id)
           );
           
-          if (unreadSuccess.length > 0) {
-            const latest = unreadSuccess[0];
+          if (unread.length > 0) {
+            const latest = unread[0];
             setCurrentNotification(latest);
             setShowNotification(true);
             checkedIdsRef.current.add(latest.id);
             
             // Se for notificação de depósito aprovado, atualizar saldo imediatamente
-            if (latest.title.includes('Depósito') || latest.message.includes('depósito')) {
-              console.log('[Notification] Depósito aprovado detectado - atualizando saldo...');
-              refreshUser().catch(err => {
-                console.warn('[Notification] Erro ao atualizar saldo:', err);
-              });
+            if (latest.title?.includes('Depósito') || latest.message?.includes('depósito')) {
+              refreshUser().catch(() => {});
             }
             
-            // Marcar como lida após 5 segundos
+            // Fechar popup após 6 segundos (ou usuário pode fechar antes)
             setTimeout(() => {
-              markAsRead(latest.id);
+              markAsRead(latest.id).catch(() => {});
               setShowNotification(false);
-            }, 5000);
+            }, 6000);
           }
         }
       } catch (err) {
@@ -75,48 +67,38 @@ export default function NotificationToast() {
     // Buscar imediatamente
     fetchNotifications();
 
-    // Buscar a cada 10 segundos
-    const interval = setInterval(fetchNotifications, 10000);
+    // Buscar a cada 5 segundos para novas notificações aparecerem rápido
+    const interval = setInterval(fetchNotifications, 5000);
 
     return () => clearInterval(interval);
   }, [token, user]);
 
-  const handleClose = async () => {
+  const handleClose = () => {
     if (currentNotification) {
-      try {
-        await fetch(`${API_URL}/api/public/notifications/${currentNotification.id}/read`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      } catch (err) {
-        console.error('Erro ao marcar notificação como lida:', err);
-      }
+      fetch(`${API_URL}/api/public/notifications/${currentNotification.id}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {});
     }
     setShowNotification(false);
   };
 
   if (!showNotification || !currentNotification) return null;
 
+  const typeStyles = {
+    success: { bg: 'from-green-900 to-green-800', border: 'border-green-500', icon: 'bg-green-500/20' },
+    error: { bg: 'from-red-900 to-red-800', border: 'border-red-500', icon: 'bg-red-500/20' },
+    warning: { bg: 'from-yellow-900 to-yellow-800', border: 'border-yellow-500', icon: 'bg-yellow-500/20' },
+    promotion: { bg: 'from-purple-900 to-purple-800', border: 'border-purple-500', icon: 'bg-purple-500/20' },
+    info: { bg: 'from-blue-900 to-blue-800', border: 'border-blue-500', icon: 'bg-blue-500/20' },
+  };
+  const style = typeStyles[currentNotification.type as keyof typeof typeStyles] || typeStyles.info;
+
   return (
     <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
-      <div className={`bg-gradient-to-r ${
-        currentNotification.type === 'success' ? 'from-green-900 to-green-800' :
-        currentNotification.type === 'error' ? 'from-red-900 to-red-800' :
-        currentNotification.type === 'warning' ? 'from-yellow-900 to-yellow-800' :
-        'from-blue-900 to-blue-800'
-      } border ${
-        currentNotification.type === 'success' ? 'border-green-500' :
-        currentNotification.type === 'error' ? 'border-red-500' :
-        currentNotification.type === 'warning' ? 'border-yellow-500' :
-        'border-blue-500'
-      } rounded-lg p-4 shadow-xl max-w-md min-w-[320px]`}>
+      <div className={`bg-gradient-to-r ${style.bg} border ${style.border} rounded-lg p-4 shadow-xl max-w-md min-w-[320px]`}>
         <div className="flex items-start gap-3">
-          <div className={`p-2 rounded-lg ${
-            currentNotification.type === 'success' ? 'bg-green-500/20' :
-            currentNotification.type === 'error' ? 'bg-red-500/20' :
-            currentNotification.type === 'warning' ? 'bg-yellow-500/20' :
-            'bg-blue-500/20'
-          }`}>
+          <div className={`p-2 rounded-lg ${style.icon}`}>
             {currentNotification.type === 'success' ? (
               <CheckCircle className="text-green-400" size={20} />
             ) : (

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from models import TransactionStatus, UserRole, MediaType, PromotionType, SupportConfig
+from models import TransactionStatus, UserRole, MediaType, PromotionType, SupportConfig, CouponType
 
 
 # User Schemas
@@ -84,6 +84,7 @@ class IGameWinAgentBase(BaseModel):
     agent_key: str
     api_url: str = "https://igamewin.com"
     is_active: bool = True
+    rtp: float = 96.0  # RTP do agente em % (ex: 96 = 96%)
     credentials: Optional[str] = None
 
 
@@ -96,6 +97,7 @@ class IGameWinAgentUpdate(BaseModel):
     agent_key: Optional[str] = None
     api_url: Optional[str] = None
     is_active: Optional[bool] = None
+    rtp: Optional[float] = None
     credentials: Optional[str] = None
 
 
@@ -216,7 +218,8 @@ class FTDResponse(FTDBase):
 # FTD Settings Schemas
 class FTDSettingsBase(BaseModel):
     pass_rate: float = 0.0
-    min_amount: float = 0.0
+    min_amount: float = 2.0  # Depósito mínimo (R$)
+    min_withdrawal: float = 10.0  # Saque mínimo (R$)
     is_active: bool = True
 
 
@@ -486,6 +489,43 @@ class GameCustomizationUpdate(BaseModel):
 
 class GameCustomizationResponse(GameCustomizationBase):
     id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Coupon Schemas
+class CouponBase(BaseModel):
+    code: str
+    discount_type: CouponType = CouponType.PERCENT
+    discount_value: float
+    min_deposit: float = 0.0
+    max_uses: int = 1
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    is_active: bool = True
+
+
+class CouponCreate(CouponBase):
+    pass
+
+
+class CouponUpdate(BaseModel):
+    code: Optional[str] = None
+    discount_type: Optional[CouponType] = None
+    discount_value: Optional[float] = None
+    min_deposit: Optional[float] = None
+    max_uses: Optional[int] = None
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+
+class CouponResponse(CouponBase):
+    id: int
+    used_count: int
     created_at: datetime
     updated_at: datetime
     

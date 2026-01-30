@@ -65,6 +65,7 @@ class IGameWinAgent(Base):
     agent_key = Column(String(255), nullable=False)
     api_url = Column(String(255), default="https://igamewin.com", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    rtp = Column(Float, default=96.0, nullable=False)  # RTP do agente em % (ex: 96 = 96%)
     credentials = Column(Text)  # JSON string with additional credentials
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -129,8 +130,9 @@ class FTDSettings(Base):
     __tablename__ = "ftd_settings"
     
     id = Column(Integer, primary_key=True, index=True)
-    pass_rate = Column(Float, default=0.0, nullable=False)  # Taxa de passagem padrão
-    min_amount = Column(Float, default=0.0, nullable=False)
+    pass_rate = Column(Float, default=0.0, nullable=False)  # Taxa de passagem (FTD interno)
+    min_amount = Column(Float, default=2.0, nullable=False)  # Depósito mínimo (R$)
+    min_withdrawal = Column(Float, default=10.0, nullable=False)  # Saque mínimo (R$)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -313,6 +315,28 @@ class Promotion(Base):
     button_text = Column(String(100), default="Participar")  # Texto do botão
     position = Column(Integer, default=0, nullable=False)  # Ordem de exibição
     metadata_json = Column(Text)  # JSON com dados adicionais
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CouponType(str, enum.Enum):
+    PERCENT = "percent"
+    FIXED = "fixed"
+
+
+class Coupon(Base):
+    __tablename__ = "coupons"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    discount_type = Column(Enum(CouponType), default=CouponType.PERCENT, nullable=False)
+    discount_value = Column(Float, nullable=False)  # % ou valor fixo em R$
+    min_deposit = Column(Float, default=0.0)  # Depósito mínimo para usar
+    max_uses = Column(Integer, default=1)  # 0 = ilimitado
+    used_count = Column(Integer, default=0, nullable=False)
+    valid_from = Column(DateTime, nullable=True)
+    valid_until = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

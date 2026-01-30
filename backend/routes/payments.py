@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
-from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Notification, NotificationType
+from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Notification, NotificationType, FTDSettings
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
@@ -101,6 +101,15 @@ async def create_pix_deposit(
     
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
+    
+    # Depósito mínimo (configuração FTD)
+    settings = db.query(FTDSettings).filter(FTDSettings.is_active == True).first()
+    min_deposit = getattr(settings, "min_amount", 2.0) if settings else 2.0
+    if request.amount < min_deposit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Valor mínimo de depósito é R$ {min_deposit:.2f}"
+        )
     
     # Gerar CPF falso automaticamente se não fornecido
     payer_tax_id = request.payer_tax_id
@@ -294,6 +303,15 @@ async def create_pix_withdrawal(
     
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
+    
+    # Saque mínimo (configuração FTD)
+    settings = db.query(FTDSettings).filter(FTDSettings.is_active == True).first()
+    min_withdrawal = getattr(settings, "min_withdrawal", 10.0) if settings else 10.0
+    if request.amount < min_withdrawal:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Valor mínimo de saque é R$ {min_withdrawal:.2f}"
+        )
     
     # Validar tipo de chave
     valid_key_types = ["document", "phoneNumber", "email", "randomKey", "paymentCode"]

@@ -1,6 +1,8 @@
 import { Menu, Wallet, User, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 interface BottomNavProps {
   onMenuClick?: () => void;
 }
@@ -15,16 +17,26 @@ export default function BottomNav({ onMenuClick }: BottomNavProps) {
     }
   };
 
-  const handleSupportClick = (e: React.MouseEvent) => {
+  const handleSupportClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    // Scroll para o topo e abrir chat ou redirecionar para suporte
+    try {
+      const res = await fetch(`${API_URL}/api/public/support-config`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.whatsapp_link) {
+          window.open(data.whatsapp_link, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    // Sem link configurado: scroll e clicar no chat (ou ir para home)
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    // Tentar abrir o chat widget se existir
     const chatButton = document.querySelector('[aria-label="Abrir chat"]') as HTMLElement;
     if (chatButton) {
       chatButton.click();
     } else {
-      // Fallback: redirecionar para home onde o chat está disponível
       navigate('/');
     }
   };

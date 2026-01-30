@@ -10,12 +10,28 @@ export default function Deposit() {
   const navigate = useNavigate();
   const { user, token, refreshUser } = useAuth();
   const [amount, setAmount] = useState('');
+  const [minDeposit, setMinDeposit] = useState(2);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [deposit, setDeposit] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [qrCodeError, setQrCodeError] = useState(false);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+
+  useEffect(() => {
+    const fetchMinimums = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/public/minimums`);
+        if (res.ok) {
+          const data = await res.json();
+          setMinDeposit(Number(data.min_deposit) || 2);
+        }
+      } catch {
+        // mantém 2 como padrão
+      }
+    };
+    fetchMinimums();
+  }, []);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,8 +49,8 @@ export default function Deposit() {
       return;
     }
 
-    if (value < 2) {
-      setError('Valor mínimo de depósito é R$ 2,00');
+    if (value < minDeposit) {
+      setError(`Valor mínimo de depósito é R$ ${minDeposit.toFixed(2).replace('.', ',')}`);
       return;
     }
 
@@ -209,7 +225,7 @@ export default function Deposit() {
                 Digite o valor que deseja depositar. O código PIX será gerado automaticamente.
               </p>
               <p className="text-yellow-400 text-sm">
-                ⚠️ Valor mínimo: R$ 2,00
+                ⚠️ Valor mínimo: R$ {minDeposit.toFixed(2).replace('.', ',')}
               </p>
             </div>
 

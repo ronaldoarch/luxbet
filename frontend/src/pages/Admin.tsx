@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { 
   Users, DollarSign, TrendingUp, Settings, 
   LogOut, Menu, X, CreditCard, ArrowUpCircle, 
   ArrowDownCircle, Activity, RefreshCw,
   Image as ImageIcon, Home, BarChart3,
   ChevronUp, ChevronDown, Percent, FileText, 
-  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, MessageCircle
+  Gift, ShoppingBag, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, MessageCircle, FileDown
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -187,12 +189,6 @@ export default function Admin() {
               onClick={() => setActiveTab('dashboard')}
             />
             <NavItem
-              icon={<BarChart3 />}
-              label="Métricas"
-              active={activeTab === 'metrics'}
-              onClick={() => setActiveTab('metrics')}
-            />
-            <NavItem
               icon={<Settings />}
               label="Configuração"
               active={activeTab === 'settings'}
@@ -253,12 +249,6 @@ export default function Admin() {
                 label="Promoções"
                 active={activeTab === 'promotions'}
                 onClick={() => setActiveTab('promotions')}
-              />
-              <NavSubItem
-                icon={<ShoppingBag />}
-                label="Loja de Coins"
-                active={activeTab === 'coin-store'}
-                onClick={() => setActiveTab('coin-store')}
               />
             </NavSection>
             
@@ -345,6 +335,7 @@ export default function Admin() {
           {activeTab === 'tracking' && <TrackingTab token={token || ''} />}
           {activeTab === 'settings' && <SettingsTab token={token || ''} />}
           {activeTab === 'branding' && <BrandingTab token={token || ''} />}
+          {activeTab === 'coupons' && <CouponsTab token={token || ''} />}
           {activeTab === 'ggr' && <GGRTab token={token || ''} />}
           {activeTab === 'bets' && <BetsTab token={token || ''} />}
           {activeTab === 'notifications' && <NotificationsTab token={token || ''} />}
@@ -417,90 +408,56 @@ function DashboardTab({ stats, loading }: { stats: Stats | null; loading: boolea
     return <div className="text-center py-12">Erro ao carregar estatísticas</div>;
   }
 
+  const totalDepositos = stats.total_deposit_amount ?? 0;
+  const totalSaques = stats.total_withdrawal_amount ?? 0;
+  const primeirosDepositos = stats.total_ftds ?? 0;
+  const totalUsuarios = stats.total_users ?? 0;
+  const ggrGerado = stats.ggr_gerado ?? stats.net_revenue ?? 0;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-2xl font-bold">Dashboard</h2>
-          <p className="text-sm text-gray-400">Visão geral rápida da operação</p>
+          <p className="text-sm text-gray-400">Valores reais da operação</p>
         </div>
         <button onClick={() => window.location.reload()} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
           <RefreshCw size={18} /> Atualizar
         </button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard 
-          title="USUARIOS NA CASA" 
-          value={stats.usuarios_na_casa ?? stats.total_users} 
-          subtitle={`${stats.usuarios_na_casa ?? stats.total_users} Usuarios Registrados`}
-          icon={<Users />} 
+          title="DEPÓSITOS TOTAIS" 
+          value={`R$ ${totalDepositos.toFixed(2).replace('.', ',')}`} 
+          subtitle={`${stats.total_deposits ?? 0} transações aprovadas`}
+          icon={<ArrowDownCircle />} 
           accent 
         />
         <StatCard 
-          title="BALANÇO JOGADOR" 
-          value={`R$ ${(stats.balanco_jogador_total ?? 0).toFixed(2)}`} 
-          subtitle={`${stats.jogadores_com_saldo ?? 0} Jogadores com Saldo`}
-          icon={<DollarSign />} 
+          title="SAQUES TOTAIS" 
+          value={`R$ ${totalSaques.toFixed(2).replace('.', ',')}`} 
+          subtitle={`${stats.total_withdrawals ?? 0} transações aprovadas`}
+          icon={<ArrowUpCircle />} 
         />
         <StatCard 
-          title="GGR GERADO" 
-          value={`R$ ${(stats.ggr_gerado ?? stats.net_revenue).toFixed(2)}`} 
-          subtitle={`Taxa (${stats.ggr_taxa ?? 17}%)`}
+          title="PRIMEIROS DEPÓSITOS" 
+          value={primeirosDepositos} 
+          subtitle="Usuários que fizeram 1º depósito"
           icon={<TrendingUp />} 
         />
         <StatCard 
-          title="TOTAL PAGO GGR" 
-          value={`R$ ${(stats.total_pago_ggr ?? stats.total_withdrawal_amount).toFixed(2)}`} 
-          subtitle={`${stats.pagamentos_feitos_total ?? stats.total_withdrawals} Pagamento Feitos`}
-          icon={<ArrowUpCircle />} 
-        />
-        <StatCard 
-          title="PIX RECEBIDO HOJE" 
-          value={`R$ ${(stats.pix_recebido_hoje ?? 0).toFixed(2)}`} 
-          subtitle={`${stats.pix_recebido_count_hoje ?? 0} Pagamentos recebidos`}
-          icon={<ArrowDownCircle />} 
-        />
-        <StatCard 
-          title="PIX FEITO HOJE" 
-          value={`R$ ${(stats.pix_feito_hoje ?? 0).toFixed(2)}`} 
-          subtitle={`${stats.pix_feito_count_hoje ?? 0} Pagamentos feitos`}
-          icon={<ArrowUpCircle />} 
-        />
-        <StatCard 
-          title="PIX GERADO HOJE" 
-          value={stats.pix_gerado_hoje ?? 0} 
-          subtitle={`${Math.round(stats.pix_percentual_pago ?? 0)}% Pago`}
-          icon={<Activity />} 
-        />
-        <StatCard 
-          title="USUÁRIO REGISTRADOS HOJE" 
-          value={stats.usuarios_registrados_hoje ?? 0} 
-          subtitle={`${stats.depositos_hoje ?? 0} Depósitos (${stats.depositos_hoje ? Math.round((stats.depositos_hoje / (stats.usuarios_registrados_hoje || 1)) * 100) : 0}%)`}
+          title="USUÁRIOS" 
+          value={totalUsuarios} 
+          subtitle={`${stats.jogadores_com_saldo ?? 0} com saldo`}
           icon={<Users />} 
         />
         <StatCard 
-          title="PAGAMENTOS RECEBIDOS" 
-          value={`R$ ${(stats.valor_pagamentos_recebidos_hoje ?? 0).toFixed(2)}`} 
-          subtitle={`${stats.pagamentos_recebidos_hoje ?? 0} Depósitos Recebidos`}
-          icon={<ArrowDownCircle />} 
-        />
-        <StatCard 
-          title="PAGAMENTOS FEITOS" 
-          value={`R$ ${(stats.valor_pagamentos_feitos_hoje ?? 0).toFixed(2)}`} 
-          subtitle={`${stats.pagamentos_feitos_hoje ?? 0} Pagamentos enviados`}
-          icon={<ArrowUpCircle />} 
-        />
-        <StatCard 
-          title="FTD HOJE" 
-          value={stats.ftd_hoje ?? 0} 
-          subtitle={`${stats.total_ftds} Totais (geral)`}
-          icon={<TrendingUp />} 
-        />
-        <StatCard 
-          title="TOTAL LUCRO" 
-          value={`R$ ${(stats.total_lucro ?? stats.net_revenue).toFixed(2)}`} 
-          subtitle="Total de lucro geral"
-          icon={<DollarSign />} 
+          title="GGR GERADO" 
+          value={`R$ ${ggrGerado.toFixed(2).replace('.', ',')}`} 
+          subtitle={`Taxa ${stats.ggr_taxa ?? 17}%`}
+          icon={<BarChart3 />} 
+          accent 
         />
       </div>
     </div>
@@ -551,15 +508,51 @@ function UsersTab({ token }: { token: string }) {
     }
   };
 
+  const exportUsersToPdf = () => {
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFontSize(14);
+      doc.text('Lista de Usuários', 14, 12);
+      doc.setFontSize(10);
+      autoTable(doc, {
+        head: [['ID', 'Usuário', 'Email', 'Saldo (R$)', 'Status']],
+        body: users.map(u => [
+          String(u.id),
+          String(u.username ?? ''),
+          String(u.email ?? ''),
+          (u.balance ?? 0).toFixed(2).replace('.', ','),
+          u.is_active ? 'Ativo' : 'Inativo'
+        ]),
+        startY: 18,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [55, 65, 81] }
+      });
+      doc.save(`usuarios-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err);
+      setError('Erro ao exportar PDF. Tente novamente.');
+    }
+  };
+
   useEffect(() => { fetchUsers(); }, []);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Usuários</h2>
-        <button onClick={fetchUsers} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
-          <RefreshCw size={18} /> Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportUsersToPdf}
+            disabled={loading || users.length === 0}
+            className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+            title="Exportar lista para PDF"
+          >
+            <FileDown size={18} /> Exportar PDF
+          </button>
+          <button onClick={fetchUsers} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+            <RefreshCw size={18} /> Atualizar
+          </button>
+        </div>
       </div>
       {error && <div className="text-red-400 mb-3">{error}</div>}
       {loading ? <div>Carregando...</div> : (
@@ -610,6 +603,16 @@ function DepositsTab({ token }: { token: string }) {
   };
   useEffect(() => { fetchData(); }, []);
 
+  const formatDate = (s: string) => {
+    if (!s) return '-';
+    try {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return s;
+    }
+  };
+
   return (
     <TabTable
       title="Depósitos"
@@ -617,7 +620,7 @@ function DepositsTab({ token }: { token: string }) {
       error={error}
       onRefresh={fetchData}
       columns={['ID','User','Valor','Status','Criado em']}
-      rows={items.map(d => [d.id, d.user_id, `R$ ${d.amount?.toFixed(2)}`, d.status, d.created_at])}
+      rows={items.map(d => [d.id, d.user_id, `R$ ${d.amount?.toFixed(2)}`, d.status, formatDate(d.created_at)])}
     />
   );
 }
@@ -637,6 +640,16 @@ function WithdrawalsTab({ token }: { token: string }) {
     } catch (err:any) { setError(err.message); }
     finally { setLoading(false); }
   };
+  const formatDate = (s: string) => {
+    if (!s) return '-';
+    try {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return s;
+    }
+  };
+
   useEffect(() => { fetchData(); }, []);
   return (
     <TabTable
@@ -645,7 +658,7 @@ function WithdrawalsTab({ token }: { token: string }) {
       error={error}
       onRefresh={fetchData}
       columns={['ID','User','Valor','Status','Criado em']}
-      rows={items.map(d => [d.id, d.user_id, `R$ ${d.amount?.toFixed(2)}`, d.status, d.created_at])}
+      rows={items.map(d => [d.id, d.user_id, `R$ ${d.amount?.toFixed(2)}`, d.status, formatDate(d.created_at)])}
     />
   );
 }
@@ -675,6 +688,172 @@ function FTDsTab({ token }: { token: string }) {
       columns={['ID','User','Depósito','Valor','Taxa','Status']}
       rows={items.map(d => [d.id, d.user_id, d.deposit_id, `R$ ${d.amount?.toFixed(2)}`, `${d.pass_rate}%`, d.status])}
     />
+  );
+}
+
+function CouponsTab({ token }: { token: string }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    code: '',
+    discount_type: 'percent',
+    discount_value: '',
+    min_deposit: '',
+    max_uses: '1',
+    valid_until: '',
+    is_active: true
+  });
+
+  const fetchData = async () => {
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/coupons`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Falha ao carregar cupons');
+      setItems(await res.json());
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const createCoupon = async () => {
+    const code = form.code.trim().toUpperCase();
+    if (!code) {
+      setError('Código é obrigatório');
+      return;
+    }
+    const value = parseFloat(form.discount_value);
+    if (isNaN(value) || value <= 0) {
+      setError('Valor do desconto deve ser maior que zero');
+      return;
+    }
+    setLoading(true); setError('');
+    try {
+      const body: any = {
+        code,
+        discount_type: form.discount_type,
+        discount_value: value,
+        min_deposit: form.min_deposit ? parseFloat(form.min_deposit) : 0,
+        max_uses: form.max_uses ? parseInt(form.max_uses, 10) : 1,
+        is_active: form.is_active
+      };
+      if (form.valid_until) body.valid_until = form.valid_until + 'T23:59:59';
+      const res = await fetch(`${API_URL}/api/admin/coupons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Falha ao criar cupom');
+      }
+      await fetchData();
+      setShowForm(false);
+      setForm({ code: '', discount_type: 'percent', discount_value: '', min_deposit: '', max_uses: '1', valid_until: '', is_active: true });
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const deleteCoupon = async (id: number) => {
+    if (!confirm('Deletar este cupom?')) return;
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/coupons/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Falha ao deletar');
+      await fetchData();
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const formatDate = (s: string) => {
+    if (!s) return '-';
+    try {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : d.toLocaleDateString('pt-BR');
+    } catch { return s; }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">Cupons</h2>
+        <div className="flex gap-2">
+          <button onClick={() => setShowForm(!showForm)} className="px-3 py-2 bg-[#d4af37] hover:bg-[#c5a028] text-black rounded font-semibold">
+            {showForm ? 'Cancelar' : 'Novo Cupom'}
+          </button>
+          <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+            <RefreshCw size={18} /> Atualizar
+          </button>
+        </div>
+      </div>
+      {error && <div className="text-red-400 mb-3">{error}</div>}
+      {showForm && (
+        <div className="bg-gray-800/60 p-4 rounded border border-gray-700 mb-4 space-y-3">
+          <h3 className="font-semibold">Criar cupom</h3>
+          <div className="grid md:grid-cols-2 gap-3">
+            <input placeholder="Código *" value={form.code} onChange={e => setForm({...form, code: e.target.value})} className="bg-gray-700 rounded px-3 py-2 text-sm" />
+            <select value={form.discount_type} onChange={e => setForm({...form, discount_type: e.target.value})} className="bg-gray-700 rounded px-3 py-2 text-sm">
+              <option value="percent">Percentual (%)</option>
+              <option value="fixed">Valor fixo (R$)</option>
+            </select>
+            <input type="number" step="0.01" placeholder="Valor desconto *" value={form.discount_value} onChange={e => setForm({...form, discount_value: e.target.value})} className="bg-gray-700 rounded px-3 py-2 text-sm" />
+            <input type="number" step="0.01" placeholder="Depósito mínimo (R$)" value={form.min_deposit} onChange={e => setForm({...form, min_deposit: e.target.value})} className="bg-gray-700 rounded px-3 py-2 text-sm" />
+            <input type="number" placeholder="Máx. usos (0 = ilimitado)" value={form.max_uses} onChange={e => setForm({...form, max_uses: e.target.value})} className="bg-gray-700 rounded px-3 py-2 text-sm" />
+            <input type="date" placeholder="Válido até" value={form.valid_until} onChange={e => setForm({...form, valid_until: e.target.value})} className="bg-gray-700 rounded px-3 py-2 text-sm" />
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={form.is_active} onChange={e => setForm({...form, is_active: e.target.checked})} />
+              Ativo
+            </label>
+          </div>
+          <button onClick={createCoupon} disabled={loading} className="bg-[#ff6b35] hover:bg-[#ff7b35] text-white py-2 px-4 rounded font-semibold disabled:opacity-50">Criar</button>
+        </div>
+      )}
+      {loading && !showForm ? <div>Carregando...</div> : (
+        <div className="overflow-x-auto border border-gray-700 rounded-lg">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-800">
+              <tr>
+                <th className="px-3 py-2 text-left">Código</th>
+                <th className="px-3 py-2 text-left">Tipo</th>
+                <th className="px-3 py-2 text-left">Valor</th>
+                <th className="px-3 py-2 text-left">Dep. mín.</th>
+                <th className="px-3 py-2 text-left">Usos</th>
+                <th className="px-3 py-2 text-left">Válido até</th>
+                <th className="px-3 py-2 text-left">Ativo</th>
+                <th className="px-3 py-2 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 && !loading ? (
+                <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">Nenhum cupom cadastrado</td></tr>
+              ) : (
+                items.map(c => (
+                  <tr key={c.id} className="border-t border-gray-800">
+                    <td className="px-3 py-2 font-mono">{c.code}</td>
+                    <td className="px-3 py-2">{c.discount_type === 'percent' ? '%' : 'R$'}</td>
+                    <td className="px-3 py-2">{c.discount_type === 'percent' ? `${c.discount_value}%` : `R$ ${c.discount_value?.toFixed(2)}`}</td>
+                    <td className="px-3 py-2">R$ {(c.min_deposit ?? 0).toFixed(2)}</td>
+                    <td className="px-3 py-2">{c.used_count} / {c.max_uses === 0 ? '∞' : c.max_uses}</td>
+                    <td className="px-3 py-2">{formatDate(c.valid_until)}</td>
+                    <td className="px-3 py-2">{c.is_active ? 'Sim' : 'Não'}</td>
+                    <td className="px-3 py-2">
+                      <button onClick={() => deleteCoupon(c.id)} disabled={loading} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">Deletar</button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1075,7 +1254,7 @@ function IGameWinTab({ token }: { token: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ agent_code: '', agent_key: '', api_url: 'https://api.igamewin.com', credentials: '', is_active: true });
+  const [form, setForm] = useState({ agent_code: '', agent_key: '', api_url: 'https://api.igamewin.com', credentials: '', is_active: true, rtp: 96 });
   const [games, setGames] = useState<any[]>([]);
   const [providers, setProviders] = useState<any[]>([]);
   const [providerCode, setProviderCode] = useState('');
@@ -1228,7 +1407,8 @@ function IGameWinTab({ token }: { token: string }) {
         agent_key: agent.agent_key || '',
         api_url: agent.api_url || 'https://api.igamewin.com',
         credentials: agent.credentials || '',
-        is_active: agent.is_active !== undefined ? agent.is_active : true
+        is_active: agent.is_active !== undefined ? agent.is_active : true,
+        rtp: agent.rtp != null ? Number(agent.rtp) : 96
       };
       
       // Atualizar formulário sempre que os dados do agente mudarem
@@ -1253,7 +1433,7 @@ function IGameWinTab({ token }: { token: string }) {
       }
     } else {
       // Se não há agentes, limpar formulário
-      setForm({ agent_code: '', agent_key: '', api_url: 'https://api.igamewin.com', credentials: '', is_active: true });
+      setForm({ agent_code: '', agent_key: '', api_url: 'https://api.igamewin.com', credentials: '', is_active: true, rtp: 96 });
       setGames([]);
       setProviders([]);
       setAgentBalance(null);
@@ -1336,6 +1516,23 @@ function IGameWinTab({ token }: { token: string }) {
         <input className="bg-gray-700 rounded px-3 py-2 text-sm" placeholder="Agent Code" value={form.agent_code} onChange={e=>setForm({...form, agent_code:e.target.value})}/>
         <input className="bg-gray-700 rounded px-3 py-2 text-sm" placeholder="Agent Key" value={form.agent_key} onChange={e=>setForm({...form, agent_key:e.target.value})}/>
         <input className="bg-gray-700 rounded px-3 py-2 text-sm md:col-span-2" placeholder="API URL" value={form.api_url} onChange={e=>setForm({...form, api_url:e.target.value})}/>
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">RTP do agente (%)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="100"
+            className="bg-gray-700 rounded px-3 py-2 text-sm w-full"
+            placeholder="Ex: 96"
+            value={form.rtp === undefined || form.rtp === null ? '' : form.rtp}
+            onChange={e => {
+              const v = e.target.value === '' ? 96 : parseFloat(e.target.value);
+              setForm({ ...form, rtp: isNaN(v) ? 96 : Math.min(100, Math.max(0, v)) });
+            }}
+          />
+          <p className="text-xs text-gray-500 mt-1">Return to Player. Valor entre 0 e 100 (ex: 96 = 96%)</p>
+        </div>
         <textarea className="bg-gray-700 rounded px-3 py-2 text-sm md:col-span-2" placeholder="Credenciais extras (JSON)" value={form.credentials} onChange={e=>setForm({...form, credentials:e.target.value})}/>
         <div className="flex items-center gap-2">
           <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form, is_active:e.target.checked})}/>
@@ -1349,6 +1546,7 @@ function IGameWinTab({ token }: { token: string }) {
           <div key={a.id} className="p-4 rounded border border-gray-700 bg-gray-800/50">
             <div className="font-bold text-lg">{a.agent_code}</div>
             <div className="text-sm text-gray-400">API: {a.api_url}</div>
+            <div className="text-sm text-gray-400">RTP: {a.rtp != null ? `${Number(a.rtp)}%` : '96%'}</div>
             <div className="text-sm text-gray-400">Status: {a.is_active ? 'Ativo' : 'Inativo'}</div>
             <div className="text-xs text-gray-500 break-all mt-1">Credenciais: {a.credentials}</div>
           </div>
@@ -1560,7 +1758,7 @@ function IGameWinTab({ token }: { token: string }) {
 }
 
 function SettingsTab({ token }: { token: string }) {
-  const [form, setForm] = useState({ pass_rate: 0, min_amount: 0, is_active: true });
+  const [form, setForm] = useState({ pass_rate: 0, min_amount: 2, min_withdrawal: 10, is_active: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -1572,7 +1770,12 @@ function SettingsTab({ token }: { token: string }) {
       });
       if (!res.ok) throw new Error('Falha ao carregar configurações');
       const data = await res.json();
-      setForm({ pass_rate: data.pass_rate ?? 0, min_amount: data.min_amount ?? 0, is_active: data.is_active });
+      setForm({
+        pass_rate: data.pass_rate ?? 0,
+        min_amount: data.min_amount ?? 2,
+        min_withdrawal: data.min_withdrawal ?? 10,
+        is_active: data.is_active
+      });
     } catch (err:any) { setError(err.message); } finally { setLoading(false); }
   };
   const save = async () => {
@@ -1592,19 +1795,20 @@ function SettingsTab({ token }: { token: string }) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">Configurações (FTD)</h2>
+      <h2 className="text-2xl font-bold">Configurações</h2>
+      <p className="text-sm text-gray-400">Depósito mínimo e saque mínimo em R$ (valores usados na validação de depósitos e saques).</p>
       {error && <div className="text-red-400">{error}</div>}
       {loading && <div className="text-sm text-gray-400">Carregando...</div>}
       <div className="grid md:grid-cols-2 gap-3 bg-gray-800/60 p-4 rounded border border-gray-700">
         <div>
-          <label className="text-sm text-gray-300">Taxa de passagem (%)</label>
-          <input type="number" className="w-full bg-gray-700 rounded px-3 py-2" value={form.pass_rate} onChange={e=>setForm({...form, pass_rate:Number(e.target.value)})}/>
+          <label className="text-sm text-gray-300">Depósito mínimo (R$)</label>
+          <input type="number" step="0.01" min="0" className="w-full bg-gray-700 rounded px-3 py-2" value={form.min_amount} onChange={e=>setForm({...form, min_amount:Number(e.target.value) || 0})}/>
         </div>
         <div>
-          <label className="text-sm text-gray-300">Depósito mínimo</label>
-          <input type="number" className="w-full bg-gray-700 rounded px-3 py-2" value={form.min_amount} onChange={e=>setForm({...form, min_amount:Number(e.target.value)})}/>
+          <label className="text-sm text-gray-300">Saque mínimo (R$)</label>
+          <input type="number" step="0.01" min="0" className="w-full bg-gray-700 rounded px-3 py-2" value={form.min_withdrawal} onChange={e=>setForm({...form, min_withdrawal:Number(e.target.value) || 0})}/>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 md:col-span-2">
           <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form, is_active:e.target.checked})}/>
           <span>Ativo</span>
         </div>
@@ -2829,6 +3033,16 @@ function BetsTab({ token }: { token: string }) {
     }
   };
 
+  const formatDate = (s: string) => {
+    if (!s) return '-';
+    try {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : d.toLocaleString('pt-BR');
+    } catch {
+      return s;
+    }
+  };
+
   useEffect(() => {
     fetchBets();
   }, []);
@@ -2845,10 +3059,10 @@ function BetsTab({ token }: { token: string }) {
         b.username || `User ${b.user_id}`,
         b.game_name || b.game_id || '-',
         b.provider || '-',
-        `R$ ${b.amount?.toFixed(2)}`,
-        `R$ ${b.win_amount?.toFixed(2)}`,
-        b.status,
-        new Date(b.created_at).toLocaleString('pt-BR')
+        `R$ ${(b.amount ?? 0).toFixed(2)}`,
+        `R$ ${(b.win_amount ?? 0).toFixed(2)}`,
+        typeof b.status === 'string' ? b.status : (b.status ?? '-'),
+        formatDate(b.created_at)
       ])}
     />
   );

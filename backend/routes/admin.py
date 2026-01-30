@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from sqlalchemy import desc
+from sqlalchemy import func, desc, or_
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import uuid
@@ -13,7 +12,8 @@ from dependencies import get_current_admin_user, get_current_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType,
-    Affiliate, Theme, ProviderOrder, TrackingConfig, SupportConfig, GameCustomization
+    Affiliate, Theme, ProviderOrder, TrackingConfig, SupportConfig, GameCustomization,
+    Coupon
 )
 from schemas import (
     UserResponse, UserCreate, UserUpdate,
@@ -28,7 +28,8 @@ from schemas import (
     ProviderOrderResponse, ProviderOrderCreate, ProviderOrderUpdate,
     TrackingConfigResponse, TrackingConfigCreate, TrackingConfigUpdate,
     SupportConfigResponse, SupportConfigCreate, SupportConfigUpdate,
-    GameCustomizationResponse, GameCustomizationCreate, GameCustomizationUpdate
+    GameCustomizationResponse, GameCustomizationCreate, GameCustomizationUpdate,
+    CouponResponse, CouponCreate, CouponUpdate
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
@@ -411,7 +412,7 @@ async def get_ftd_settings(
     settings = db.query(FTDSettings).filter(FTDSettings.is_active == True).first()
     if not settings:
         # Create default settings
-        settings = FTDSettings(pass_rate=0.0, min_amount=0.0, is_active=True)
+        settings = FTDSettings(pass_rate=0.0, min_amount=2.0, min_withdrawal=10.0, is_active=True)
         db.add(settings)
         db.commit()
         db.refresh(settings)
@@ -1575,12 +1576,18 @@ async def get_ggr_report(
     
     # Parse dates or use defaults
     if start_date:
-        start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        s = start_date.replace('Z', '+00:00').strip()
+        start = datetime.fromisoformat(s) if 'T' in s else datetime.combine(datetime.strptime(s[:10], '%Y-%m-%d').date(), datetime.min.time())
     else:
         start = datetime.combine(date.today(), datetime.min.time())
     
     if end_date:
-        end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        e = end_date.replace('Z', '+00:00').strip()
+        if 'T' in e:
+            end = datetime.fromisoformat(e)
+        else:
+            from datetime import time as dt_time
+            end = datetime.combine(datetime.strptime(e[:10], '%Y-%m-%d').date(), dt_time(23, 59, 59))
     else:
         end = datetime.utcnow()
     
@@ -1733,11 +1740,8 @@ async def get_notifications(
     """Listar notificações"""
     query = db.query(Notification)
     
-    if user_id:
+    if user_id is not None:
         query = query.filter(Notification.user_id == user_id)
-    else:
-        # Admin vê apenas notificações globais (user_id = null)
-        query = query.filter(Notification.user_id == None)
     
     if is_read is not None:
         query = query.filter(Notification.is_read == is_read)
@@ -1855,6 +1859,76 @@ async def delete_notification(
     db.commit()
     
     return {"success": True, "message": "Notificação deletada com sucesso"}
+
+
+# ========== COUPONS ==========
+@router.get("/coupons", response_model=List[CouponResponse])
+async def get_coupons(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    is_active: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Listar cupons"""
+    query = db.query(Coupon)
+    if is_active is not None:
+        query = query.filter(Coupon.is_active == is_active)
+    coupons = query.order_by(desc(Coupon.created_at)).offset(skip).limit(limit).all()
+    return coupons
+
+
+@router.post("/coupons", response_model=CouponResponse, status_code=status.HTTP_201_CREATED)
+async def create_coupon(
+    coupon_data: CouponCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Criar cupom"""
+    existing = db.query(Coupon).filter(Coupon.code == coupon_data.code.strip().upper()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Código de cupom já existe")
+    coupon = Coupon(**coupon_data.model_dump())
+    coupon.code = coupon.code.strip().upper()
+    db.add(coupon)
+    db.commit()
+    db.refresh(coupon)
+    return coupon
+
+
+@router.put("/coupons/{coupon_id}", response_model=CouponResponse)
+async def update_coupon(
+    coupon_id: int,
+    coupon_data: CouponUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualizar cupom"""
+    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Cupom não encontrado")
+    update_data = coupon_data.model_dump(exclude_unset=True)
+    if "code" in update_data and update_data["code"]:
+        update_data["code"] = update_data["code"].strip().upper()
+    for field, value in update_data.items():
+        setattr(coupon, field, value)
+    db.commit()
+    db.refresh(coupon)
+    return coupon
+
+
+@router.delete("/coupons/{coupon_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_coupon(
+    coupon_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Deletar cupom"""
+    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Cupom não encontrado")
+    db.delete(coupon)
+    db.commit()
 
 
 # ========== AFFILIATES ==========
@@ -2360,15 +2434,30 @@ async def get_support_config(db: Session = Depends(get_db)):
     return config
 
 
+@public_router.get("/minimums")
+async def get_minimums(db: Session = Depends(get_db)):
+    """Depósito mínimo e saque mínimo (público, para validação no frontend)"""
+    settings = db.query(FTDSettings).filter(FTDSettings.is_active == True).first()
+    if not settings:
+        return {"min_deposit": 2.0, "min_withdrawal": 10.0}
+    return {
+        "min_deposit": getattr(settings, "min_amount", 2.0) or 2.0,
+        "min_withdrawal": getattr(settings, "min_withdrawal", 10.0) or 10.0,
+    }
+
+
 @public_router.get("/notifications")
 async def get_user_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Obter notificações do usuário logado"""
+    """Obter notificações do usuário: próprias ou globais (user_id = null)"""
     notifications = db.query(Notification).filter(
-        Notification.user_id == current_user.id,
-        Notification.is_active == True
+        Notification.is_active == True,
+        or_(
+            Notification.user_id == current_user.id,
+            Notification.user_id.is_(None)
+        )
     ).order_by(desc(Notification.created_at)).limit(50).all()
     
     return [
@@ -2391,18 +2480,16 @@ async def mark_notification_as_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Marcar notificação como lida"""
-    notification = db.query(Notification).filter(
-        Notification.id == notification_id,
-        Notification.user_id == current_user.id
-    ).first()
-    
+    """Marcar notificação como lida (apenas notificações do usuário; globais não são alteradas no DB)"""
+    notification = db.query(Notification).filter(Notification.id == notification_id).first()
     if not notification:
         raise HTTPException(status_code=404, detail="Notificação não encontrada")
-    
-    notification.is_read = True
-    db.commit()
-    
+    if notification.user_id is not None and notification.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    # Só atualiza is_read se for notificação do usuário (globais ficam "não lidas" no DB para outros)
+    if notification.user_id == current_user.id:
+        notification.is_read = True
+        db.commit()
     return {"status": "success", "message": "Notificação marcada como lida"}
 
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Loader2, AlertCircle, Check } from 'lucide-react';
@@ -9,6 +9,7 @@ export default function Withdrawal() {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [amount, setAmount] = useState('');
+  const [minWithdrawal, setMinWithdrawal] = useState(10);
   const [pixKey, setPixKey] = useState('');
   const [pixKeyType, setPixKeyType] = useState('phoneNumber');
   const [documentValidation, setDocumentValidation] = useState('');
@@ -16,6 +17,21 @@ export default function Withdrawal() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [withdrawal, setWithdrawal] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchMinimums = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/public/minimums`);
+        if (res.ok) {
+          const data = await res.json();
+          setMinWithdrawal(Number(data.min_withdrawal) || 10);
+        }
+      } catch {
+        // mantém 10 como padrão
+      }
+    };
+    fetchMinimums();
+  }, []);
 
   const handleWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,8 +50,8 @@ export default function Withdrawal() {
       return;
     }
 
-    if (value < 10) {
-      setError('Valor mínimo de saque é R$ 10,00');
+    if (value < minWithdrawal) {
+      setError(`Valor mínimo de saque é R$ ${minWithdrawal.toFixed(2).replace('.', ',')}`);
       return;
     }
 
@@ -146,7 +162,7 @@ export default function Withdrawal() {
                 Digite o valor e a chave PIX de destino. O saque será processado automaticamente.
               </p>
               <div className="space-y-2 text-sm">
-                <p className="text-yellow-400">⚠️ Valor mínimo: R$ 10,00</p>
+                <p className="text-yellow-400">⚠️ Valor mínimo: R$ {minWithdrawal.toFixed(2).replace('.', ',')}</p>
                 <p className="text-white">💰 Saldo disponível: R$ {user?.balance.toFixed(2).replace('.', ',') || '0,00'}</p>
               </div>
             </div>
