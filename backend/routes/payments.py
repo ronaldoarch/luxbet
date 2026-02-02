@@ -403,64 +403,78 @@ async def create_pix_withdrawal(
     
     gateway_name = gateway.name.lower()
     
-    if isinstance(payment_client, NXGateAPI):
-        # NXGATE - mapear tipos de chave
-        tipo_chave_map = {
-            "document": "CPF",
-            "phoneNumber": "PHONE",
-            "email": "EMAIL",
-            "randomKey": "RANDOM"
-        }
-        tipo_chave_nxgate = tipo_chave_map.get(request.pix_key_type, "CPF")
+    try:
+        if isinstance(payment_client, NXGateAPI):
+            # NXGATE - mapear tipos de chave
+            tipo_chave_map = {
+                "document": "CPF",
+                "phoneNumber": "PHONE",
+                "email": "EMAIL",
+                "randomKey": "RANDOM"
+            }
+            tipo_chave_nxgate = tipo_chave_map.get(request.pix_key_type, "CPF")
+            
+            callback_url = f"{webhook_url}/api/webhooks/nxgate/pix-cashout"
+            transfer_response = await payment_client.withdraw_pix(
+                valor=request.amount,
+                chave_pix=request.pix_key,
+                tipo_chave=tipo_chave_nxgate,
+                documento=request.document_validation or user.cpf or "",
+                webhook=callback_url
+            )
+            
+            if transfer_response:
+                id_transaction = transfer_response.get("idTransaction")
         
-        callback_url = f"{webhook_url}/api/webhooks/nxgate/pix-cashout"
-        transfer_response = await payment_client.withdraw_pix(
-            valor=request.amount,
-            chave_pix=request.pix_key,
-            tipo_chave=tipo_chave_nxgate,
-            documento=request.document_validation or user.cpf or "",
-            webhook=callback_url
-        )
+        elif isinstance(payment_client, SuitPayAPI):
+            # SuitPay
+            callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashout"
+            transfer_response = await payment_client.transfer_pix(
+                key=request.pix_key,
+                type_key=request.pix_key_type,
+                value=request.amount,
+                callback_url=callback_url,
+                document_validation=request.document_validation,
+                external_id=external_id
+            )
+            
+            if transfer_response:
+                id_transaction = transfer_response.get("idTransaction")
+                # Verificar resposta da API SuitPay
+                response_status = transfer_response.get("response", "").upper()
+                if response_status != "OK":
+                    error_messages = {
+                        "ACCOUNT_DOCUMENTS_NOT_VALIDATED": "Conta não validada",
+                        "NO_FUNDS": "Saldo insuficiente no gateway",
+                        "PIX_KEY_NOT_FOUND": "Chave PIX não encontrada",
+                        "UNAUTHORIZED_IP": "IP não autorizado. Cadastre o IP do servidor na SuitPay.",
+                        "DOCUMENT_VALIDATE": "A chave PIX não pertence ao documento informado",
+                        "DUPLICATE_EXTERNAL_ID": "External ID já foi utilizado",
+                        "ERROR": "Erro interno no gateway"
+                    }
+                    error_msg = error_messages.get(response_status, f"Erro: {response_status}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=error_msg
+                    )
         
-        if transfer_response:
-            id_transaction = transfer_response.get("idTransaction")
+        if not transfer_response or not id_transaction:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Erro ao processar transferência PIX no gateway. Verifique as credenciais e tente novamente."
+            )
     
-    elif isinstance(payment_client, SuitPayAPI):
-        # SuitPay
-        callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashout"
-        transfer_response = await payment_client.transfer_pix(
-            key=request.pix_key,
-            type_key=request.pix_key_type,
-            value=request.amount,
-            callback_url=callback_url,
-            document_validation=request.document_validation,
-            external_id=external_id
-        )
-        
-        if transfer_response:
-            id_transaction = transfer_response.get("idTransaction")
-            # Verificar resposta da API SuitPay
-            response_status = transfer_response.get("response", "").upper()
-            if response_status != "OK":
-                error_messages = {
-                    "ACCOUNT_DOCUMENTS_NOT_VALIDATED": "Conta não validada",
-                    "NO_FUNDS": "Saldo insuficiente no gateway",
-                    "PIX_KEY_NOT_FOUND": "Chave PIX não encontrada",
-                    "UNAUTHORIZED_IP": "IP não autorizado. Cadastre o IP do servidor na SuitPay.",
-                    "DOCUMENT_VALIDATE": "A chave PIX não pertence ao documento informado",
-                    "DUPLICATE_EXTERNAL_ID": "External ID já foi utilizado",
-                    "ERROR": "Erro interno no gateway"
-                }
-                error_msg = error_messages.get(response_status, f"Erro: {response_status}")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=error_msg
-                )
-    
-    if not transfer_response or not id_transaction:
+    except HTTPException:
+        # Re-raise HTTPExceptions (já tratadas)
+        raise
+    except Exception as e:
+        # Tratar outros erros (timeout, conexão, etc.)
+        print(f"[Withdrawal] Erro ao processar saque: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Erro ao processar transferência PIX no gateway. Verifique as credenciais."
+            detail=f"Erro ao comunicar com o gateway de pagamento: {str(e)}. Tente novamente em alguns instantes."
         )
     
     # Criar registro de saque

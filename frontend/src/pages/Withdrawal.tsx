@@ -19,6 +19,7 @@ export default function Withdrawal() {
   const [withdrawal, setWithdrawal] = useState<any>(null);
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(true);
+  const [syncingBalance, setSyncingBalance] = useState(false);
 
   useEffect(() => {
     const fetchMinimums = async () => {
@@ -36,10 +37,17 @@ export default function Withdrawal() {
   }, []);
 
   useEffect(() => {
+    // Usar apenas user?.id para evitar loops quando o saldo muda
+    if (!token || !user?.id) {
+      setLoadingBalance(false);
+      return;
+    }
+
+    let cancelled = false;
+
     const fetchAvailableBalance = async () => {
-      if (!token || !user) {
-        setLoadingBalance(false);
-        return;
+      if (syncingBalance) {
+        return; // Evitar múltiplas sincronizações simultâneas
       }
 
       try {
@@ -50,36 +58,50 @@ export default function Withdrawal() {
           }
         });
 
+        if (cancelled) return;
+
         if (balanceRes.ok) {
           const balanceData = await balanceRes.json();
           
           // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro
-          if (balanceData.needs_sync) {
+          if (balanceData.needs_sync && !syncingBalance) {
+            setSyncingBalance(true);
             console.log('[Withdrawal] Sincronizando saldo do IGameWin...');
-            const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-            
-            if (syncRes.ok) {
-              console.log('[Withdrawal] Saldo sincronizado com sucesso');
-              // Buscar saldo novamente após sincronização
-              const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+            try {
+              const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+                method: 'POST',
                 headers: {
-                  'Authorization': `Bearer ${token}`
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
                 }
               });
-              if (updatedBalanceRes.ok) {
-                const updatedBalanceData = await updatedBalanceRes.json();
-                setAvailableBalance(updatedBalanceData.available_balance || user.balance);
+              
+              if (cancelled) return;
+
+              if (syncRes.ok) {
+                console.log('[Withdrawal] Saldo sincronizado com sucesso');
+                // Aguardar um pouco antes de buscar novamente para garantir que o backend processou
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Buscar saldo novamente após sincronização
+                const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                if (cancelled) return;
+                
+                if (updatedBalanceRes.ok) {
+                  const updatedBalanceData = await updatedBalanceRes.json();
+                  setAvailableBalance(updatedBalanceData.available_balance || user.balance);
+                } else {
+                  setAvailableBalance(balanceData.available_balance || user.balance);
+                }
               } else {
                 setAvailableBalance(balanceData.available_balance || user.balance);
               }
-            } else {
-              setAvailableBalance(balanceData.available_balance || user.balance);
+            } finally {
+              setSyncingBalance(false);
             }
           } else {
             setAvailableBalance(balanceData.available_balance || user.balance);
@@ -88,15 +110,22 @@ export default function Withdrawal() {
           setAvailableBalance(user?.balance || 0);
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('[Withdrawal] Erro ao buscar saldo disponível:', err);
         setAvailableBalance(user?.balance || 0);
       } finally {
-        setLoadingBalance(false);
+        if (!cancelled) {
+          setLoadingBalance(false);
+        }
       }
     };
 
     fetchAvailableBalance();
-  }, [token, user]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.id]); // Usar apenas user?.id para evitar loops
 
   const handleWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,69 +157,71 @@ export default function Withdrawal() {
     setLoading(true);
 
     try {
-      // 1. Verificar saldo disponível (pode incluir saldo no IGameWin)
-      const balanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // 1. Verificar saldo disponível (usar o valor já carregado se disponível)
+      let currentBalance = availableBalance !== null ? availableBalance : user.balance;
+      
+      // Se não temos saldo atualizado ou precisa sincronizar, buscar do servidor
+      if (availableBalance === null || syncingBalance) {
+        const balanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
 
-      if (balanceRes.ok) {
-        const balanceData = await balanceRes.json();
-        
-        // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro
-        if (balanceData.needs_sync) {
-          console.log('[Withdrawal] Sincronizando saldo do IGameWin antes do saque...');
-          const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
+        if (balanceRes.ok) {
+          const balanceData = await balanceRes.json();
           
-          if (syncRes.ok) {
-            console.log('[Withdrawal] Saldo sincronizado com sucesso');
-            // Buscar saldo atualizado após sincronização
-            const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
-              headers: {
-                'Authorization': `Bearer ${token}`
+          // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro (apenas uma vez)
+          if (balanceData.needs_sync && !syncingBalance) {
+            setSyncingBalance(true);
+            console.log('[Withdrawal] Sincronizando saldo do IGameWin antes do saque...');
+            try {
+              const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (syncRes.ok) {
+                console.log('[Withdrawal] Saldo sincronizado com sucesso');
+                // Aguardar um pouco antes de buscar novamente
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Buscar saldo atualizado após sincronização
+                const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                if (updatedBalanceRes.ok) {
+                  const updatedBalanceData = await updatedBalanceRes.json();
+                  currentBalance = updatedBalanceData.available_balance || user.balance;
+                  setAvailableBalance(currentBalance);
+                } else {
+                  currentBalance = balanceData.available_balance || user.balance;
+                  setAvailableBalance(currentBalance);
+                }
+              } else {
+                currentBalance = balanceData.available_balance || user.balance;
+                setAvailableBalance(currentBalance);
               }
-            });
-            if (updatedBalanceRes.ok) {
-              const updatedBalanceData = await updatedBalanceRes.json();
-              const currentBalance = updatedBalanceData.available_balance || user.balance;
-              setAvailableBalance(currentBalance);
-              if (currentBalance < value) {
-                setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
-                setLoading(false);
-                return;
-              }
+            } finally {
+              setSyncingBalance(false);
             }
-          }
-        } else {
-          // Verificar saldo disponível
-          const currentBalance = balanceData.available_balance || user.balance;
-          setAvailableBalance(currentBalance);
-          if (currentBalance < value) {
-            const totalBalance = balanceData.total_balance || user.balance;
-            if (totalBalance >= value && balanceData.needs_sync) {
-              setError(`Saldo insuficiente no momento. Você tem R$ ${totalBalance.toFixed(2)} no total, mas precisa sincronizar primeiro. Tente novamente em alguns segundos.`);
-            } else {
-              setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
-            }
-            setLoading(false);
-            return;
+          } else {
+            currentBalance = balanceData.available_balance || user.balance;
+            setAvailableBalance(currentBalance);
           }
         }
-      } else {
-        // Se não conseguir buscar saldo, usar o valor do estado ou do user
-        const currentBalance = availableBalance !== null ? availableBalance : user.balance;
-        if (currentBalance < value) {
-          setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
-          setLoading(false);
-          return;
-        }
+      }
+
+      // Verificar saldo disponível
+      if (currentBalance < value) {
+        setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
+        setLoading(false);
+        return;
       }
 
       // 2. Processar saque
@@ -209,8 +240,29 @@ export default function Withdrawal() {
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({ detail: 'Erro ao processar saque' }));
-        throw new Error(data.detail || 'Erro ao processar saque');
+        // Tratamento específico para erro 502 (Bad Gateway)
+        if (response.status === 502) {
+          setError('Servidor temporariamente indisponível. Por favor, tente novamente em alguns instantes.');
+          setLoading(false);
+          return;
+        }
+
+        // Tentar obter mensagem de erro do servidor
+        let errorMessage = 'Erro ao processar saque. Tente novamente.';
+        try {
+          const data = await response.json();
+          errorMessage = data.detail || data.message || errorMessage;
+        } catch {
+          // Se não conseguir parsear JSON, usar mensagem padrão baseada no status
+          if (response.status === 400) {
+            errorMessage = 'Dados inválidos. Verifique os valores informados.';
+          } else if (response.status === 401) {
+            errorMessage = 'Sessão expirada. Por favor, faça login novamente.';
+          } else if (response.status === 500) {
+            errorMessage = 'Erro interno do servidor. Tente novamente mais tarde.';
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
