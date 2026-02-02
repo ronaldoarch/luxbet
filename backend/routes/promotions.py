@@ -18,6 +18,17 @@ router = APIRouter(prefix="/api/admin/promotions", tags=["promotions"])
 public_router = APIRouter(prefix="/api/public/promotions", tags=["public-promotions"])
 
 
+def normalize_datetime_to_utc(dt):
+    """Normaliza datetime para UTC-aware. Se for naive, assume UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Se for naive, assume UTC
+        return dt.replace(tzinfo=timezone.utc)
+    # Se já tiver timezone, converte para UTC
+    return dt.astimezone(timezone.utc)
+
+
 # ========== ADMIN ROUTES ==========
 
 @router.get("", response_model=List[PromotionResponse])
@@ -119,16 +130,25 @@ async def list_public_promotions(
     today_start = datetime.combine(now_utc.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
     today_end = datetime.combine(now_utc.date(), datetime.max.time()).replace(tzinfo=timezone.utc)
     
-    query = db.query(Promotion).filter(
-        Promotion.is_active == True,
-        Promotion.start_date <= today_end,  # Começou antes do fim de hoje
-        Promotion.end_date >= today_start   # Termina depois do início de hoje
-    )
+    # Buscar todas as promoções ativas primeiro e filtrar em Python para evitar problemas de timezone
+    query = db.query(Promotion).filter(Promotion.is_active == True)
     
     if featured is True:
         query = query.filter(Promotion.is_featured == True)
     
-    promotions = query.order_by(desc(Promotion.position), desc(Promotion.created_at)).limit(limit).all()
+    all_promotions = query.order_by(desc(Promotion.position), desc(Promotion.created_at)).all()
+    
+    # Filtrar por data usando comparação normalizada
+    promotions = []
+    for p in all_promotions:
+        start_dt = normalize_datetime_to_utc(p.start_date)
+        end_dt = normalize_datetime_to_utc(p.end_date)
+        
+        if start_dt <= today_end and end_dt >= today_start:
+            promotions.append(p)
+            if len(promotions) >= limit:
+                break
+    
     # Log para debug
     print(f"[Promotions API] featured={featured}, today_start={today_start}, today_end={today_end}, found={len(promotions)} promotions")
     if promotions:
@@ -139,10 +159,12 @@ async def list_public_promotions(
         all_active = db.query(Promotion).filter(Promotion.is_active == True).all()
         print(f"[Promotions API] Total de promoções ativas no banco: {len(all_active)}")
         for p in all_active:
-            start_ok = p.start_date <= today_end
-            end_ok = p.end_date >= today_start
+            start_dt = normalize_datetime_to_utc(p.start_date)
+            end_dt = normalize_datetime_to_utc(p.end_date)
+            start_ok = start_dt <= today_end
+            end_ok = end_dt >= today_start
             featured_ok = not featured or p.is_featured
-            print(f"  - {p.id}: {p.title} | start_ok={start_ok} (start={p.start_date} <= {today_end}) | end_ok={end_ok} (end={p.end_date} >= {today_start}) | featured={p.is_featured} (need={featured}) | valid={start_ok and end_ok and featured_ok}")
+            print(f"  - {p.id}: {p.title} | start_ok={start_ok} (start={start_dt} <= {today_end}) | end_ok={end_ok} (end={end_dt} >= {today_start}) | featured={p.is_featured} (need={featured}) | valid={start_ok and end_ok and featured_ok}")
     return promotions
 
 
@@ -200,14 +222,20 @@ async def get_public_promotion(
     now_utc = datetime.now(timezone.utc)
     today_start = datetime.combine(now_utc.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
     today_end = datetime.combine(now_utc.date(), datetime.max.time()).replace(tzinfo=timezone.utc)
+    
     promotion = db.query(Promotion).filter(
         Promotion.id == promotion_id,
-        Promotion.is_active == True,
-        Promotion.start_date <= today_end,
-        Promotion.end_date >= today_start
+        Promotion.is_active == True
     ).first()
     
     if not promotion:
+        raise HTTPException(status_code=404, detail="Promoção não encontrada ou expirada")
+    
+    # Verificar validade da data usando comparação normalizada
+    start_dt = normalize_datetime_to_utc(promotion.start_date)
+    end_dt = normalize_datetime_to_utc(promotion.end_date)
+    
+    if not (start_dt <= today_end and end_dt >= today_start):
         raise HTTPException(status_code=404, detail="Promoção não encontrada ou expirada")
     
     return promotion
