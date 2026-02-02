@@ -114,12 +114,15 @@ async def list_public_promotions(
     db: Session = Depends(get_db)
 ):
     """Listar promoções ativas (público) - usa comparação por data para evitar problemas de timezone"""
-    # Usar UTC para comparação consistente
-    today_utc = datetime.now(timezone.utc).date()
+    # Usar UTC para comparação consistente - início e fim do dia em UTC
+    now_utc = datetime.now(timezone.utc)
+    today_start = datetime.combine(now_utc.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    today_end = datetime.combine(now_utc.date(), datetime.max.time()).replace(tzinfo=timezone.utc)
+    
     query = db.query(Promotion).filter(
         Promotion.is_active == True,
-        func.date(Promotion.start_date) <= today_utc,
-        func.date(Promotion.end_date) >= today_utc
+        Promotion.start_date <= today_end,  # Começou antes do fim de hoje
+        Promotion.end_date >= today_start   # Termina depois do início de hoje
     )
     
     if featured is True:
@@ -127,10 +130,19 @@ async def list_public_promotions(
     
     promotions = query.order_by(desc(Promotion.position), desc(Promotion.created_at)).limit(limit).all()
     # Log para debug
-    print(f"[Promotions API] featured={featured}, today_utc={today_utc}, found={len(promotions)} promotions")
+    print(f"[Promotions API] featured={featured}, today_start={today_start}, today_end={today_end}, found={len(promotions)} promotions")
     if promotions:
         for p in promotions:
-            print(f"  - {p.id}: {p.title} (active={p.is_active}, featured={p.is_featured}, start={p.start_date.date()}, end={p.end_date.date()})")
+            print(f"  - {p.id}: {p.title} (active={p.is_active}, featured={p.is_featured}, start={p.start_date}, end={p.end_date})")
+    else:
+        # Debug: ver todas as promoções ativas para entender por que não aparecem
+        all_active = db.query(Promotion).filter(Promotion.is_active == True).all()
+        print(f"[Promotions API] Total de promoções ativas no banco: {len(all_active)}")
+        for p in all_active:
+            start_ok = p.start_date <= today_end
+            end_ok = p.end_date >= today_start
+            featured_ok = not featured or p.is_featured
+            print(f"  - {p.id}: {p.title} | start_ok={start_ok} (start={p.start_date} <= {today_end}) | end_ok={end_ok} (end={p.end_date} >= {today_start}) | featured={p.is_featured} (need={featured}) | valid={start_ok and end_ok and featured_ok}")
     return promotions
 
 
@@ -185,12 +197,14 @@ async def get_public_promotion(
     db: Session = Depends(get_db)
 ):
     """Obter promoção por ID (público)"""
-    today_utc = datetime.now(timezone.utc).date()
+    now_utc = datetime.now(timezone.utc)
+    today_start = datetime.combine(now_utc.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    today_end = datetime.combine(now_utc.date(), datetime.max.time()).replace(tzinfo=timezone.utc)
     promotion = db.query(Promotion).filter(
         Promotion.id == promotion_id,
         Promotion.is_active == True,
-        func.date(Promotion.start_date) <= today_utc,
-        func.date(Promotion.end_date) >= today_utc
+        Promotion.start_date <= today_end,
+        Promotion.end_date >= today_start
     ).first()
     
     if not promotion:
