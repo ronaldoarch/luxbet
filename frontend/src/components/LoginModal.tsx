@@ -15,7 +15,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
   const { login } = useAuth();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -87,15 +87,15 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
 
         {/* Form */}
         <div className="px-8 pb-8 space-y-4">
-          {/* Email */}
+          {/* Telefone */}
           <div>
-            <label className="block text-gray-300 text-sm mb-2">Email</label>
+            <label className="block text-gray-300 text-sm mb-2">Telefone</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all"
-              placeholder="seu@email.com"
+              placeholder="(00) 00000-0000"
             />
           </div>
 
@@ -138,14 +138,16 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
           {/* Login button */}
           <button
             onClick={async () => {
-              if (!email || !password) {
+              if (!phone || !password) {
                 setError('Preencha todos os campos');
                 return;
               }
               setError('');
               setLoading(true);
               try {
-                const result = await login(email, password);
+                // Envia apenas dígitos (mesmo formato do registro)
+                const phoneDigits = phone.replace(/\D/g, '');
+                const result = await login(phoneDigits, password);
                 onClose();
                 if (result && 'isAdmin' in result && result.isAdmin) {
                   navigate('/admin');
