@@ -26,7 +26,9 @@ export default function Game() {
       return;
     }
 
-    // Verificar se o usuário tem saldo
+    // Verificar se o usuário tem saldo (apenas na carga inicial)
+    // NÃO revalidar quando user.balance mudar durante o jogo: em Transfer Mode o saldo
+    // está no IGameWin e o AuthContext pode atualizar user com balance=0, expulsando o jogador
     if (!user.balance || user.balance <= 0) {
       setError('Você precisa ter saldo para jogar. Faça um depósito primeiro.');
       setLoading(false);
@@ -62,7 +64,9 @@ export default function Game() {
     };
 
     launchGame();
-  }, [gameCode, token, user, authLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- user removido: AuthContext atualiza
+    // balance para 0 durante o jogo (saldo no IGameWin); re-executar expulsaria o jogador
+  }, [gameCode, token, authLoading]);
 
   if (loading) {
     return (
@@ -142,17 +146,17 @@ export default function Game() {
   );
 }
 
-// Componente para atualizar saldo quando usuário volta do jogo
+// Componente para atualizar saldo quando usuário SAI do jogo
+// IMPORTANTE: NÃO sincronizar durante o jogo! Em Transfer Mode o saldo está no IGameWin.
+// Se sincronizarmos a cada X segundos, puxamos o saldo do jogo para nosso banco e zeramos
+// o IGameWin, expulsando o jogador. Só sincronizar ao SAIR da página.
 function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('user_token');
     
-    // Função para sincronizar saldo com IGameWin e depois atualizar usuário
     const syncAndRefresh = async () => {
       if (!token) return;
-      
       try {
-        // Primeiro, sincronizar saldo do IGameWin para nosso banco
         const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
           method: 'POST',
           headers: {
@@ -160,69 +164,20 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
             'Content-Type': 'application/json',
           },
         });
-        
         if (syncRes.ok) {
           const syncData = await syncRes.json();
-          console.log('[Game] Saldo sincronizado:', syncData);
+          console.log('[Game] Saldo sincronizado ao sair:', syncData);
         }
       } catch (err) {
-        // Silenciar erros durante sincronização
         console.warn('[Game] Erro ao sincronizar saldo:', err);
       }
-      
-      // Depois, atualizar dados do usuário
       try {
         await refreshUser();
-      } catch (err) {
-        // Silenciar erros durante atualização
-      }
+      } catch (err) {}
     };
     
-    // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
-    const handleFocus = () => {
-      syncAndRefresh();
-    };
-    
-    // Atualizar saldo quando a página fica visível novamente
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        syncAndRefresh();
-      }
-    };
-    
-    // Variável para evitar múltiplas chamadas simultâneas
-    let isSyncing = false;
-
-    // Atualizar saldo periodicamente enquanto está na página do jogo (a cada 10 segundos)
-    const balanceInterval = setInterval(() => {
-      if (!isSyncing) {
-        isSyncing = true;
-        syncAndRefresh().finally(() => {
-          isSyncing = false;
-        });
-      }
-    }, 10000); // 10 segundos durante o jogo - reduzido de 5 para evitar race conditions
-    
-    // Atualizar saldo quando usuário volta para a página (antes de sair do jogo)
-    const handleBeforeUnload = () => {
-      // Não usar async aqui - beforeunload não espera promises
-      try {
-        syncAndRefresh();
-      } catch (e) {
-        // Silenciar erros
-      }
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+    // Sincronizar APENAS ao desmontar (usuário sai da página do jogo)
     return () => {
-      clearInterval(balanceInterval);
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      // Sincronizar saldo uma última vez ao sair da página do jogo
       syncAndRefresh();
     };
   }, [refreshUser]);
