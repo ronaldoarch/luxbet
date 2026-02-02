@@ -4,6 +4,7 @@ import HeroBanner from './components/HeroBanner';
 import SearchBar from './components/SearchBar';
 import GameCards from './components/GameCards';
 import NovidadesSection from './components/NovidadesSection';
+import PromocoesSection from './components/PromocoesSection';
 import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
 import BottomNav from './components/BottomNav';
@@ -84,6 +85,7 @@ function App() {
             <HeroBanner />
             <SearchBar />
             <GameCards />
+            <PromocoesSection />
             <NovidadesSection
               filters={filters}
               onProvidersLoaded={handleProvidersLoaded}
