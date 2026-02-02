@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Gift, ChevronRight } from 'lucide-react';
 
@@ -20,32 +20,48 @@ export default function PromocoesSection() {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchPromotions = async () => {
-      try {
-        // Primeiro tenta buscar promoções em destaque
-        let res = await fetch(`${API_URL}/api/public/promotions?featured=true&limit=6`);
-        if (res.ok) {
-          const data = await res.json();
-          let list = Array.isArray(data) ? data : (data.promotions || []);
-          // Se não houver em destaque, busca todas as promoções ativas
-          if (list.length === 0) {
-            res = await fetch(`${API_URL}/api/public/promotions?limit=6`);
-            if (res.ok) {
-              const dataAll = await res.json();
-              list = Array.isArray(dataAll) ? dataAll : (dataAll.promotions || []);
-            }
+  const fetchPromotions = useCallback(async () => {
+    try {
+      const cacheBust = `&_t=${Date.now()}`;
+      let res = await fetch(`${API_URL}/api/public/promotions?featured=true&limit=6${cacheBust}`, {
+        cache: 'no-cache',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        let list = Array.isArray(data) ? data : (data.promotions || []);
+        if (list.length === 0) {
+          res = await fetch(`${API_URL}/api/public/promotions?limit=6${cacheBust}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          if (res.ok) {
+            const dataAll = await res.json();
+            list = Array.isArray(dataAll) ? dataAll : (dataAll.promotions || []);
           }
-          setPromotions(list);
         }
-      } catch (err) {
-        console.warn('Erro ao buscar promoções:', err);
-      } finally {
-        setLoading(false);
+        setPromotions(list);
       }
-    };
+    } catch (err) {
+      console.warn('Erro ao buscar promoções:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
     fetchPromotions();
   }, []);
+
+  // Refetch quando usuário volta para a aba (ex: atualizou promoção no admin)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) fetchPromotions();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [fetchPromotions]);
 
   if (loading && promotions.length === 0) {
     return (
