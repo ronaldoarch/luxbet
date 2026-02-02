@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 from database import get_db
-from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, FTD, Notification, NotificationType, FTDSettings
+from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Manager, FTD, Notification, NotificationType, FTDSettings, UserRole
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
-from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse
+from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse, ManagerCreateSubAffiliate
 from dependencies import get_current_user
+from auth import get_password_hash
 from igamewin_api import get_igamewin_api
 from utils import generate_fake_cpf, clean_cpf
 from datetime import datetime, timedelta
@@ -21,6 +22,7 @@ import os
 router = APIRouter(prefix="/api/public/payments", tags=["payments"])
 webhook_router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 affiliate_router = APIRouter(prefix="/api/public/affiliate", tags=["affiliate"])
+manager_router = APIRouter(prefix="/api/public/manager", tags=["manager"])
 
 
 def get_active_pix_gateway(db: Session) -> Gateway:
@@ -89,6 +91,7 @@ def update_affiliate_on_deposit_approved(db: Session, user: User, deposit: Depos
     Chamado quando um depósito é aprovado.
     Atualiza totais do afiliado (total_deposits, FTD/CPA, revshare) e credita o saldo sacável
     do usuário afiliado (CPA e revshare são sacáveis).
+    Se o afiliado for sub-afiliado (manager_id preenchido), o gerente também recebe comissão = CPA do sub.
     """
     if not getattr(user, "referred_by_affiliate_id", None):
         return
@@ -106,6 +109,17 @@ def update_affiliate_on_deposit_approved(db: Session, user: User, deposit: Depos
     affiliate.total_revshare_earned = (affiliate.total_revshare_earned or 0) + revshare_amount
     affiliate.total_earnings = (affiliate.total_earnings or 0) + revshare_amount
     affiliate_user.balance = (affiliate_user.balance or 0) + revshare_amount
+    # Revshare do gerente (se sub-afiliado): gerente ganha revshare sobre depósitos dos indicados do sub
+    if affiliate.manager_id:
+        manager = db.query(Manager).filter(Manager.id == affiliate.manager_id, Manager.is_active == True).first()
+        if manager:
+            manager_revshare_pct = (manager.revshare_percentage or 0) / 100.0
+            manager_revshare = float(deposit.amount) * manager_revshare_pct
+            manager.total_revshare_earned = (manager.total_revshare_earned or 0) + manager_revshare
+            manager.total_earnings = (manager.total_earnings or 0) + manager_revshare
+            manager_user = db.query(User).filter(User.id == manager.user_id).first()
+            if manager_user:
+                manager_user.balance = (manager_user.balance or 0) + manager_revshare
     # Primeiro depósito (FTD): criar FTD e creditar CPA → credita no saldo do afiliado (sacável)
     existing_ftd = db.query(FTD).filter(FTD.user_id == user.id).first()
     if not existing_ftd:
@@ -122,6 +136,15 @@ def update_affiliate_on_deposit_approved(db: Session, user: User, deposit: Depos
         affiliate.total_cpa_earned = (affiliate.total_cpa_earned or 0) + cpa
         affiliate.total_earnings = (affiliate.total_earnings or 0) + cpa
         affiliate_user.balance = (affiliate_user.balance or 0) + cpa
+        # Se sub-afiliado: gerente ganha comissão = CPA do sub (o que distribuiu)
+        if affiliate.manager_id and cpa > 0:
+            manager = db.query(Manager).filter(Manager.id == affiliate.manager_id, Manager.is_active == True).first()
+            if manager:
+                manager.total_cpa_earned = (manager.total_cpa_earned or 0) + cpa
+                manager.total_earnings = (manager.total_earnings or 0) + cpa
+                manager_user = db.query(User).filter(User.id == manager.user_id).first()
+                if manager_user:
+                    manager_user.balance = (manager_user.balance or 0) + cpa
 
 
 @router.post("/deposit/pix", response_model=DepositResponse, status_code=status.HTTP_201_CREATED)
@@ -1054,4 +1077,108 @@ async def get_affiliate_stats(
         "total_referrals": affiliate.total_referrals,
         "total_deposits": affiliate.total_deposits,
         "is_active": affiliate.is_active
+    }
+
+
+# ========== MANAGER PANEL ==========
+@manager_router.get("/dashboard")
+async def get_manager_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Painel do gerente - retorna dados do gerente logado"""
+    manager = db.query(Manager).filter(Manager.user_id == current_user.id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Você não é um gerente")
+    subs = db.query(Affiliate).filter(Affiliate.manager_id == manager.id).all()
+    return {
+        "id": manager.id,
+        "user_id": manager.user_id,
+        "cpa_pool": manager.cpa_pool,
+        "revshare_percentage": manager.revshare_percentage,
+        "total_earnings": manager.total_earnings,
+        "total_cpa_earned": manager.total_cpa_earned,
+        "total_revshare_earned": manager.total_revshare_earned,
+        "is_active": manager.is_active,
+        "sub_affiliates_count": len(subs),
+        "cpa_distributed": sum(float(a.cpa_amount or 0) for a in subs)
+    }
+
+
+@manager_router.get("/sub-affiliates")
+async def get_manager_sub_affiliates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista sub-afiliados do gerente"""
+    manager = db.query(Manager).filter(Manager.user_id == current_user.id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Você não é um gerente")
+    subs = db.query(Affiliate).filter(Affiliate.manager_id == manager.id).all()
+    result = []
+    for a in subs:
+        u = db.query(User).filter(User.id == a.user_id).first()
+        result.append({
+            "id": a.id,
+            "user_id": a.user_id,
+            "username": u.username if u else "",
+            "email": u.email if u else "",
+            "affiliate_code": a.affiliate_code,
+            "cpa_amount": a.cpa_amount,
+            "revshare_percentage": a.revshare_percentage,
+            "total_referrals": a.total_referrals,
+            "total_deposits": a.total_deposits,
+            "total_earnings": a.total_earnings,
+            "is_active": a.is_active
+        })
+    return result
+
+
+@manager_router.post("/sub-affiliates", status_code=status.HTTP_201_CREATED)
+async def create_manager_sub_affiliate(
+    data: ManagerCreateSubAffiliate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Gerente cria um sub-afiliado (novo User + Affiliate)"""
+    manager = db.query(Manager).filter(Manager.user_id == current_user.id).first()
+    if not manager or not manager.is_active:
+        raise HTTPException(status_code=404, detail="Você não é um gerente ativo")
+    # Verificar se username/email já existe
+    existing = db.query(User).filter(
+        (User.username == data.username) | (User.email == data.email)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username ou email já cadastrado")
+    existing_code = db.query(Affiliate).filter(Affiliate.affiliate_code == data.affiliate_code).first()
+    if existing_code:
+        raise HTTPException(status_code=400, detail="Código de afiliado já existe")
+    # Criar usuário
+    user = User(
+        username=data.username,
+        email=data.email,
+        password_hash=get_password_hash(data.password),
+        role=UserRole.USER,
+        balance=0.0
+    )
+    db.add(user)
+    db.flush()
+    # Criar afiliado (sub)
+    affiliate = Affiliate(
+        user_id=user.id,
+        manager_id=manager.id,
+        affiliate_code=data.affiliate_code,
+        cpa_amount=data.cpa_amount,
+        revshare_percentage=data.revshare_percentage
+    )
+    db.add(affiliate)
+    db.commit()
+    db.refresh(affiliate)
+    return {
+        "id": affiliate.id,
+        "user_id": user.id,
+        "affiliate_code": affiliate.affiliate_code,
+        "cpa_amount": affiliate.cpa_amount,
+        "revshare_percentage": affiliate.revshare_percentage,
+        "message": "Sub-afiliado criado com sucesso"
     }

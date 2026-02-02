@@ -258,6 +258,48 @@ class MediaAssetResponse(BaseModel):
         from_attributes = True
 
 
+# Manager Schemas
+class ManagerBase(BaseModel):
+    user_id: int
+    cpa_pool: float = 0.0
+    revshare_percentage: float = 0.0
+    is_active: bool = True
+
+
+class ManagerCreate(BaseModel):
+    user_id: int
+    cpa_pool: float = 0.0
+    revshare_percentage: float = 0.0
+
+
+class ManagerUpdate(BaseModel):
+    cpa_pool: Optional[float] = None
+    revshare_percentage: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
+class ManagerCreateSubAffiliate(BaseModel):
+    """Dados para gerente criar sub-afiliado"""
+    username: str
+    email: str
+    password: str
+    affiliate_code: str
+    cpa_amount: float
+    revshare_percentage: float = 0.0
+
+
+class ManagerResponse(ManagerBase):
+    id: int
+    total_earnings: float
+    total_cpa_earned: float
+    total_revshare_earned: float
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 # Affiliate Schemas
 class AffiliateBase(BaseModel):
     user_id: int
@@ -265,6 +307,7 @@ class AffiliateBase(BaseModel):
     cpa_amount: float = 0.0
     revshare_percentage: float = 0.0
     is_active: bool = True
+    manager_id: Optional[int] = None
 
 
 class AffiliateCreate(BaseModel):
@@ -272,6 +315,7 @@ class AffiliateCreate(BaseModel):
     affiliate_code: str
     cpa_amount: float = 0.0
     revshare_percentage: float = 0.0
+    manager_id: Optional[int] = None
 
 
 class AffiliateUpdate(BaseModel):

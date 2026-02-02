@@ -12,7 +12,7 @@ from dependencies import get_current_admin_user, get_current_user
 from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType,
-    Affiliate, Theme, ProviderOrder, TrackingConfig, SupportConfig, GameCustomization,
+    Affiliate, Manager, Theme, ProviderOrder, TrackingConfig, SupportConfig, GameCustomization,
     Coupon
 )
 from schemas import (
@@ -24,6 +24,7 @@ from schemas import (
     IGameWinAgentResponse, IGameWinAgentCreate, IGameWinAgentUpdate,
     FTDSettingsResponse, FTDSettingsCreate, FTDSettingsUpdate,
     AffiliateResponse, AffiliateCreate, AffiliateUpdate,
+    ManagerResponse, ManagerCreate, ManagerUpdate, ManagerCreateSubAffiliate,
     ThemeResponse, ThemeCreate, ThemeUpdate,
     ProviderOrderResponse, ProviderOrderCreate, ProviderOrderUpdate,
     TrackingConfigResponse, TrackingConfigCreate, TrackingConfigUpdate,
@@ -1983,7 +1984,8 @@ async def create_affiliate(
         user_id=affiliate_data.user_id,
         affiliate_code=affiliate_data.affiliate_code,
         cpa_amount=affiliate_data.cpa_amount,
-        revshare_percentage=affiliate_data.revshare_percentage
+        revshare_percentage=affiliate_data.revshare_percentage,
+        manager_id=affiliate_data.manager_id
     )
     
     db.add(affiliate)
@@ -2034,6 +2036,92 @@ async def delete_affiliate(
         raise HTTPException(status_code=404, detail="Afiliado não encontrado")
     
     db.delete(affiliate)
+    db.commit()
+
+
+# ========== MANAGERS (GERENTES) ==========
+@router.get("/managers", response_model=List[ManagerResponse])
+async def get_managers(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Lista todos os gerentes"""
+    managers = db.query(Manager).offset(skip).limit(limit).all()
+    return managers
+
+
+@router.get("/managers/{manager_id}", response_model=ManagerResponse)
+async def get_manager(
+    manager_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Busca um gerente específico"""
+    manager = db.query(Manager).filter(Manager.id == manager_id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Gerente não encontrado")
+    return manager
+
+
+@router.post("/managers", response_model=ManagerResponse, status_code=status.HTTP_201_CREATED)
+async def create_manager(
+    manager_data: ManagerCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Cria um novo gerente"""
+    user = db.query(User).filter(User.id == manager_data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    existing = db.query(Manager).filter(Manager.user_id == manager_data.user_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Este usuário já é um gerente")
+    manager = Manager(
+        user_id=manager_data.user_id,
+        cpa_pool=manager_data.cpa_pool,
+        revshare_percentage=manager_data.revshare_percentage
+    )
+    db.add(manager)
+    db.commit()
+    db.refresh(manager)
+    return manager
+
+
+@router.put("/managers/{manager_id}", response_model=ManagerResponse)
+async def update_manager(
+    manager_id: int,
+    manager_data: ManagerUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Atualiza um gerente"""
+    manager = db.query(Manager).filter(Manager.id == manager_id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Gerente não encontrado")
+    if manager_data.cpa_pool is not None:
+        manager.cpa_pool = manager_data.cpa_pool
+    if manager_data.revshare_percentage is not None:
+        manager.revshare_percentage = manager_data.revshare_percentage
+    if manager_data.is_active is not None:
+        manager.is_active = manager_data.is_active
+    db.commit()
+    db.refresh(manager)
+    return manager
+
+
+@router.delete("/managers/{manager_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_manager(
+    manager_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Deleta um gerente"""
+    manager = db.query(Manager).filter(Manager.id == manager_id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Gerente não encontrado")
+    db.delete(manager)
     db.commit()
 
 

@@ -45,6 +45,7 @@ class User(Base):
     notifications = relationship("Notification", back_populates="user")
     # primaryjoin: User.affiliates = Affiliate(s) onde Affiliate.user_id == User.id (não referred_by_affiliate_id)
     affiliates = relationship("Affiliate", back_populates="user", primaryjoin="User.id==Affiliate.user_id")
+    managers = relationship("Manager", back_populates="user", foreign_keys="Manager.user_id")
 
 
 class Gateway(Base):
@@ -215,11 +216,31 @@ class Notification(Base):
     user = relationship("User", back_populates="notifications")
 
 
+class Manager(Base):
+    """Gerente: pode criar sub-afiliados e distribuir CPA. Comissão do gerente = CPA que distribuiu ao sub."""
+    __tablename__ = "managers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)  # Um usuário = um gerente
+    cpa_pool = Column(Float, default=0.0, nullable=False)  # CPA total atribuído pelo admin (ex: 30)
+    revshare_percentage = Column(Float, default=0.0, nullable=False)  # Revshare do gerente (sobre subs)
+    total_earnings = Column(Float, default=0.0, nullable=False)  # Total ganho (comissão sobre subs)
+    total_cpa_earned = Column(Float, default=0.0, nullable=False)  # CPA ganho quando subs convertem
+    total_revshare_earned = Column(Float, default=0.0, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = relationship("User", back_populates="managers", foreign_keys=[user_id])
+    sub_affiliates = relationship("Affiliate", back_populates="manager", foreign_keys="Affiliate.manager_id")
+
+
 class Affiliate(Base):
     __tablename__ = "affiliates"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)  # Um usuário = um afiliado
+    manager_id = Column(Integer, ForeignKey("managers.id"), nullable=True, index=True)  # Se preenchido, é sub-afiliado
     affiliate_code = Column(String(50), unique=True, index=True, nullable=False)  # Código único do afiliado
     cpa_amount = Column(Float, default=0.0, nullable=False)  # Valor do CPA (Cost Per Acquisition)
     revshare_percentage = Column(Float, default=0.0, nullable=False)  # Percentual de revshare (0-100)
@@ -235,6 +256,7 @@ class Affiliate(Base):
     
     # Relationships (user = dono da conta afiliado; foreign_keys desambigua de User.referred_by_affiliate_id)
     user = relationship("User", back_populates="affiliates", foreign_keys=[user_id])
+    manager = relationship("Manager", back_populates="sub_affiliates", foreign_keys=[manager_id])
 
 
 class Theme(Base):

@@ -300,6 +300,12 @@ export default function Admin() {
                 onClick={() => setActiveTab('affiliates')}
               />
               <NavSubItem
+                icon={<UserCog />}
+                label="Gerentes"
+                active={activeTab === 'managers'}
+                onClick={() => setActiveTab('managers')}
+              />
+              <NavSubItem
                 icon={<Palette />}
                 label="Temas"
                 active={activeTab === 'themes'}
@@ -331,6 +337,7 @@ export default function Admin() {
           {activeTab === 'gateways' && <GatewaysTab token={token || ''} />}
           {activeTab === 'igamewin' && <IGameWinTab token={token || ''} />}
           {activeTab === 'affiliates' && <AffiliatesTab token={token || ''} />}
+          {activeTab === 'managers' && <ManagersTab token={token || ''} />}
           {activeTab === 'themes' && <ThemesTab token={token || ''} />}
           {activeTab === 'tracking' && <TrackingTab token={token || ''} />}
           {activeTab === 'settings' && <SettingsTab token={token || ''} />}
@@ -2476,6 +2483,206 @@ function AffiliatesTab({ token }: { token: string }) {
             <button onClick={() => deleteAffiliate(a.id)} className="text-red-400 hover:text-red-300 text-xs">Deletar</button>
           </div>
         ])}
+      />
+    </div>
+  );
+}
+
+// ========== MANAGERS TAB ==========
+function ManagersTab({ token }: { token: string }) {
+  const [managers, setManagers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState({
+    user_id: '',
+    cpa_pool: '',
+    revshare_percentage: ''
+  });
+  const [users, setUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchManagers();
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setUsers((await res.json()));
+    } catch (err: any) {
+      console.error('Erro ao carregar usuários:', err);
+    }
+  };
+
+  const fetchManagers = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/managers`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Falha ao carregar gerentes');
+      setManagers(await res.json());
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    try {
+      const payload = {
+        user_id: parseInt(form.user_id),
+        cpa_pool: parseFloat(form.cpa_pool) || 0,
+        revshare_percentage: parseFloat(form.revshare_percentage) || 0
+      };
+      const url = editingId
+        ? `${API_URL}/api/admin/managers/${editingId}`
+        : `${API_URL}/api/admin/managers`;
+      const method = editingId ? 'PUT' : 'POST';
+      const body = editingId ? { cpa_pool: payload.cpa_pool, revshare_percentage: payload.revshare_percentage } : payload;
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Erro ao salvar gerente');
+      }
+      setSuccess(editingId ? 'Gerente atualizado!' : 'Gerente criado!');
+      resetForm();
+      fetchManagers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const resetForm = () => {
+    setForm({ user_id: '', cpa_pool: '', revshare_percentage: '' });
+    setEditingId(null);
+  };
+
+  const loadForEdit = (m: any) => {
+    setEditingId(m.id);
+    setForm({
+      user_id: m.user_id.toString(),
+      cpa_pool: m.cpa_pool.toString(),
+      revshare_percentage: m.revshare_percentage.toString()
+    });
+  };
+
+  const deleteManager = async (id: number) => {
+    if (!confirm('Tem certeza que deseja deletar este gerente?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/admin/managers/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Erro ao deletar');
+      fetchManagers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Gerentes</h2>
+        <button onClick={fetchManagers} className="flex gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+          <RefreshCw size={18} /> Atualizar
+        </button>
+      </div>
+      {error && <div className="bg-red-500/20 border border-red-500 rounded p-3 mb-4 text-red-400">{error}</div>}
+      {success && <div className="bg-green-500/20 border border-green-500 rounded p-3 mb-4 text-green-400">{success}</div>}
+      <div className="bg-gray-800 rounded-lg p-6 mb-6">
+        <h3 className="text-lg font-bold mb-4">{editingId ? 'Editar Gerente' : 'Cadastrar Novo Gerente'}</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Usuário</label>
+              <select
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                value={form.user_id}
+                onChange={e => setForm({ ...form, user_id: e.target.value })}
+                required={!editingId}
+                disabled={!!editingId}
+              >
+                <option value="">Selecione um usuário</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">CPA Pool (R$) - Total para distribuir aos subs</label>
+              <input
+                type="number"
+                step="0.01"
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                value={form.cpa_pool}
+                onChange={e => setForm({ ...form, cpa_pool: e.target.value })}
+                required
+                placeholder="Ex: 30"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Revshare (%) - sobre depósitos dos subs</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                value={form.revshare_percentage}
+                onChange={e => setForm({ ...form, revshare_percentage: e.target.value })}
+                required
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button type="submit" disabled={loading} className="px-4 py-2 bg-[#d4af37] hover:bg-[#ffd700] text-black font-semibold rounded disabled:opacity-50">
+              {editingId ? 'Atualizar' : 'Cadastrar Gerente'}
+            </button>
+            {editingId && (
+              <button type="button" onClick={resetForm} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+                Cancelar
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+      <TabTable
+        title="Lista de Gerentes"
+        loading={loading}
+        error={error}
+        onRefresh={fetchManagers}
+        columns={['ID', 'Usuário', 'CPA Pool', 'Revshare (%)', 'Total Ganho', 'Status', 'Ações']}
+        rows={managers.map(m => {
+          const u = users.find(us => us.id === m.user_id);
+          return [
+            m.id,
+            u ? `${u.username} (${u.email})` : m.user_id,
+            `R$ ${(m.cpa_pool ?? 0).toFixed(2)}`,
+            `${(m.revshare_percentage ?? 0).toFixed(2)}%`,
+            `R$ ${(m.total_earnings ?? 0).toFixed(2)}`,
+            m.is_active ? 'Ativo' : 'Inativo',
+            <div key={m.id} className="flex gap-2">
+              <button onClick={() => loadForEdit(m)} className="text-blue-400 hover:text-blue-300 text-xs">Editar</button>
+              <button onClick={() => deleteManager(m.id)} className="text-red-400 hover:text-red-300 text-xs">Deletar</button>
+            </div>
+          ];
+        })}
       />
     </div>
   );

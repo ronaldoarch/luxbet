@@ -10,6 +10,7 @@ export default function Profile() {
   const { user, token, logout, refreshUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [isAffiliate, setIsAffiliate] = useState(false);
+  const [isManager, setIsManager] = useState(false);
   const [syncingBalance, setSyncingBalance] = useState(false);
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
   const [balanceInfo, setBalanceInfo] = useState<any>(null);
@@ -23,9 +24,8 @@ export default function Profile() {
       setLoading(false);
       // Verificar afiliado apenas uma vez ao carregar a página
       // Não verificar novamente quando user muda (para evitar chamadas desnecessárias)
-      if (!isAffiliate) {
-        checkAffiliate();
-      }
+      if (!isAffiliate) checkAffiliate();
+      if (!isManager) checkManager();
       // Buscar informações de saldo disponível
       fetchAvailableBalance();
     }
@@ -69,6 +69,19 @@ export default function Profile() {
       // Erro de rede ou outro - silenciar completamente, não é crítico
       // Não logar no console para evitar poluição
       setIsAffiliate(false);
+    }
+  };
+
+  const checkManager = async () => {
+    if (!token || isManager) return;
+    try {
+      const res = await fetch(`${API_URL}/api/public/manager/dashboard`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) setIsManager(true);
+      else if (res.status === 404) setIsManager(false);
+    } catch {
+      setIsManager(false);
     }
   };
 
@@ -252,6 +265,15 @@ export default function Profile() {
               >
                 <UserCog size={18} />
                 Painel do Afiliado
+              </button>
+            )}
+            {isManager && (
+              <button
+                onClick={() => navigate('/gerente')}
+                className="w-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500 text-blue-400 font-semibold py-3 rounded-lg transition-colors flex items-center gap-2 text-left px-4"
+              >
+                <UserCog size={18} />
+                Painel do Gerente
               </button>
             )}
             <button

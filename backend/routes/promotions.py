@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 from database import get_db
 from dependencies import get_current_admin_user, get_current_user
@@ -110,11 +110,12 @@ async def list_public_promotions(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db)
 ):
-    """Listar promoções ativas (público)"""
+    """Listar promoções ativas (público) - usa comparação por data para evitar problemas de timezone"""
+    today = date.today()
     query = db.query(Promotion).filter(
         Promotion.is_active == True,
-        Promotion.start_date <= datetime.utcnow(),
-        Promotion.end_date >= datetime.utcnow()
+        func.date(Promotion.start_date) <= today,
+        func.date(Promotion.end_date) >= today
     )
     
     if featured is True:
@@ -130,11 +131,12 @@ async def get_public_promotion(
     db: Session = Depends(get_db)
 ):
     """Obter promoção por ID (público)"""
+    today = date.today()
     promotion = db.query(Promotion).filter(
         Promotion.id == promotion_id,
         Promotion.is_active == True,
-        Promotion.start_date <= datetime.utcnow(),
-        Promotion.end_date >= datetime.utcnow()
+        func.date(Promotion.start_date) <= today,
+        func.date(Promotion.end_date) >= today
     ).first()
     
     if not promotion:
