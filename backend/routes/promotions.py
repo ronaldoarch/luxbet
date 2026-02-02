@@ -139,12 +139,15 @@ async def list_public_promotions(
     all_promotions = query.order_by(desc(Promotion.position), desc(Promotion.created_at)).all()
     
     # Filtrar por data usando comparação normalizada
+    # Mostra promoções que ainda não expiraram (end_date >= today_start)
+    # Não verifica start_date para permitir mostrar promoções futuras
     promotions = []
     for p in all_promotions:
         start_dt = normalize_datetime_to_utc(p.start_date)
         end_dt = normalize_datetime_to_utc(p.end_date)
         
-        if start_dt <= today_end and end_dt >= today_start:
+        # Apenas verifica se a promoção ainda não expirou
+        if end_dt >= today_start:
             promotions.append(p)
             if len(promotions) >= limit:
                 break
@@ -161,10 +164,9 @@ async def list_public_promotions(
         for p in all_active:
             start_dt = normalize_datetime_to_utc(p.start_date)
             end_dt = normalize_datetime_to_utc(p.end_date)
-            start_ok = start_dt <= today_end
             end_ok = end_dt >= today_start
             featured_ok = not featured or p.is_featured
-            print(f"  - {p.id}: {p.title} | start_ok={start_ok} (start={start_dt} <= {today_end}) | end_ok={end_ok} (end={end_dt} >= {today_start}) | featured={p.is_featured} (need={featured}) | valid={start_ok and end_ok and featured_ok}")
+            print(f"  - {p.id}: {p.title} | end_ok={end_ok} (end={end_dt} >= {today_start}) | featured={p.is_featured} (need={featured}) | valid={end_ok and featured_ok}")
     return promotions
 
 
@@ -232,10 +234,10 @@ async def get_public_promotion(
         raise HTTPException(status_code=404, detail="Promoção não encontrada ou expirada")
     
     # Verificar validade da data usando comparação normalizada
-    start_dt = normalize_datetime_to_utc(promotion.start_date)
+    # Apenas verifica se a promoção ainda não expirou
     end_dt = normalize_datetime_to_utc(promotion.end_date)
     
-    if not (start_dt <= today_end and end_dt >= today_start):
+    if end_dt < today_start:
         raise HTTPException(status_code=404, detail="Promoção não encontrada ou expirada")
     
     return promotion
