@@ -179,7 +179,9 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
     return () => {
       syncAndRefresh();
     };
-  }, [refreshUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps vazias: sync só no unmount real.
+    // refreshUser em deps causava loop (cleanup rodava a cada re-render do AuthContext)
+  }, []);
   
   return null; // Componente invisível
 }

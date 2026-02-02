@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 
 // Backend FastAPI - usa variável de ambiente ou fallback para localhost
@@ -193,11 +193,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (token) {
       await fetchUser(token);
     }
-  };
+  }, [token]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, register, logout, refreshUser, loading }}>
