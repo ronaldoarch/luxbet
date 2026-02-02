@@ -78,11 +78,14 @@ async def update_promotion(
         raise HTTPException(status_code=404, detail="Promoção não encontrada")
     
     update_data = promotion_data.model_dump(exclude_unset=True)
+    print(f"[Promotions Update] ID={promotion_id}, updating fields: {list(update_data.keys())}")
     for field, value in update_data.items():
+        print(f"  - {field}: {value} (type: {type(value).__name__})")
         setattr(promotion, field, value)
     
     db.commit()
     db.refresh(promotion)
+    print(f"[Promotions Update] After update - active={promotion.is_active}, featured={promotion.is_featured}, start={promotion.start_date}, end={promotion.end_date}")
     return promotion
 
 
@@ -123,6 +126,11 @@ async def list_public_promotions(
         query = query.filter(Promotion.is_featured == True)
     
     promotions = query.order_by(desc(Promotion.position), desc(Promotion.created_at)).limit(limit).all()
+    # Log para debug
+    print(f"[Promotions API] featured={featured}, today_utc={today_utc}, found={len(promotions)} promotions")
+    if promotions:
+        for p in promotions:
+            print(f"  - {p.id}: {p.title} (active={p.is_active}, featured={p.is_featured}, start={p.start_date.date()}, end={p.end_date.date()})")
     return promotions
 
 
