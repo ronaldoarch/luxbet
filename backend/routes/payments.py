@@ -49,8 +49,10 @@ def get_payment_client(gateway: Gateway):
     try:
         credentials = json.loads(gateway.credentials) if gateway.credentials else {}
         gateway_name = gateway.name.lower()
+        print(f"[Payment Client] Criando cliente para gateway: {gateway.name} (nome normalizado: {gateway_name})")
         
         if "nxgate" in gateway_name or "nx" in gateway_name:
+            print(f"[Payment Client] Detectado como NXGATE")
             # NXGATE usa apenas api_key
             api_key = credentials.get("api_key")
             if not api_key:
@@ -61,10 +63,12 @@ def get_payment_client(gateway: Gateway):
             return NXGateAPI(api_key)
         
         elif "suitpay" in gateway_name or "suit" in gateway_name:
+            print(f"[Payment Client] Detectado como SuitPay")
             # SuitPay usa client_id e client_secret
             client_id = credentials.get("client_id") or credentials.get("ci")
             client_secret = credentials.get("client_secret") or credentials.get("cs")
             sandbox = credentials.get("sandbox", True)
+            print(f"[Payment Client] SuitPay - Sandbox: {sandbox}, Client ID: {client_id[:10] if client_id else 'None'}...")
             
             if not client_id or not client_secret:
                 raise HTTPException(
@@ -387,9 +391,11 @@ async def create_pix_withdrawal(
     
     # Buscar gateway PIX ativo
     gateway = get_active_pix_gateway(db)
+    print(f"[Withdrawal] Gateway selecionado: {gateway.name} (ID: {gateway.id}, Tipo: {gateway.type}, Ativo: {gateway.is_active})")
     
     # Criar cliente de pagamento (SuitPay ou NXGATE)
     payment_client = get_payment_client(gateway)
+    print(f"[Withdrawal] Cliente de pagamento criado: {type(payment_client).__name__}")
     
     # URL do webhook
     webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://api.luxbet.site")
@@ -402,9 +408,11 @@ async def create_pix_withdrawal(
     id_transaction = None
     
     gateway_name = gateway.name.lower()
+    print(f"[Withdrawal] Processando saque via {gateway_name.upper()}")
     
     try:
         if isinstance(payment_client, NXGateAPI):
+            print(f"[Withdrawal] Usando NXGATE para processar saque")
             # NXGATE - mapear tipos de chave
             tipo_chave_map = {
                 "document": "CPF",
@@ -428,6 +436,7 @@ async def create_pix_withdrawal(
         
         elif isinstance(payment_client, SuitPayAPI):
             # SuitPay
+            print(f"[Withdrawal] Usando SuitPay para processar saque")
             callback_url = f"{webhook_url}/api/webhooks/suitpay/pix-cashout"
             transfer_response = await payment_client.transfer_pix(
                 key=request.pix_key,
