@@ -17,6 +17,8 @@ export default function Withdrawal() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [withdrawal, setWithdrawal] = useState<any>(null);
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(true);
 
   useEffect(() => {
     const fetchMinimums = async () => {
@@ -32,6 +34,69 @@ export default function Withdrawal() {
     };
     fetchMinimums();
   }, []);
+
+  useEffect(() => {
+    const fetchAvailableBalance = async () => {
+      if (!token || !user) {
+        setLoadingBalance(false);
+        return;
+      }
+
+      try {
+        setLoadingBalance(true);
+        const balanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (balanceRes.ok) {
+          const balanceData = await balanceRes.json();
+          
+          // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro
+          if (balanceData.needs_sync) {
+            console.log('[Withdrawal] Sincronizando saldo do IGameWin...');
+            const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (syncRes.ok) {
+              console.log('[Withdrawal] Saldo sincronizado com sucesso');
+              // Buscar saldo novamente após sincronização
+              const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              if (updatedBalanceRes.ok) {
+                const updatedBalanceData = await updatedBalanceRes.json();
+                setAvailableBalance(updatedBalanceData.available_balance || user.balance);
+              } else {
+                setAvailableBalance(balanceData.available_balance || user.balance);
+              }
+            } else {
+              setAvailableBalance(balanceData.available_balance || user.balance);
+            }
+          } else {
+            setAvailableBalance(balanceData.available_balance || user.balance);
+          }
+        } else {
+          setAvailableBalance(user?.balance || 0);
+        }
+      } catch (err) {
+        console.error('[Withdrawal] Erro ao buscar saldo disponível:', err);
+        setAvailableBalance(user?.balance || 0);
+      } finally {
+        setLoadingBalance(false);
+      }
+    };
+
+    fetchAvailableBalance();
+  }, [token, user]);
 
   const handleWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,20 +151,43 @@ export default function Withdrawal() {
           
           if (syncRes.ok) {
             console.log('[Withdrawal] Saldo sincronizado com sucesso');
-            // Atualizar dados do usuário após sincronização
-            // O AuthContext atualizará automaticamente
+            // Buscar saldo atualizado após sincronização
+            const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            if (updatedBalanceRes.ok) {
+              const updatedBalanceData = await updatedBalanceRes.json();
+              const currentBalance = updatedBalanceData.available_balance || user.balance;
+              setAvailableBalance(currentBalance);
+              if (currentBalance < value) {
+                setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } else {
+          // Verificar saldo disponível
+          const currentBalance = balanceData.available_balance || user.balance;
+          setAvailableBalance(currentBalance);
+          if (currentBalance < value) {
+            const totalBalance = balanceData.total_balance || user.balance;
+            if (totalBalance >= value && balanceData.needs_sync) {
+              setError(`Saldo insuficiente no momento. Você tem R$ ${totalBalance.toFixed(2)} no total, mas precisa sincronizar primeiro. Tente novamente em alguns segundos.`);
+            } else {
+              setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
+            }
+            setLoading(false);
+            return;
           }
         }
-
-        // Verificar saldo disponível após sincronização
-        const availableBalance = balanceData.available_balance || user.balance;
-        if (availableBalance < value) {
-          const totalBalance = balanceData.total_balance || user.balance;
-          if (totalBalance >= value && balanceData.needs_sync) {
-            setError(`Saldo insuficiente no momento. Você tem R$ ${totalBalance.toFixed(2)} no total, mas precisa sincronizar primeiro. Tente novamente em alguns segundos.`);
-          } else {
-            setError(`Saldo insuficiente. Disponível: R$ ${availableBalance.toFixed(2)}`);
-          }
+      } else {
+        // Se não conseguir buscar saldo, usar o valor do estado ou do user
+        const currentBalance = availableBalance !== null ? availableBalance : user.balance;
+        if (currentBalance < value) {
+          setError(`Saldo insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}`);
           setLoading(false);
           return;
         }
@@ -163,7 +251,13 @@ export default function Withdrawal() {
               </p>
               <div className="space-y-2 text-sm">
                 <p className="text-yellow-400">⚠️ Valor mínimo: R$ {minWithdrawal.toFixed(2).replace('.', ',')}</p>
-                <p className="text-white">💰 Saldo disponível: R$ {user?.balance.toFixed(2).replace('.', ',') || '0,00'}</p>
+                <p className="text-white">
+                  💰 Saldo disponível: {
+                    loadingBalance 
+                      ? 'Carregando...' 
+                      : `R$ ${(availableBalance !== null ? availableBalance : user?.balance || 0).toFixed(2).replace('.', ',')}`
+                  }
+                </p>
               </div>
             </div>
 
