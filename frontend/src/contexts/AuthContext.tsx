@@ -64,32 +64,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Atualizar saldo periodicamente (a cada 15 segundos para evitar sobrecarga)
     const balanceInterval = setInterval(() => {
+      // NÃO atualizar durante o jogo: em Transfer Mode o saldo está no IGameWin (DB=0)
+      if (window.location.pathname.startsWith('/jogo/')) return;
       if (token && !isFetching) {
         isFetching = true;
-        // Usar catch para evitar que erros interrompam o intervalo
         fetchUser(token).finally(() => {
           isFetching = false;
         });
       }
-    }, 15000); // 15 segundos - reduzido de 5 para evitar race conditions
+    }, 15000);
 
     // Atualizar saldo quando a página ganha foco (usuário volta para a aba)
     const handleFocus = () => {
-      if (token) {
-        fetchUser(token).catch(() => {
-          // Silenciar erros durante atualização automática
-        });
-      }
+      if (window.location.pathname.startsWith('/jogo/')) return;
+      if (token) fetchUser(token).catch(() => {});
     };
     window.addEventListener('focus', handleFocus);
 
     // Atualizar saldo quando a página fica visível novamente
     const handleVisibilityChange = () => {
-      if (!document.hidden && token) {
-        fetchUser(token).catch(() => {
-          // Silenciar erros durante atualização automática
-        });
-      }
+      if (window.location.pathname.startsWith('/jogo/')) return;
+      if (!document.hidden && token) fetchUser(token).catch(() => {});
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
