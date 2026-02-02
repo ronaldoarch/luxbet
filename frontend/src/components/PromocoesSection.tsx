@@ -23,6 +23,7 @@ export default function PromocoesSection() {
   const fetchPromotions = useCallback(async () => {
     try {
       const cacheBust = `&_t=${Date.now()}`;
+      console.log('[PromocoesSection] Buscando promoções em destaque...');
       let res = await fetch(`${API_URL}/api/public/promotions?featured=true&limit=6${cacheBust}`, {
         cache: 'no-cache',
         headers: { 'Cache-Control': 'no-cache' }
@@ -30,7 +31,9 @@ export default function PromocoesSection() {
       if (res.ok) {
         const data = await res.json();
         let list = Array.isArray(data) ? data : (data.promotions || []);
+        console.log('[PromocoesSection] Promoções em destaque:', list.length, list);
         if (list.length === 0) {
+          console.log('[PromocoesSection] Nenhuma em destaque, buscando todas...');
           res = await fetch(`${API_URL}/api/public/promotions?limit=6${cacheBust}`, {
             cache: 'no-cache',
             headers: { 'Cache-Control': 'no-cache' }
@@ -38,12 +41,15 @@ export default function PromocoesSection() {
           if (res.ok) {
             const dataAll = await res.json();
             list = Array.isArray(dataAll) ? dataAll : (dataAll.promotions || []);
+            console.log('[PromocoesSection] Todas as promoções:', list.length, list);
           }
         }
         setPromotions(list);
+      } else {
+        console.error('[PromocoesSection] Erro na resposta:', res.status, await res.text().catch(() => ''));
       }
     } catch (err) {
-      console.warn('Erro ao buscar promoções:', err);
+      console.warn('[PromocoesSection] Erro ao buscar promoções:', err);
     } finally {
       setLoading(false);
     }

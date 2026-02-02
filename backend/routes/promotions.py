@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from database import get_db
 from dependencies import get_current_admin_user, get_current_user
@@ -111,11 +111,12 @@ async def list_public_promotions(
     db: Session = Depends(get_db)
 ):
     """Listar promoções ativas (público) - usa comparação por data para evitar problemas de timezone"""
-    today = date.today()
+    # Usar UTC para comparação consistente
+    today_utc = datetime.now(timezone.utc).date()
     query = db.query(Promotion).filter(
         Promotion.is_active == True,
-        func.date(Promotion.start_date) <= today,
-        func.date(Promotion.end_date) >= today
+        func.date(Promotion.start_date) <= today_utc,
+        func.date(Promotion.end_date) >= today_utc
     )
     
     if featured is True:
@@ -125,18 +126,63 @@ async def list_public_promotions(
     return promotions
 
 
+@public_router.get("/debug")
+async def debug_promotions(
+    db: Session = Depends(get_db)
+):
+    """Endpoint de debug para verificar promoções (temporário)"""
+    today_utc = datetime.now(timezone.utc).date()
+    all_promos = db.query(Promotion).all()
+    active_promos = db.query(Promotion).filter(Promotion.is_active == True).all()
+    featured_promos = db.query(Promotion).filter(
+        Promotion.is_active == True,
+        Promotion.is_featured == True
+    ).all()
+    valid_promos = db.query(Promotion).filter(
+        Promotion.is_active == True,
+        func.date(Promotion.start_date) <= today_utc,
+        func.date(Promotion.end_date) >= today_utc
+    ).all()
+    valid_featured = db.query(Promotion).filter(
+        Promotion.is_active == True,
+        Promotion.is_featured == True,
+        func.date(Promotion.start_date) <= today_utc,
+        func.date(Promotion.end_date) >= today_utc
+    ).all()
+    
+    return {
+        "today_utc": str(today_utc),
+        "total": len(all_promos),
+        "active": len(active_promos),
+        "featured": len(featured_promos),
+        "valid": len(valid_promos),
+        "valid_featured": len(valid_featured),
+        "promotions": [{
+            "id": p.id,
+            "title": p.title,
+            "is_active": p.is_active,
+            "is_featured": p.is_featured,
+            "start_date": str(p.start_date),
+            "end_date": str(p.end_date),
+            "start_date_only": str(func.date(p.start_date)),
+            "end_date_only": str(func.date(p.end_date)),
+            "valid": func.date(p.start_date) <= today_utc and func.date(p.end_date) >= today_utc
+        } for p in all_promos]
+    }
+
+
 @public_router.get("/{promotion_id}", response_model=PromotionResponse)
 async def get_public_promotion(
     promotion_id: int,
     db: Session = Depends(get_db)
 ):
     """Obter promoção por ID (público)"""
-    today = date.today()
+    today_utc = datetime.now(timezone.utc).date()
     promotion = db.query(Promotion).filter(
         Promotion.id == promotion_id,
         Promotion.is_active == True,
-        func.date(Promotion.start_date) <= today,
-        func.date(Promotion.end_date) >= today
+        func.date(Promotion.start_date) <= today_utc,
+        func.date(Promotion.end_date) >= today_utc
     ).first()
     
     if not promotion:
