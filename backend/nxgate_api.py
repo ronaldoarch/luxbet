@@ -320,6 +320,7 @@ class NXGateAPI:
         {
             "type": "PIX_CASHOUT_SUCCESS" ou "PIX_CASHOUT_ERROR",
             "idTransaction": "...",
+            "internalreference": "...",  # Pode vir ao invés de idTransaction
             "status": "SUCCESS" ou "ERROR",
             "amount": 0.96,
             ...
@@ -328,14 +329,18 @@ class NXGateAPI:
         Returns:
             Dict padronizado com: idTransaction, status, amount, payment_date
         """
+        # NXGate pode enviar idTransaction ou internalreference
+        transaction_id = data.get("idTransaction") or data.get("internalreference") or data.get("id")
+        
         result = {
-            "idTransaction": data.get("idTransaction"),
+            "idTransaction": transaction_id,
             "status": data.get("status", "").upper(),
             "type": data.get("type", ""),
             "amount": data.get("amount"),
             "payment_date": data.get("payment_date"),
             "end_to_end": data.get("end_to_end"),
-            "worked": data.get("worked", False)
+            "worked": data.get("worked", False),
+            "internalreference": data.get("internalreference")  # Manter também o internalreference original
         }
         
         return result

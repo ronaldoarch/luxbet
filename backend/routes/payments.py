@@ -827,31 +827,71 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
     try:
         data = await request.json()
         
+        print(f"\n{'='*80}")
+        print(f"[Webhook NXGATE PIX Cash-out] Webhook recebido")
+        print(f"[Webhook NXGATE PIX Cash-out] Payload completo: {json.dumps(data, indent=2)}")
+        print(f"{'='*80}\n")
+        
         # Parse do webhook NXGATE
         parsed = NXGateAPI.parse_webhook_withdrawal(data)
         id_transaction = parsed.get("idTransaction")
+        internalreference = parsed.get("internalreference")
         status_withdrawal = parsed.get("status", "").upper()
         withdrawal_type = parsed.get("type", "")
         
-        if not id_transaction:
-            return {"status": "received", "message": "idTransaction não encontrado"}
+        print(f"[Webhook NXGATE PIX Cash-out] ID Transaction: {id_transaction}")
+        print(f"[Webhook NXGATE PIX Cash-out] Internal Reference: {internalreference}")
+        print(f"[Webhook NXGATE PIX Cash-out] Status: {status_withdrawal}")
+        print(f"[Webhook NXGATE PIX Cash-out] Type: {withdrawal_type}")
         
-        # Buscar saque pelo external_id
-        withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == id_transaction).first()
+        if not id_transaction and not internalreference:
+            print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Nenhum ID de transação encontrado no webhook")
+            return {"status": "received", "message": "idTransaction ou internalreference não encontrado"}
+        
+        # Buscar saque pelo external_id (pode ser idTransaction ou internalreference)
+        withdrawal = None
+        search_ids = [id_transaction, internalreference]
+        
+        for search_id in search_ids:
+            if search_id:
+                withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == search_id).first()
+                if withdrawal:
+                    print(f"[Webhook NXGATE PIX Cash-out] ✅ Saque encontrado pelo ID: {search_id}")
+                    break
         
         if not withdrawal:
-            return {"status": "received", "message": "Saque não encontrado"}
+            print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Saque não encontrado com IDs: {search_ids}")
+            # Tentar buscar pelo transaction_id também (caso tenha sido salvo diferente)
+            if id_transaction:
+                withdrawal = db.query(Withdrawal).filter(Withdrawal.transaction_id == id_transaction).first()
+            if not withdrawal and internalreference:
+                withdrawal = db.query(Withdrawal).filter(Withdrawal.transaction_id == internalreference).first()
+            
+            if not withdrawal:
+                print(f"[Webhook NXGATE PIX Cash-out] ❌ Saque não encontrado após todas as tentativas")
+                return {"status": "received", "message": "Saque não encontrado"}
+        
+        old_status = withdrawal.status
+        print(f"[Webhook NXGATE PIX Cash-out] Saque ID: {withdrawal.id}, Status atual: {old_status}")
         
         # Atualizar status do saque
         if withdrawal_type == "PIX_CASHOUT_SUCCESS" or status_withdrawal == "SUCCESS":
-            withdrawal.status = TransactionStatus.APPROVED
+            if old_status != TransactionStatus.APPROVED:
+                withdrawal.status = TransactionStatus.APPROVED
+                print(f"[Webhook NXGATE PIX Cash-out] ✅ Status atualizado para APPROVED")
+            else:
+                print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Saque já estava aprovado, ignorando webhook duplicado")
         elif withdrawal_type == "PIX_CASHOUT_ERROR" or status_withdrawal == "ERROR":
             # Reverter saldo se foi cancelado
             if withdrawal.status == TransactionStatus.PENDING:
                 user = db.query(User).filter(User.id == withdrawal.user_id).first()
                 if user:
                     user.balance += withdrawal.amount
+                    print(f"[Webhook NXGATE PIX Cash-out] 💰 Saldo revertido para usuário: R$ {withdrawal.amount:.2f}")
             withdrawal.status = TransactionStatus.REJECTED
+            print(f"[Webhook NXGATE PIX Cash-out] ❌ Status atualizado para REJECTED")
+        else:
+            print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Status não reconhecido: {status_withdrawal}, Type: {withdrawal_type}")
         
         # Atualizar metadata
         metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
@@ -861,13 +901,19 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
         withdrawal.metadata_json = json.dumps(metadata)
         
         db.commit()
+        db.refresh(withdrawal)
         
-        return {"status": "received"}
+        print(f"[Webhook NXGATE PIX Cash-out] ✅ Webhook processado com sucesso. Status final: {withdrawal.status}")
+        print(f"{'='*80}\n")
+        
+        return {"status": "received", "message": "Webhook processado com sucesso"}
     
     except Exception as e:
-        print(f"Erro ao processar webhook NXGATE PIX Cash-out: {str(e)}")
+        print(f"\n{'='*80}")
+        print(f"[Webhook NXGATE PIX Cash-out] ❌ ERRO ao processar webhook: {str(e)}")
         import traceback
         traceback.print_exc()
+        print(f"{'='*80}\n")
         return {"status": "error", "message": str(e)}
 
 

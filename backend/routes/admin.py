@@ -338,16 +338,23 @@ async def update_withdrawal(
     
     update_data = withdrawal_data.model_dump(exclude_unset=True)
     
-    # If approved, deduct from user balance
-    if withdrawal_data.status == TransactionStatus.APPROVED and withdrawal.status != TransactionStatus.APPROVED:
-        user = db.query(User).filter(User.id == withdrawal.user_id).first()
-        if user.balance < withdrawal.amount:
-            raise HTTPException(status_code=400, detail="Insufficient balance")
-        user.balance -= withdrawal.amount
-    # If rejected or cancelled and was approved, refund
+    user = db.query(User).filter(User.id == withdrawal.user_id).first()
+    
+    # Se está aprovando um saque que estava pendente
+    if withdrawal_data.status == TransactionStatus.APPROVED and withdrawal.status == TransactionStatus.PENDING:
+        # O saldo já foi deduzido quando o saque foi criado, então não precisa deduzir novamente
+        # Apenas atualizar o status
+        print(f"[Admin] Aprovando saque {withdrawal_id} - saldo já foi deduzido anteriormente")
+    # Se está rejeitando/cancelando um saque que estava pendente, reverter o saldo
+    elif withdrawal_data.status in [TransactionStatus.REJECTED, TransactionStatus.CANCELLED] and withdrawal.status == TransactionStatus.PENDING:
+        if user:
+            user.balance += withdrawal.amount
+            print(f"[Admin] Revertendo saque {withdrawal_id} - adicionando R$ {withdrawal.amount:.2f} ao saldo do usuário")
+    # Se está rejeitando/cancelando um saque que estava aprovado, reverter o saldo
     elif withdrawal_data.status in [TransactionStatus.REJECTED, TransactionStatus.CANCELLED] and withdrawal.status == TransactionStatus.APPROVED:
-        user = db.query(User).filter(User.id == withdrawal.user_id).first()
-        user.balance += withdrawal.amount
+        if user:
+            user.balance += withdrawal.amount
+            print(f"[Admin] Revertendo saque aprovado {withdrawal_id} - adicionando R$ {withdrawal.amount:.2f} ao saldo do usuário")
     
     for field, value in update_data.items():
         setattr(withdrawal, field, value)
@@ -1606,8 +1613,15 @@ async def get_ggr_report(
         Bet.created_at <= end
     ).with_entities(func.sum(Bet.win_amount)).scalar() or 0.0
     
-    # GGR = Total Apostado - Total Ganho
-    ggr = total_bets - total_wins
+    # GGR (Gross Gaming Revenue)
+    # Se houver apostas registradas, usar fórmula correta: Total Apostado - Total Ganho
+    # Se não houver apostas, usar fórmula simplificada: Depósitos - Saques (mesma do dashboard principal)
+    if total_bets > 0:
+        # Fórmula correta de GGR baseada em apostas
+        ggr = total_bets - total_wins
+    else:
+        # Fallback: fórmula simplificada quando não há apostas (consistente com dashboard principal)
+        ggr = total_deposits - total_withdrawals
     
     # NGR (Net Gaming Revenue) = GGR - Bonuses (simplificado, pode incluir bônus depois)
     ngr = ggr
@@ -1643,7 +1657,8 @@ async def get_ggr_report(
         },
         "ggr": ggr,
         "ngr": ngr,
-        "ggr_rate": (ggr / total_bets * 100) if total_bets > 0 else 0.0,
+        # Taxa GGR: se houver apostas, calcular baseado em apostas; senão, usar taxa padrão de 17%
+        "ggr_rate": (ggr / total_bets * 100) if total_bets > 0 else (17.0 if ggr > 0 else 0.0),
     }
 
 
