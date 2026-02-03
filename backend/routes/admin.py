@@ -1315,10 +1315,28 @@ async def launch_game(
     our_balance_before_check = float(current_user.balance)
     print(f"[Launch Game] Saldo no nosso banco ANTES de verificar IGameWin: R$ {our_balance_before_check:.2f}")
     
+    # Verificar se há chamadas recentes ao /gold_api (indica Seamless Mode)
+    has_recent_gold_api_call = False
+    if current_user.username in _gold_api_calls:
+        last_call_time = _gold_api_calls[current_user.username]
+        time_since_call = time.time() - last_call_time
+        # Se houve chamada ao /gold_api nos últimos 10 minutos, está em Seamless Mode
+        if time_since_call < 600:  # 10 minutos
+            has_recent_gold_api_call = True
+            print(f"[Launch Game] ✅ Chamada ao /gold_api detectada há {time_since_call:.1f}s - Seamless Mode confirmado")
+    
     igamewin_balance = await api.get_user_balance(current_user.username)
     is_seamless_mode = False
     
-    if igamewin_balance is None:
+    # Se há chamadas recentes ao /gold_api, está em Seamless Mode
+    if has_recent_gold_api_call:
+        print(f"\n[Launch Game] ✅ DETECTADO: Modo Seamless (via chamadas ao /gold_api)")
+        print(f"[Launch Game] O IGameWin está chamando nosso /gold_api - modo Seamless confirmado")
+        print(f"[Launch Game] Não faremos transferências - o saldo fica no nosso banco")
+        print(f"[Launch Game] Saldo permanece: R$ {our_balance_before_check:.2f}")
+        is_seamless_mode = True
+        igamewin_balance = 0.0  # Em Seamless Mode, assumimos 0 no IGameWin
+    elif igamewin_balance is None:
         # Verificar se o erro indica Seamless Mode
         if api.last_error and "ERROR_GET_BALANCE_END_POINT" in api.last_error:
             print(f"\n[Launch Game] ✅ DETECTADO: Modo Seamless (Seamless Mode)")
@@ -1351,6 +1369,7 @@ async def launch_game(
             print(f"[Launch Game]   1. Campo 'Tipo de API' está como 'Seamless' no painel IGameWin")
             print(f"[Launch Game]   2. Campo 'Ponto final do site' está como 'https://api.luxbet.site'")
             print(f"[Launch Game]   3. Aguardou 2-5 minutos após salvar as configurações")
+            print(f"[Launch Game]   4. Se o IGameWin está chamando nosso /gold_api, o modo será detectado automaticamente")
     
     # 3. Se estiver em Seamless Mode, pular todas as transferências
     if is_seamless_mode:
@@ -1633,6 +1652,10 @@ async def launch_game(
 
 # Cache para evitar sincronizações simultâneas do mesmo usuário
 _sync_locks: Dict[str, bool] = {}
+
+# Cache para rastrear chamadas ao /gold_api (indica Seamless Mode)
+# Formato: {username: timestamp}
+_gold_api_calls: Dict[str, float] = {}
 
 @public_router.post("/games/sync-balance")
 async def sync_balance_from_igamewin(
@@ -3143,6 +3166,13 @@ async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
         method = data.get("method")
         agent_code = data.get("agent_code")
         agent_secret = data.get("agent_secret")
+        user_code = data.get("user_code")
+        
+        # Registrar chamada ao /gold_api para detectar Seamless Mode
+        if user_code:
+            import time
+            _gold_api_calls[user_code] = time.time()
+            print(f"[Gold API] ✅ Chamada ao /gold_api registrada para usuário {user_code} - Seamless Mode confirmado")
         
         print(f"[Gold API] Method: {method}, Agent Code: {agent_code}")
         print(f"[Gold API] Full payload: {json.dumps({**data, 'agent_secret': '***' if agent_secret else None})}")
