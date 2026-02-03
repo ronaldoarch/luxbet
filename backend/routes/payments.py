@@ -449,9 +449,15 @@ async def create_pix_withdrawal(
             # Verificar se é erro de IP não autorizado
             if transfer_response and transfer_response.get("_error") == "IP_NOT_AUTHORIZED":
                 error_message = transfer_response.get("message", "")
+                detected_ip = transfer_response.get("detected_ip", "não detectado")
+                detail_msg = f"IP do servidor não autorizado na conta NXGate. {error_message}"
+                if detected_ip and detected_ip != "não detectado":
+                    detail_msg += f" IP detectado: {detected_ip}. Verifique se este IP está autorizado na conta NXGate."
+                else:
+                    detail_msg += " Por favor, entre em contato com o suporte da NXGate para autorizar o IP do servidor onde a aplicação está hospedada. Você pode encontrar o IP do servidor nas configurações do Coolify ou consultando o provedor de hospedagem."
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"IP do servidor não autorizado na conta NXGate. {error_message} Por favor, entre em contato com o suporte da NXGate para autorizar o IP do servidor onde a aplicação está hospedada. Você pode encontrar o IP do servidor nas configurações do Coolify ou consultando o provedor de hospedagem."
+                    detail=detail_msg
                 )
             
             if transfer_response:

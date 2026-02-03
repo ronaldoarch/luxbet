@@ -5,6 +5,7 @@ Documentação: https://api.nxgate.com.br
 import httpx
 import json
 from typing import Optional, Dict, Any
+import socket
 
 
 class NXGateAPI:
@@ -23,9 +24,42 @@ class NXGateAPI:
             "accept": "application/json"
         }
     
+    async def _get_server_ip(self) -> Optional[str]:
+        """Tenta obter o IP público do servidor"""
+        try:
+            # Tentar obter IP público usando serviço externo
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Tentar múltiplos serviços
+                services = [
+                    "https://api.ipify.org?format=json",
+                    "https://ifconfig.me/ip",
+                    "https://icanhazip.com"
+                ]
+                for service_url in services:
+                    try:
+                        if "ipify" in service_url:
+                            response = await client.get(service_url)
+                            if response.status_code == 200:
+                                data = response.json()
+                                return data.get("ip")
+                        else:
+                            response = await client.get(service_url)
+                            if response.status_code == 200:
+                                return response.text.strip()
+                    except:
+                        continue
+        except Exception as e:
+            print(f"[NXGate] Erro ao obter IP público: {e}")
+        return None
+    
     async def _post(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Faz requisição POST para a API NXGATE"""
         try:
+            # Tentar obter IP do servidor para diagnóstico
+            server_ip = await self._get_server_ip()
+            if server_ip:
+                print(f"[NXGate] IP público do servidor detectado: {server_ip}")
+            
             # Headers conforme documentação
             headers = {
                 "Content-Type": "application/json",
@@ -37,6 +71,8 @@ class NXGateAPI:
                 print(f"\n{'='*80}")
                 print(f"NXGATE Request - URL: {url}")
                 print(f"NXGATE Request - Headers: {headers}")
+                if server_ip:
+                    print(f"NXGATE Request - Server IP: {server_ip}")
                 print(f"NXGATE Request - Payload: {json.dumps(payload, indent=2)}")
                 print(f"{'='*80}\n")
                 
@@ -78,9 +114,12 @@ class NXGateAPI:
                         print(f"\n{'='*80}")
                         print(f"NXGATE {endpoint} - ⚠️  ERRO 403: IP não autorizado")
                         print(f"NXGATE {endpoint} - Response: {response_data}")
+                        if server_ip:
+                            print(f"NXGATE {endpoint} - ⚠️  IP detectado do servidor: {server_ip}")
+                            print(f"NXGATE {endpoint} - ⚠️  Verifique se este IP está autorizado na conta NXGate")
                         print(f"{'='*80}\n")
                         # Retornar um dict especial para identificar o erro de IP
-                        return {"_error": "IP_NOT_AUTHORIZED", "message": error_message}
+                        return {"_error": "IP_NOT_AUTHORIZED", "message": error_message, "detected_ip": server_ip}
                 
                 response.raise_for_status()
                 return response_data
@@ -91,11 +130,15 @@ class NXGateAPI:
                 error_json = e.response.json() if e.response else {}
                 error_message = error_json.get("message", "")
                 if e.response.status_code == 403 and ("IP" in error_message.upper() or "não autorizado" in error_message.lower()):
+                    server_ip = await self._get_server_ip()
                     print(f"\n{'='*80}")
                     print(f"NXGATE {endpoint} - ⚠️  ERRO 403: IP não autorizado")
                     print(f"NXGATE {endpoint} - Response: {error_json}")
+                    if server_ip:
+                        print(f"NXGATE {endpoint} - ⚠️  IP detectado do servidor: {server_ip}")
+                        print(f"NXGATE {endpoint} - ⚠️  Verifique se este IP está autorizado na conta NXGate")
                     print(f"{'='*80}\n")
-                    return {"_error": "IP_NOT_AUTHORIZED", "message": error_message}
+                    return {"_error": "IP_NOT_AUTHORIZED", "message": error_message, "detected_ip": server_ip}
             except:
                 pass
             
