@@ -25,39 +25,64 @@ class NXGateAPI:
     async def _post(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Faz requisição POST para a API NXGATE"""
         try:
-            # Adicionar api_key aos headers se não estiver no payload
-            headers = self.headers.copy()
-            if "api_key" not in payload:
-                headers["api_key"] = self.api_key
+            # Headers conforme documentação
+            headers = {
+                "Content-Type": "application/json",
+                "accept": "application/json"
+            }
             
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 url = f"{self.base_url}{endpoint}"
+                print(f"\n{'='*80}")
                 print(f"NXGATE Request - URL: {url}")
+                print(f"NXGATE Request - Headers: {headers}")
                 print(f"NXGATE Request - Payload: {json.dumps(payload, indent=2)}")
+                print(f"{'='*80}\n")
                 
                 response = await client.post(
                     url,
                     headers=headers,
                     json=payload
                 )
+                
                 print(f"NXGATE {endpoint} - Status: {response.status_code}")
-                print(f"NXGATE {endpoint} - Response: {response.text[:500]}")
+                print(f"NXGATE {endpoint} - Headers: {dict(response.headers)}")
+                print(f"NXGATE {endpoint} - Response: {response.text[:1000]}")
                 
                 # Verificar se a resposta é HTML (pode ser Cloudflare ou erro de rota)
-                if response.headers.get("content-type", "").startswith("text/html"):
-                    print(f"NXGATE {endpoint} - ⚠️  Resposta é HTML, não JSON. Possível erro de endpoint ou Cloudflare.")
-                    error_text = response.text[:500]
-                    print(f"NXGATE {endpoint} - HTML Response: {error_text}")
+                content_type = response.headers.get("content-type", "")
+                if content_type.startswith("text/html"):
+                    print(f"\n{'='*80}")
+                    print(f"NXGATE {endpoint} - ⚠️  ERRO: Resposta é HTML, não JSON!")
+                    print(f"NXGATE {endpoint} - Content-Type: {content_type}")
+                    print(f"NXGATE {endpoint} - Possíveis causas:")
+                    print(f"  - Endpoint incorreto ou mudou")
+                    print(f"  - API Key inválida ou não autorizada")
+                    print(f"  - Cloudflare bloqueando requisição")
+                    print(f"NXGATE {endpoint} - HTML Response (primeiros 500 chars):")
+                    print(f"{response.text[:500]}")
+                    print(f"{'='*80}\n")
                     return None
                 
+                # Tentar fazer parse do JSON mesmo se status não for 2xx
+                try:
+                    response_data = response.json()
+                except:
+                    response_data = None
+                
                 response.raise_for_status()
-                return response.json()
+                return response_data
         except httpx.HTTPStatusError as e:
             error_text = e.response.text if e.response else "Sem resposta"
-            print(f"Erro HTTP NXGATE {endpoint}: {e.response.status_code} - {error_text[:500]}")
+            print(f"\n{'='*80}")
+            print(f"NXGATE {endpoint} - ❌ ERRO HTTP {e.response.status_code}")
+            print(f"NXGATE {endpoint} - Response: {error_text[:1000]}")
+            print(f"{'='*80}\n")
             return None
         except Exception as e:
-            print(f"Erro ao chamar NXGATE {endpoint}: {str(e)}")
+            print(f"\n{'='*80}")
+            print(f"NXGATE {endpoint} - ❌ ERRO: {str(e)}")
+            print(f"{'='*80}\n")
             return None
     
     async def generate_pix_payment(
@@ -119,11 +144,14 @@ class NXGateAPI:
         Returns:
             Dict com dados do saque ou None em caso de erro
         """
+        # Formatar valor como string com 2 casas decimais (conforme documentação)
+        valor_str = f"{valor:.2f}"
+        
         payload = {
             "api_key": self.api_key,
-            "valor": valor,
+            "valor": valor_str,  # Enviar como string conforme documentação
             "chave_pix": chave_pix,
-            "tipo_chave": tipo_chave,
+            "tipo_chave": tipo_chave.upper(),  # Garantir maiúsculas
             "documento": documento
         }
         
