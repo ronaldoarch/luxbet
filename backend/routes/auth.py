@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from datetime import timedelta
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
+from typing import List, Optional
 from database import get_db
 from schemas import LoginRequest, Token, UserResponse, UserCreate
 from auth import authenticate_user, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash, get_user_by_username
 from dependencies import get_current_user
-from models import User, UserRole, Affiliate
+from models import User, UserRole, Affiliate, Deposit, Withdrawal, Bet, TransactionStatus, BetStatus
 from igamewin_api import get_igamewin_api
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -214,3 +216,102 @@ async def get_available_balance(
         "needs_sync": needs_sync,
         "message": "Sincronize o saldo do IGameWin antes de sacar" if needs_sync else "Saldo disponível para saque"
     }
+
+
+# ========== HISTÓRICO DE TRANSAÇÕES ==========
+
+@router.get("/transactions")
+async def get_my_transactions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna histórico de transações do usuário (depósitos e saques)
+    """
+    # Buscar depósitos do usuário
+    deposits = db.query(Deposit).filter(
+        Deposit.user_id == current_user.id
+    ).order_by(desc(Deposit.created_at)).offset(skip).limit(limit).all()
+    
+    # Buscar saques do usuário
+    withdrawals = db.query(Withdrawal).filter(
+        Withdrawal.user_id == current_user.id
+    ).order_by(desc(Withdrawal.created_at)).offset(skip).limit(limit).all()
+    
+    # Combinar e ordenar por data
+    transactions = []
+    
+    for deposit in deposits:
+        transactions.append({
+            "id": deposit.id,
+            "type": "deposit",
+            "amount": float(deposit.amount),
+            "status": deposit.status.value,
+            "transaction_id": deposit.transaction_id,
+            "external_id": deposit.external_id,
+            "created_at": deposit.created_at.isoformat(),
+            "updated_at": deposit.updated_at.isoformat(),
+        })
+    
+    for withdrawal in withdrawals:
+        transactions.append({
+            "id": withdrawal.id,
+            "type": "withdrawal",
+            "amount": float(withdrawal.amount),
+            "status": withdrawal.status.value,
+            "transaction_id": withdrawal.transaction_id,
+            "external_id": withdrawal.external_id,
+            "created_at": withdrawal.created_at.isoformat(),
+            "updated_at": withdrawal.updated_at.isoformat(),
+        })
+    
+    # Ordenar por data (mais recente primeiro)
+    transactions.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return {
+        "transactions": transactions[:limit],
+        "total": len(transactions)
+    }
+
+
+# ========== MINHAS APOSTAS ==========
+
+@router.get("/bets")
+async def get_my_bets(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    status_filter: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna histórico de apostas do usuário
+    """
+    query = db.query(Bet).filter(Bet.user_id == current_user.id)
+    
+    if status_filter:
+        try:
+            bet_status = BetStatus(status_filter.lower())
+            query = query.filter(Bet.status == bet_status)
+        except ValueError:
+            pass  # Ignorar status inválido
+    
+    bets = query.order_by(desc(Bet.created_at)).offset(skip).limit(limit).all()
+    
+    return [
+        {
+            "id": bet.id,
+            "game_id": bet.game_id,
+            "game_name": bet.game_name,
+            "provider": bet.provider,
+            "amount": float(bet.amount),
+            "win_amount": float(bet.win_amount),
+            "status": bet.status.value,
+            "transaction_id": bet.transaction_id,
+            "created_at": bet.created_at.isoformat(),
+            "updated_at": bet.updated_at.isoformat(),
+        }
+        for bet in bets
+    ]

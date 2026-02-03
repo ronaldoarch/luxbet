@@ -9,6 +9,8 @@ import Withdrawal from './pages/Withdrawal';
 import AffiliatePanel from './pages/AffiliatePanel';
 import ManagerPanel from './pages/ManagerPanel';
 import Promocoes from './pages/Promocoes';
+import TransactionHistory from './pages/TransactionHistory';
+import BetsHistory from './pages/BetsHistory';
 import AdminRoute from './components/AdminRoute';
 import AdminLoginRoute from './components/AdminLoginRoute';
 
@@ -24,6 +26,8 @@ export default function AppRouter() {
         <Route path="/afiliado" element={<AffiliatePanel />} />
         <Route path="/gerente" element={<ManagerPanel />} />
         <Route path="/promocoes" element={<Promocoes />} />
+        <Route path="/historico" element={<TransactionHistory />} />
+        <Route path="/apostas" element={<BetsHistory />} />
         <Route path="/admin/login" element={
           <AdminLoginRoute>
             <AdminLogin />
