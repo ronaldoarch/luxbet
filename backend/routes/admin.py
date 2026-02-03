@@ -1025,9 +1025,12 @@ async def launch_game(
             detail="provider_code é obrigatório. Não foi possível determinar o provider do jogo."
         )
     
-    # MODO TRANSFER: Transferir saldo do nosso banco para o IGameWin antes de lançar
+    # Variável para controlar o modo de operação
+    is_seamless_mode = False
+    
+    # Detectar modo de operação ANTES de fazer transferências
     print("\n" + "="*80)
-    print(f"[Launch Game] 🔄 MODO TRANSFER - Sincronizando saldo")
+    print(f"[Launch Game] 🔍 Detectando modo de operação do IGameWin")
     print(f"[Launch Game] 👤 Usuário: {current_user.username}")
     print(f"[Launch Game] 💰 Saldo no nosso banco: R$ {current_user.balance}")
     print("="*80 + "\n")
@@ -1041,26 +1044,44 @@ async def launch_game(
             print(f"[Launch Game] Warning: Could not create user: {api.last_error}")
             # Não bloquear - tentar lançar mesmo assim (usuário pode já existir)
     
-    # 2. Verificar saldo atual do usuário no IGameWin
-    print(f"[Launch Game] Verificando saldo do usuário no IGameWin...")
+    # 2. Tentar verificar saldo para detectar o modo
+    print(f"[Launch Game] Verificando saldo do usuário no IGameWin para detectar modo...")
     igamewin_balance = await api.get_user_balance(current_user.username)
+    is_seamless_mode = False
+    
     if igamewin_balance is None:
-        print(f"[Launch Game] Warning: Não foi possível obter saldo do IGameWin, assumindo 0.0")
-        igamewin_balance = 0.0
+        # Verificar se o erro indica Seamless Mode
+        if api.last_error and "ERROR_GET_BALANCE_END_POINT" in api.last_error:
+            print(f"\n[Launch Game] ✅ DETECTADO: Modo Seamless (Seamless Mode)")
+            print(f"[Launch Game] O IGameWin está configurado para chamar nosso /gold_api")
+            print(f"[Launch Game] Não faremos transferências - o saldo fica no nosso banco")
+            is_seamless_mode = True
+            igamewin_balance = 0.0  # Em Seamless Mode, assumimos 0 no IGameWin
+        else:
+            print(f"[Launch Game] Warning: Não foi possível obter saldo do IGameWin")
+            print(f"[Launch Game] Assumindo Transfer Mode e continuando...")
+            igamewin_balance = 0.0
     else:
+        print(f"[Launch Game] ✅ DETECTADO: Modo Transfer (Transfer Mode)")
         print(f"[Launch Game] Saldo no IGameWin: R$ {igamewin_balance}")
     
-    # 3. Calcular diferença e sincronizar ANTES de lançar
-    # IMPORTANTE: Sempre sincronizar para garantir que o jogo use apenas o saldo do nosso banco
-    our_balance = float(current_user.balance)
-    balance_diff = our_balance - igamewin_balance
+    # 3. Se estiver em Seamless Mode, pular todas as transferências
+    if is_seamless_mode:
+        print(f"\n[Launch Game] ⚡ Modo Seamless detectado - pulando transferências")
+        print(f"[Launch Game] O IGameWin vai chamar nosso /gold_api para buscar saldo")
+        print(f"[Launch Game] Saldo permanece no nosso banco: R$ {current_user.balance:.2f}")
+    else:
+        # MODO TRANSFER: Sincronizar saldo antes de lançar
+        print(f"\n[Launch Game] 🔄 Modo Transfer - Sincronizando saldo")
+        our_balance = float(current_user.balance)
+        balance_diff = our_balance - igamewin_balance
     
-    print(f"\n[Launch Game] 📊 Análise de saldo:")
-    print(f"[Launch Game]   - Nosso banco: R$ {our_balance:.2f}")
-    print(f"[Launch Game]   - IGameWin: R$ {igamewin_balance:.2f}")
-    print(f"[Launch Game]   - Diferença: R$ {balance_diff:.2f}")
-    
-    if balance_diff > 0.01:  # Transferir se diferença > 1 centavo (nosso banco tem mais)
+        print(f"\n[Launch Game] 📊 Análise de saldo:")
+        print(f"[Launch Game]   - Nosso banco: R$ {our_balance:.2f}")
+        print(f"[Launch Game]   - IGameWin: R$ {igamewin_balance:.2f}")
+        print(f"[Launch Game]   - Diferença: R$ {balance_diff:.2f}")
+        
+        if balance_diff > 0.01:  # Transferir se diferença > 1 centavo (nosso banco tem mais)
         print(f"\n[Launch Game] 💸 Transferindo R$ {balance_diff:.2f} para o IGameWin...")
         transfer_result = await api.transfer_in(current_user.username, balance_diff)
         if transfer_result:
@@ -1126,17 +1147,23 @@ async def launch_game(
                     db.commit()
                     db.refresh(current_user)
                     print(f"[Launch Game] ✅ Transferência parcial concluída!")
+        else:
+            print(f"\n[Launch Game] ✅ Saldos já estão sincronizados!")
+        
+        # 4. Verificar saldo final no IGameWin para confirmar (apenas em Transfer Mode)
+        final_igamewin_balance = await api.get_user_balance(current_user.username)
+        if final_igamewin_balance is not None:
+            print(f"[Launch Game] Saldo final no IGameWin: R$ {final_igamewin_balance:.2f}")
+        
+        print("\n" + "="*80)
+        print(f"[Launch Game] ✅ Saldo sincronizado! Pronto para lançar o jogo.")
+        print("="*80 + "\n")
     else:
-        print(f"\n[Launch Game] ✅ Saldos já estão sincronizados!")
-    
-    # 4. Verificar saldo final no IGameWin para confirmar
-    final_igamewin_balance = await api.get_user_balance(current_user.username)
-    if final_igamewin_balance is not None:
-        print(f"[Launch Game] Saldo final no IGameWin: R$ {final_igamewin_balance:.2f}")
-    
-    print("\n" + "="*80)
-    print(f"[Launch Game] ✅ Saldo sincronizado! Pronto para lançar o jogo.")
-    print("="*80 + "\n")
+        # Em Seamless Mode, não verificamos saldo final - o IGameWin vai chamar /gold_api
+        print("\n" + "="*80)
+        print(f"[Launch Game] ✅ Pronto para lançar o jogo em modo Seamless")
+        print(f"[Launch Game] O IGameWin vai chamar nosso /gold_api para buscar saldo")
+        print("="*80 + "\n")
     
     # Gerar URL de lançamento do jogo usando user_code (username)
     print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
@@ -1175,14 +1202,23 @@ async def launch_game(
     print(f"[Launch Game] Success - URL length: {len(launch_url)}, starts with: {launch_url[:100]}...")
     print(f"[Launch Game] Full URL: {launch_url}")
     
-    # Aviso sobre Transfer Mode
-    print("\n" + "="*80)
-    print("[Launch Game] ✅ JOGO LANÇADO EM MODO TRANSFER")
-    print("[Launch Game] ")
-    print("[Launch Game] O saldo foi transferido para o IGameWin antes de lançar o jogo.")
-    print("[Launch Game] Após jogar, use o endpoint /api/public/games/sync-balance para")
-    print("[Launch Game] sincronizar o saldo de volta do IGameWin para nosso banco.")
-    print("="*80 + "\n")
+    # Aviso sobre o modo usado
+    if is_seamless_mode:
+        print("\n" + "="*80)
+        print("[Launch Game] ✅ JOGO LANÇADO EM MODO SEAMLESS")
+        print("[Launch Game] ")
+        print("[Launch Game] O saldo permanece no nosso banco.")
+        print("[Launch Game] O IGameWin vai chamar nosso /gold_api para buscar saldo e processar transações.")
+        print("[Launch Game] Não é necessário sincronizar manualmente após jogar.")
+        print("="*80 + "\n")
+    else:
+        print("\n" + "="*80)
+        print("[Launch Game] ✅ JOGO LANÇADO EM MODO TRANSFER")
+        print("[Launch Game] ")
+        print("[Launch Game] O saldo foi transferido para o IGameWin antes de lançar o jogo.")
+        print("[Launch Game] Após jogar, use o endpoint /api/public/games/sync-balance para")
+        print("[Launch Game] sincronizar o saldo de volta do IGameWin para nosso banco.")
+        print("="*80 + "\n")
     
     # Validar URL antes de retornar
     if not launch_url.startswith(('http://', 'https://')):
