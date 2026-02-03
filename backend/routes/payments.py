@@ -450,18 +450,55 @@ async def create_pix_withdrawal(
             if transfer_response and transfer_response.get("_error") == "IP_NOT_AUTHORIZED":
                 error_message = transfer_response.get("message", "")
                 detected_ip = transfer_response.get("detected_ip", "não detectado")
-                detail_msg = f"IP do servidor não autorizado na conta NXGate. {error_message}"
+                
                 if detected_ip and detected_ip != "não detectado":
-                    detail_msg += f" IP detectado: {detected_ip}. Verifique se este IP está autorizado na conta NXGate."
+                    detail_msg = (
+                        f"IP do servidor não autorizado na conta NXGate. "
+                        f"IP detectado: {detected_ip}. "
+                        f"Para autorizar este IP, acesse o painel da NXGate e adicione este IP na lista de IPs autorizados. "
+                        f"Se você não tem acesso ao painel da NXGate, entre em contato com o suporte técnico."
+                    )
                 else:
-                    detail_msg += " Por favor, entre em contato com o suporte da NXGate para autorizar o IP do servidor onde a aplicação está hospedada. Você pode encontrar o IP do servidor nas configurações do Coolify ou consultando o provedor de hospedagem."
+                    detail_msg = (
+                        f"IP do servidor não autorizado na conta NXGate. {error_message} "
+                        f"Por favor, entre em contato com o suporte da NXGate para autorizar o IP do servidor onde a aplicação está hospedada. "
+                        f"Você pode encontrar o IP do servidor nas configurações do Coolify ou consultando o provedor de hospedagem."
+                    )
+                
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=detail_msg
                 )
             
+            # Processar resposta da NXGate
             if transfer_response:
-                id_transaction = transfer_response.get("idTransaction")
+                # NXGate retorna "internalreference" ao invés de "idTransaction"
+                # Também pode retornar "idTransaction" em alguns casos, então verificamos ambos
+                id_transaction = transfer_response.get("internalreference") or transfer_response.get("idTransaction")
+                
+                print(f"[Withdrawal] NXGate Response - Status: {transfer_response.get('status')}, ID: {id_transaction}")
+                print(f"[Withdrawal] NXGate Response completa: {transfer_response}")
+                
+                # Verificar status da resposta da NXGate
+                response_status = transfer_response.get("status", "").lower()
+                if response_status == "error":
+                    error_message = transfer_response.get("message", "Erro desconhecido na API NXGate")
+                    print(f"[Withdrawal] ❌ NXGate retornou erro: {error_message}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Erro ao processar saque: {error_message}"
+                    )
+                elif response_status == "sucesso" or response_status == "success":
+                    if id_transaction:
+                        print(f"[Withdrawal] ✅ NXGate processou saque com sucesso. ID: {id_transaction}")
+                    else:
+                        print(f"[Withdrawal] ⚠️  NXGate retornou sucesso mas sem ID de transação")
+                else:
+                    # Se não tem status claro mas tem internalreference, assumimos sucesso
+                    if id_transaction:
+                        print(f"[Withdrawal] ✅ NXGate processou saque (status não claro mas tem ID). ID: {id_transaction}")
+                    else:
+                        print(f"[Withdrawal] ⚠️  Resposta da NXGate sem ID de transação: {transfer_response}")
         
         elif isinstance(payment_client, SuitPayAPI):
             # SuitPay
@@ -496,10 +533,21 @@ async def create_pix_withdrawal(
                         detail=error_msg
                     )
         
-        if not transfer_response or not id_transaction:
+        # Validar resposta do gateway
+        if not transfer_response:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Erro ao processar transferência PIX no gateway. Verifique as credenciais e tente novamente."
+                detail="Erro ao processar transferência PIX no gateway. Nenhuma resposta recebida. Verifique as credenciais e tente novamente."
+            )
+        
+        if not id_transaction:
+            # Log detalhado para debug
+            print(f"[Withdrawal] ⚠️  Resposta do gateway sem ID de transação:")
+            print(f"[Withdrawal] Gateway: {gateway.name}")
+            print(f"[Withdrawal] Resposta completa: {transfer_response}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Erro ao processar transferência PIX: resposta do gateway não contém ID de transação. Resposta: {transfer_response}"
             )
     
     except HTTPException:
