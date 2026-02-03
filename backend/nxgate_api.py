@@ -71,10 +71,34 @@ class NXGateAPI:
                 except:
                     response_data = None
                 
+                # Verificar erros específicos antes de fazer raise_for_status
+                if response.status_code == 403:
+                    error_message = response_data.get("message", "") if response_data else ""
+                    if "IP" in error_message.upper() or "não autorizado" in error_message.lower():
+                        print(f"\n{'='*80}")
+                        print(f"NXGATE {endpoint} - ⚠️  ERRO 403: IP não autorizado")
+                        print(f"NXGATE {endpoint} - Response: {response_data}")
+                        print(f"{'='*80}\n")
+                        # Retornar um dict especial para identificar o erro de IP
+                        return {"_error": "IP_NOT_AUTHORIZED", "message": error_message}
+                
                 response.raise_for_status()
                 return response_data
         except httpx.HTTPStatusError as e:
             error_text = e.response.text if e.response else "Sem resposta"
+            # Tentar parsear JSON do erro
+            try:
+                error_json = e.response.json() if e.response else {}
+                error_message = error_json.get("message", "")
+                if e.response.status_code == 403 and ("IP" in error_message.upper() or "não autorizado" in error_message.lower()):
+                    print(f"\n{'='*80}")
+                    print(f"NXGATE {endpoint} - ⚠️  ERRO 403: IP não autorizado")
+                    print(f"NXGATE {endpoint} - Response: {error_json}")
+                    print(f"{'='*80}\n")
+                    return {"_error": "IP_NOT_AUTHORIZED", "message": error_message}
+            except:
+                pass
+            
             print(f"\n{'='*80}")
             print(f"NXGATE {endpoint} - ❌ ERRO HTTP {e.response.status_code}")
             print(f"NXGATE {endpoint} - Response: {error_text[:1000]}")
