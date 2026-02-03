@@ -422,12 +422,27 @@ async def create_pix_withdrawal(
             }
             tipo_chave_nxgate = tipo_chave_map.get(request.pix_key_type, "CPF")
             
+            # Garantir que temos um documento válido (obrigatório para NXGate)
+            documento = request.document_validation or user.cpf
+            if not documento or documento.strip() == "":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Documento (CPF/CNPJ) é obrigatório para saque via NXGate. Por favor, preencha o campo de validação de CPF/CNPJ ou atualize seu CPF no perfil."
+                )
+            
+            # Remover formatação do documento (pontos, traços, barras) para NXGate
+            documento_limpo = documento.replace(".", "").replace("-", "").replace("/", "").strip()
+            
+            # Se o documento não tem 11 ou 14 dígitos, pode estar incorreto
+            if len(documento_limpo) not in [11, 14]:
+                print(f"[Withdrawal] ⚠️  Documento pode estar incorreto: {documento_limpo} (tamanho: {len(documento_limpo)})")
+            
             callback_url = f"{webhook_url}/api/webhooks/nxgate/pix-cashout"
             transfer_response = await payment_client.withdraw_pix(
                 valor=request.amount,
                 chave_pix=request.pix_key,
                 tipo_chave=tipo_chave_nxgate,
-                documento=request.document_validation or user.cpf or "",
+                documento=documento_limpo,  # Enviar documento limpo (sem formatação)
                 webhook=callback_url
             )
             
