@@ -53,8 +53,15 @@ class NXGateAPI:
             print(f"[NXGate] Erro ao obter IP público: {e}")
         return None
     
-    async def _post(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Faz requisição POST para a API NXGATE"""
+    async def _post(self, endpoint: str, payload: Dict[str, Any], base_url_override: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Faz requisição POST para a API NXGATE
+        
+        Args:
+            endpoint: Caminho do endpoint (ex: /pix/gerar)
+            payload: Dados a serem enviados
+            base_url_override: URL base alternativa (opcional, para casos especiais como saques)
+        """
         try:
             # Tentar obter IP do servidor para diagnóstico
             server_ip = await self._get_server_ip()
@@ -67,8 +74,11 @@ class NXGateAPI:
                 "accept": "application/json"
             }
             
+            # Usar base_url_override se fornecido, senão usar self.base_url
+            base_url = base_url_override or self.base_url
+            
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                url = f"{self.base_url}{endpoint}"
+                url = f"{base_url}{endpoint}"
                 print(f"\n{'='*80}")
                 print(f"NXGATE Request - URL: {url}")
                 print(f"NXGATE Request - Headers: {headers}")
@@ -246,7 +256,8 @@ class NXGateAPI:
         """
         Realiza saque via PIX (Cash-out)
         Endpoint: POST /pix/sacar
-        URL completa: https://api.nxgate.com.br/pix/sacar
+        URL completa: https://nxgate.com.br/api/pix/sacar
+        Nota: Endpoint de saque usa URL diferente do depósito
         
         Args:
             valor: Valor da transação
@@ -272,7 +283,10 @@ class NXGateAPI:
         if webhook:
             payload["webhook"] = webhook
         
-        return await self._post("/pix/sacar", payload)
+        # Endpoint de saque usa URL diferente: https://nxgate.com.br/api/pix/sacar
+        # (enquanto depósito usa https://api.nxgate.com.br/pix/gerar)
+        # Passar base_url_override para usar a URL correta para saques
+        return await self._post("/pix/sacar", payload, base_url_override="https://nxgate.com.br/api")
     
     @staticmethod
     def parse_webhook_payment(data: Dict[str, Any]) -> Dict[str, Any]:
