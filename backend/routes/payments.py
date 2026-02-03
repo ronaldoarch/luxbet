@@ -582,7 +582,18 @@ async def create_pix_withdrawal(
     )
     
     # Bloquear saldo do usuário
+    db.refresh(user)  # Garantir dados atualizados
+    balance_before = float(user.balance)
     user.balance -= request.amount
+    balance_after = float(user.balance)
+    
+    print(f"\n{'='*80}")
+    print(f"[Withdrawal] 💰 SALDO SENDO DEDUZIDO:")
+    print(f"[Withdrawal]   - Usuário: {user.username} (ID: {user.id})")
+    print(f"[Withdrawal]   - Saldo anterior: R$ {balance_before:.2f}")
+    print(f"[Withdrawal]   - Valor do saque: R$ {request.amount:.2f}")
+    print(f"[Withdrawal]   - Saldo após dedução: R$ {balance_after:.2f}")
+    print(f"{'='*80}\n")
     
     db.add(withdrawal)
     db.commit()
@@ -882,12 +893,18 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
             else:
                 print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Saque já estava aprovado, ignorando webhook duplicado")
         elif withdrawal_type == "PIX_CASHOUT_ERROR" or status_withdrawal == "ERROR":
-            # Reverter saldo se foi cancelado
-            if withdrawal.status == TransactionStatus.PENDING:
+            # Reverter saldo se foi cancelado (usar old_status para garantir que verificamos o status antes da atualização)
+            if old_status == TransactionStatus.PENDING:
                 user = db.query(User).filter(User.id == withdrawal.user_id).first()
                 if user:
+                    db.refresh(user)  # Garantir dados atualizados
+                    balance_before = float(user.balance)
                     user.balance += withdrawal.amount
-                    print(f"[Webhook NXGATE PIX Cash-out] 💰 Saldo revertido para usuário: R$ {withdrawal.amount:.2f}")
+                    balance_after = float(user.balance)
+                    print(f"[Webhook NXGATE PIX Cash-out] 💰 Saldo revertido para usuário:")
+                    print(f"[Webhook NXGATE PIX Cash-out]   - Saldo anterior: R$ {balance_before:.2f}")
+                    print(f"[Webhook NXGATE PIX Cash-out]   - Valor revertido: R$ {withdrawal.amount:.2f}")
+                    print(f"[Webhook NXGATE PIX Cash-out]   - Saldo atual: R$ {balance_after:.2f}")
             withdrawal.status = TransactionStatus.REJECTED
             print(f"[Webhook NXGATE PIX Cash-out] ❌ Status atualizado para REJECTED")
         else:
@@ -949,16 +966,31 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
         if not withdrawal:
             return {"status": "ok", "message": "Saque não encontrado"}
         
+        old_status = withdrawal.status
+        print(f"[Webhook SuitPay PIX Cash-out] Saque ID: {withdrawal.id}, Status atual: {old_status}")
+        
         # Atualizar status do saque
         if status_transaction == "PAID_OUT":
-            withdrawal.status = TransactionStatus.APPROVED
+            if old_status != TransactionStatus.APPROVED:
+                withdrawal.status = TransactionStatus.APPROVED
+                print(f"[Webhook SuitPay PIX Cash-out] ✅ Status atualizado para APPROVED")
+            else:
+                print(f"[Webhook SuitPay PIX Cash-out] ⚠️  Saque já estava aprovado, ignorando webhook duplicado")
         elif status_transaction == "CANCELED":
-            # Reverter saldo se foi cancelado
-            if withdrawal.status == TransactionStatus.PENDING:
+            # Reverter saldo se foi cancelado (usar old_status para garantir que verificamos o status antes da atualização)
+            if old_status == TransactionStatus.PENDING:
                 user = db.query(User).filter(User.id == withdrawal.user_id).first()
                 if user:
+                    db.refresh(user)  # Garantir dados atualizados
+                    balance_before = float(user.balance)
                     user.balance += withdrawal.amount
+                    balance_after = float(user.balance)
+                    print(f"[Webhook SuitPay PIX Cash-out] 💰 Saldo revertido para usuário:")
+                    print(f"[Webhook SuitPay PIX Cash-out]   - Saldo anterior: R$ {balance_before:.2f}")
+                    print(f"[Webhook SuitPay PIX Cash-out]   - Valor revertido: R$ {withdrawal.amount:.2f}")
+                    print(f"[Webhook SuitPay PIX Cash-out]   - Saldo atual: R$ {balance_after:.2f}")
             withdrawal.status = TransactionStatus.CANCELLED
+            print(f"[Webhook SuitPay PIX Cash-out] ❌ Status atualizado para CANCELLED")
         
         # Atualizar metadata
         metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}

@@ -1053,6 +1053,10 @@ async def launch_game(
     
     # 2. Tentar verificar saldo para detectar o modo
     print(f"[Launch Game] Verificando saldo do usuário no IGameWin para detectar modo...")
+    db.refresh(current_user)  # Garantir dados atualizados
+    our_balance_before_check = float(current_user.balance)
+    print(f"[Launch Game] Saldo no nosso banco ANTES de verificar IGameWin: R$ {our_balance_before_check:.2f}")
+    
     igamewin_balance = await api.get_user_balance(current_user.username)
     is_seamless_mode = False
     
@@ -1062,15 +1066,33 @@ async def launch_game(
             print(f"\n[Launch Game] ✅ DETECTADO: Modo Seamless (Seamless Mode)")
             print(f"[Launch Game] O IGameWin está configurado para chamar nosso /gold_api")
             print(f"[Launch Game] Não faremos transferências - o saldo fica no nosso banco")
+            print(f"[Launch Game] Saldo permanece: R$ {our_balance_before_check:.2f}")
             is_seamless_mode = True
             igamewin_balance = 0.0  # Em Seamless Mode, assumimos 0 no IGameWin
         else:
-            print(f"[Launch Game] Warning: Não foi possível obter saldo do IGameWin")
-            print(f"[Launch Game] Assumindo Transfer Mode e continuando...")
+            print(f"[Launch Game] ⚠️  Warning: Não foi possível obter saldo do IGameWin")
+            print(f"[Launch Game] Erro: {api.last_error}")
+            print(f"[Launch Game] Assumindo Seamless Mode por segurança (não zerar saldo)")
+            print(f"[Launch Game] Saldo permanece no nosso banco: R$ {our_balance_before_check:.2f}")
+            is_seamless_mode = True  # Por segurança, assumir Seamless Mode se não conseguir verificar
             igamewin_balance = 0.0
     else:
-        print(f"[Launch Game] ✅ DETECTADO: Modo Transfer (Transfer Mode)")
-        print(f"[Launch Game] Saldo no IGameWin: R$ {igamewin_balance}")
+        # Se retornou um valor, pode ser Transfer Mode OU Seamless Mode mal configurado
+        # Em Seamless Mode, o IGameWin pode retornar 0 se o usuário não tem saldo lá
+        # Por segurança, se o saldo retornado for 0 E nosso banco tem saldo, assumir Seamless Mode
+        if igamewin_balance == 0.0 and our_balance_before_check > 0.01:
+            print(f"\n[Launch Game] ⚠️  IGameWin retornou saldo 0, mas nosso banco tem R$ {our_balance_before_check:.2f}")
+            print(f"[Launch Game] Assumindo Seamless Mode por segurança (não zerar saldo)")
+            print(f"[Launch Game] Se estiver configurado em Seamless Mode, o IGameWin vai chamar nosso /gold_api")
+            print(f"[Launch Game] Saldo permanece no nosso banco: R$ {our_balance_before_check:.2f}")
+            is_seamless_mode = True
+        else:
+            print(f"[Launch Game] ✅ DETECTADO: Modo Transfer (Transfer Mode)")
+            print(f"[Launch Game] Saldo no IGameWin: R$ {igamewin_balance:.2f}")
+            print(f"[Launch Game] ⚠️  ATENÇÃO: Se você configurou Seamless Mode, verifique:")
+            print(f"[Launch Game]   1. Campo 'Tipo de API' está como 'Seamless' no painel IGameWin")
+            print(f"[Launch Game]   2. Campo 'Ponto final do site' está como 'https://api.luxbet.site'")
+            print(f"[Launch Game]   3. Aguardou 2-5 minutos após salvar as configurações")
     
     # 3. Se estiver em Seamless Mode, pular todas as transferências
     if is_seamless_mode:
@@ -1093,14 +1115,21 @@ async def launch_game(
             transfer_result = await api.transfer_in(current_user.username, balance_diff)
             if transfer_result:
                 # Deduzir do nosso banco
+                db.refresh(current_user)  # Garantir dados atualizados
+                balance_before = float(current_user.balance)
                 current_user.balance -= balance_diff
                 db.flush()
                 db.commit()
                 db.refresh(current_user)
                 print(f"[Launch Game] ✅ Transferência concluída!")
+                print(f"[Launch Game] Saldo antes: R$ {balance_before:.2f}")
+                print(f"[Launch Game] Valor transferido: R$ {balance_diff:.2f}")
                 print(f"[Launch Game] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
             else:
                 print(f"[Launch Game] ❌ Erro na transferência: {api.last_error}")
+                print(f"[Launch Game] ⚠️  Saldo NÃO foi deduzido devido ao erro")
+                db.refresh(current_user)
+                print(f"[Launch Game] Saldo atual: R$ {current_user.balance:.2f}")
                 raise HTTPException(
                     status_code=502,
                     detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
@@ -1129,14 +1158,20 @@ async def launch_game(
                 print(f"[Launch Game] 💸 Transferindo R$ {our_balance_after_sync:.2f} para o IGameWin...")
                 transfer_result = await api.transfer_in(current_user.username, our_balance_after_sync)
                 if transfer_result:
+                    db.refresh(current_user)  # Garantir dados atualizados antes de modificar
+                    balance_before_transfer = float(current_user.balance)
                     current_user.balance = 0.0
                     db.flush()
                     db.commit()
                     db.refresh(current_user)
                     print(f"[Launch Game] ✅ Transferência concluída!")
+                    print(f"[Launch Game] Saldo antes da transferência: R$ {balance_before_transfer:.2f}")
                     print(f"[Launch Game] Saldo no nosso banco após transferência: R$ {current_user.balance:.2f}")
+                    print(f"[Launch Game] Valor transferido: R$ {our_balance_after_sync:.2f}")
                 else:
                     print(f"[Launch Game] ❌ Erro ao transferir para IGameWin: {api.last_error}")
+                    print(f"[Launch Game] ⚠️  IMPORTANTE: Saldo NÃO foi zerado devido ao erro na transferência")
+                    print(f"[Launch Game] Saldo atual no nosso banco: R$ {our_balance_after_sync:.2f}")
                     raise HTTPException(
                         status_code=502,
                         detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
@@ -1145,15 +1180,25 @@ async def launch_game(
                 print(f"[Launch Game] ⚠️  Não foi possível sincronizar saldo do IGameWin: {api.last_error}")
                 print(f"[Launch Game] Tentando continuar com o saldo atual...")
                 # Tentar transferir apenas o que temos no nosso banco mesmo assim
-                if our_balance > 0.01:
-                    print(f"[Launch Game] 💸 Transferindo R$ {our_balance:.2f} do nosso banco para IGameWin...")
-                    transfer_result = await api.transfer_in(current_user.username, our_balance)
+                db.refresh(current_user)  # Garantir dados atualizados
+                our_balance_current = float(current_user.balance)
+                if our_balance_current > 0.01:
+                    print(f"[Launch Game] 💸 Transferindo R$ {our_balance_current:.2f} do nosso banco para IGameWin...")
+                    transfer_result = await api.transfer_in(current_user.username, our_balance_current)
                     if transfer_result:
+                        balance_before = float(current_user.balance)
                         current_user.balance = 0.0
                         db.flush()
                         db.commit()
                         db.refresh(current_user)
                         print(f"[Launch Game] ✅ Transferência parcial concluída!")
+                        print(f"[Launch Game] Saldo antes: R$ {balance_before:.2f}")
+                        print(f"[Launch Game] Saldo após: R$ {current_user.balance:.2f}")
+                        print(f"[Launch Game] Valor transferido: R$ {our_balance_current:.2f}")
+                    else:
+                        print(f"[Launch Game] ❌ Erro na transferência parcial: {api.last_error}")
+                        print(f"[Launch Game] ⚠️  Saldo NÃO foi zerado devido ao erro")
+                        print(f"[Launch Game] Saldo atual: R$ {our_balance_current:.2f}")
         else:
             print(f"\n[Launch Game] ✅ Saldos já estão sincronizados!")
         
