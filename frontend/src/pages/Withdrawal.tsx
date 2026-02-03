@@ -20,6 +20,7 @@ export default function Withdrawal() {
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [syncingBalance, setSyncingBalance] = useState(false);
+  const [hasSynced, setHasSynced] = useState(false); // Flag para sincronizar apenas uma vez
 
   useEffect(() => {
     const fetchMinimums = async () => {
@@ -63,12 +64,13 @@ export default function Withdrawal() {
         if (balanceRes.ok) {
           const balanceData = await balanceRes.json();
           
-          // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro
-          if (balanceData.needs_sync && !syncingBalance) {
+          // Sincronizar apenas UMA vez quando necessário e ainda não foi sincronizado
+          if (balanceData.needs_sync && !syncingBalance && !hasSynced) {
             setSyncingBalance(true);
-            console.log('[Withdrawal] Sincronizando saldo do IGameWin...');
+            setHasSynced(true); // Marcar como sincronizado para evitar sincronizações repetidas
+            console.log('[Withdrawal] Sincronizando saldo do IGameWin (apenas uma vez)...');
             try {
-              const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+              const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance?for_withdrawal=true`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -81,7 +83,7 @@ export default function Withdrawal() {
               if (syncRes.ok) {
                 console.log('[Withdrawal] Saldo sincronizado com sucesso');
                 // Aguardar um pouco antes de buscar novamente para garantir que o backend processou
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 
                 // Buscar saldo novamente após sincronização
                 const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {
@@ -171,12 +173,13 @@ export default function Withdrawal() {
         if (balanceRes.ok) {
           const balanceData = await balanceRes.json();
           
-          // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro (apenas uma vez)
-          if (balanceData.needs_sync && !syncingBalance) {
+          // Se precisa sincronizar saldo do IGameWin, fazer isso primeiro (apenas se ainda não foi sincronizado)
+          if (balanceData.needs_sync && !syncingBalance && !hasSynced) {
             setSyncingBalance(true);
+            setHasSynced(true); // Marcar como sincronizado
             console.log('[Withdrawal] Sincronizando saldo do IGameWin antes do saque...');
             try {
-              const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
+              const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance?for_withdrawal=true`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -187,7 +190,7 @@ export default function Withdrawal() {
               if (syncRes.ok) {
                 console.log('[Withdrawal] Saldo sincronizado com sucesso');
                 // Aguardar um pouco antes de buscar novamente
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 
                 // Buscar saldo atualizado após sincronização
                 const updatedBalanceRes = await fetch(`${API_URL}/api/auth/available-balance`, {

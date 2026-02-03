@@ -1207,6 +1207,7 @@ _sync_locks: Dict[str, bool] = {}
 
 @public_router.post("/games/sync-balance")
 async def sync_balance_from_igamewin(
+    for_withdrawal: bool = Query(False, description="Se True, não transfere saldo de volta para IGameWin (para saque)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -1214,6 +1215,10 @@ async def sync_balance_from_igamewin(
     Sincroniza o saldo do IGameWin de volta para nosso banco de dados.
     Use este endpoint após jogar para atualizar o saldo do usuário.
     Protegido contra chamadas simultâneas para evitar race conditions.
+    
+    Args:
+        for_withdrawal: Se True, apenas sincroniza do IGameWin para nosso banco,
+                       sem transferir de volta. Use quando o usuário vai sacar.
     """
     # Verificar se já está sincronizando para este usuário
     lock_key = f"sync_{current_user.username}"
@@ -1341,6 +1346,22 @@ async def sync_balance_from_igamewin(
                     detail=f"Erro ao transferir saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
                 )
         else:  # Nosso banco tem mais saldo - transferir para IGameWin (caso raro, mas pode acontecer)
+            # IMPORTANTE: Se for para saque, NÃO transferir de volta para IGameWin
+            # O saldo deve ficar no nosso banco para poder sacar
+            if for_withdrawal:
+                print(f"\n[Sync Balance] ⚠️  Sincronização para saque: Nosso banco tem mais saldo (R$ {our_balance:.2f})")
+                print(f"[Sync Balance] IGameWin tem: R$ {igamewin_balance:.2f}")
+                print(f"[Sync Balance] ✅ Mantendo saldo no nosso banco para saque. Não transferindo de volta para IGameWin.")
+                return {
+                    "status": "ok",
+                    "message": "Saldo já está no nosso banco. Pronto para saque.",
+                    "our_balance_before": our_balance,
+                    "our_balance_after": our_balance,
+                    "igamewin_balance": igamewin_balance,
+                    "difference": balance_diff,
+                    "for_withdrawal": True
+                }
+            
             # PROTEÇÃO: Não zerar saldo se nosso banco tem saldo e IGameWin está zerado
             # Isso pode indicar um problema - melhor sincronizar do IGameWin para nosso banco
             if our_balance > 0 and igamewin_balance == 0:
