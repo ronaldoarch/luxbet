@@ -25,20 +25,36 @@ class NXGateAPI:
     async def _post(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Faz requisição POST para a API NXGATE"""
         try:
+            # Adicionar api_key aos headers se não estiver no payload
+            headers = self.headers.copy()
+            if "api_key" not in payload:
+                headers["api_key"] = self.api_key
+            
             async with httpx.AsyncClient(timeout=30.0) as client:
+                url = f"{self.base_url}{endpoint}"
+                print(f"NXGATE Request - URL: {url}")
+                print(f"NXGATE Request - Payload: {json.dumps(payload, indent=2)}")
+                
                 response = await client.post(
-                    f"{self.base_url}{endpoint}",
-                    headers=self.headers,
+                    url,
+                    headers=headers,
                     json=payload
                 )
                 print(f"NXGATE {endpoint} - Status: {response.status_code}")
                 print(f"NXGATE {endpoint} - Response: {response.text[:500]}")
                 
+                # Verificar se a resposta é HTML (pode ser Cloudflare ou erro de rota)
+                if response.headers.get("content-type", "").startswith("text/html"):
+                    print(f"NXGATE {endpoint} - ⚠️  Resposta é HTML, não JSON. Possível erro de endpoint ou Cloudflare.")
+                    error_text = response.text[:500]
+                    print(f"NXGATE {endpoint} - HTML Response: {error_text}")
+                    return None
+                
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
             error_text = e.response.text if e.response else "Sem resposta"
-            print(f"Erro HTTP NXGATE {endpoint}: {e.response.status_code} - {error_text}")
+            print(f"Erro HTTP NXGATE {endpoint}: {e.response.status_code} - {error_text[:500]}")
             return None
         except Exception as e:
             print(f"Erro ao chamar NXGATE {endpoint}: {str(e)}")
