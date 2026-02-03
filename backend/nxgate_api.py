@@ -16,7 +16,8 @@ class NXGateAPI:
             api_key: Chave secreta (api_key) da NXGATE
         """
         self.api_key = api_key
-        self.base_url = "https://api.nxgate.com.br"
+        # Endpoint correto conforme documentação: https://nxgate.com.br/api/pix/sacar
+        self.base_url = "https://nxgate.com.br/api"
         self.headers = {
             "Content-Type": "application/json",
             "accept": "application/json"
@@ -133,6 +134,7 @@ class NXGateAPI:
         """
         Realiza saque via PIX (Cash-out)
         Endpoint: POST /pix/sacar
+        URL completa: https://nxgate.com.br/api/pix/sacar
         
         Args:
             valor: Valor da transação
