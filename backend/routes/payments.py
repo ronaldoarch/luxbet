@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
+from datetime import timezone
 from database import get_db
-from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Manager, FTD, Notification, NotificationType, FTDSettings, UserRole
+from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Manager, FTD, Notification, NotificationType, FTDSettings, UserRole, Promotion, PromotionType
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse, ManagerCreateSubAffiliate
@@ -88,6 +89,65 @@ def get_payment_client(gateway: Gateway):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Credenciais do gateway inválidas"
         )
+
+
+def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional[float]:
+    """
+    Aplica bônus de promoção quando um depósito é aprovado.
+    Retorna o valor do bônus aplicado (ou None se nenhuma promoção aplicável foi encontrada).
+    """
+    now_utc = datetime.utcnow()
+    
+    # Buscar promoções ativas e válidas
+    promotions = db.query(Promotion).filter(
+        Promotion.is_active == True,
+        Promotion.start_date <= now_utc,
+        Promotion.end_date >= now_utc,
+        Promotion.bonus_percentage > 0  # Apenas promoções com bônus
+    ).order_by(Promotion.position.desc(), Promotion.created_at.desc()).all()
+    
+    # Encontrar a primeira promoção aplicável
+    for promo in promotions:
+        # Verificar se o depósito atende ao mínimo
+        if deposit.amount < promo.min_deposit:
+            continue
+        
+        # Calcular bônus
+        bonus_amount = (deposit.amount * promo.bonus_percentage) / 100.0
+        
+        # Aplicar limite máximo se existir
+        if promo.max_bonus > 0 and bonus_amount > promo.max_bonus:
+            bonus_amount = promo.max_bonus
+        
+        if bonus_amount > 0:
+            # Aplicar bônus ao saldo do usuário
+            db.refresh(user)
+            user.balance += bonus_amount
+            
+            print(f"\n{'='*80}")
+            print(f"[Promotion] 🎁 BÔNUS APLICADO!")
+            print(f"[Promotion] Promoção: {promo.title}")
+            print(f"[Promotion] Depósito: R$ {deposit.amount:.2f}")
+            print(f"[Promotion] Bônus ({promo.bonus_percentage}%): R$ {bonus_amount:.2f}")
+            print(f"[Promotion] Saldo antes: R$ {(user.balance - bonus_amount):.2f}")
+            print(f"[Promotion] Saldo após bônus: R$ {user.balance:.2f}")
+            print(f"{'='*80}\n")
+            
+            # Criar notificação sobre o bônus
+            notification = Notification(
+                title="🎁 Bônus Aplicado!",
+                message=f"Você recebeu um bônus de R$ {bonus_amount:.2f} da promoção '{promo.title}'! Seu saldo foi atualizado.",
+                type=NotificationType.SUCCESS,
+                user_id=user.id,
+                is_read=False,
+                is_active=True,
+                link="/promocoes"
+            )
+            db.add(notification)
+            
+            return bonus_amount
+    
+    return None
 
 
 def update_affiliate_on_deposit_approved(db: Session, user: User, deposit: Deposit) -> None:
@@ -674,17 +734,26 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
                     balance_before = float(user.balance)
                     user.balance += deposit.amount
                     db.flush()  # Garantir que a mudança é enviada antes do commit
-                    balance_after = float(user.balance)
+                    balance_after_deposit = float(user.balance)
                     
-                    print(f"[Webhook SuitPay] 💰 SALDO ATUALIZADO:")
+                    print(f"[Webhook SuitPay] 💰 SALDO ATUALIZADO (DEPÓSITO):")
                     print(f"[Webhook SuitPay]   - Saldo anterior: R$ {balance_before:.2f}")
                     print(f"[Webhook SuitPay]   - Depósito: R$ {deposit.amount:.2f}")
-                    print(f"[Webhook SuitPay]   - Saldo atual: R$ {balance_after:.2f}")
+                    print(f"[Webhook SuitPay]   - Saldo após depósito: R$ {balance_after_deposit:.2f}")
+                    
+                    # Aplicar bônus de promoção se houver
+                    bonus_amount = apply_promotion_bonus(db, user, deposit)
+                    balance_after_bonus = float(user.balance)
                     
                     # Criar notificação de sucesso
+                    message = f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta."
+                    if bonus_amount:
+                        message += f" Você também recebeu um bônus de R$ {bonus_amount:.2f}!"
+                    message += f" Saldo atual: R$ {balance_after_bonus:.2f}"
+                    
                     notification = Notification(
                         title="✅ Depósito Aprovado!",
-                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta. Saldo atual: R$ {balance_after:.2f}",
+                        message=message,
                         type=NotificationType.SUCCESS,
                         user_id=user.id,
                         is_read=False,
@@ -775,17 +844,26 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
                     balance_before = float(user.balance)
                     user.balance += deposit.amount
                     db.flush()  # Garantir que a mudança é enviada antes do commit
-                    balance_after = float(user.balance)
+                    balance_after_deposit = float(user.balance)
                     
-                    print(f"[Webhook NXGATE] 💰 SALDO ATUALIZADO:")
+                    print(f"[Webhook NXGATE] 💰 SALDO ATUALIZADO (DEPÓSITO):")
                     print(f"[Webhook NXGATE]   - Saldo anterior: R$ {balance_before:.2f}")
                     print(f"[Webhook NXGATE]   - Depósito: R$ {deposit.amount:.2f}")
-                    print(f"[Webhook NXGATE]   - Saldo atual: R$ {balance_after:.2f}")
+                    print(f"[Webhook NXGATE]   - Saldo após depósito: R$ {balance_after_deposit:.2f}")
+                    
+                    # Aplicar bônus de promoção se houver
+                    bonus_amount = apply_promotion_bonus(db, user, deposit)
+                    balance_after_bonus = float(user.balance)
                     
                     # Criar notificação de sucesso (apenas uma vez)
+                    message = f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta."
+                    if bonus_amount:
+                        message += f" Você também recebeu um bônus de R$ {bonus_amount:.2f}!"
+                    message += f" Saldo atual: R$ {balance_after_bonus:.2f}"
+                    
                     notification = Notification(
                         title="✅ Depósito Aprovado!",
-                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta. Saldo atual: R$ {balance_after:.2f}",
+                        message=message,
                         type=NotificationType.SUCCESS,
                         user_id=user.id,
                         is_read=False,

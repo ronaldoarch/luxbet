@@ -244,6 +244,10 @@ async def update_deposit(
         user = db.query(User).filter(User.id == deposit.user_id).first()
         user.balance += deposit.amount
         
+        # Aplicar bônus de promoção se houver
+        from routes.payments import apply_promotion_bonus
+        apply_promotion_bonus(db, user, deposit)
+        
         # Check if this is first deposit (FTD)
         existing_ftd = db.query(FTD).filter(FTD.user_id == deposit.user_id).first()
         if not existing_ftd:
