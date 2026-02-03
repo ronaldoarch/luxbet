@@ -178,16 +178,20 @@ async def get_available_balance(
     
     # Calcular saldo disponível
     # Em Seamless Mode, nunca precisa sincronizar
-    # Em Transfer Mode, só precisa sincronizar se há diferença significativa
+    # Em Transfer Mode, só precisa sincronizar se o IGameWin tem MAIS saldo que nosso banco
+    # Se nosso banco tem mais saldo, não precisa sincronizar (saldo já está no lugar certo)
     needs_sync = False
     if not is_seamless_mode and igamewin_balance is not None:
-        # Verificar se há diferença significativa (> 5 centavos)
-        balance_diff = abs(igamewin_balance - our_balance)
+        balance_diff = igamewin_balance - our_balance  # Positivo se IGameWin tem mais
+        # Só precisa sincronizar se IGameWin tem mais saldo (diferença > 5 centavos)
         if balance_diff > 0.05:
             needs_sync = True
-            print(f"[Available Balance] Diferença detectada: R$ {balance_diff:.2f} - precisa sincronizar")
+            print(f"[Available Balance] IGameWin tem mais saldo: R$ {balance_diff:.2f} - precisa sincronizar")
+        elif balance_diff < -0.05:
+            # Nosso banco tem mais saldo - não precisa sincronizar, saldo já está no lugar certo
+            print(f"[Available Balance] Nosso banco tem mais saldo (R$ {abs(balance_diff):.2f} a mais) - não precisa sincronizar")
         else:
-            print(f"[Available Balance] Saldos sincronizados (diferença: R$ {balance_diff:.2f})")
+            print(f"[Available Balance] Saldos sincronizados (diferença: R$ {abs(balance_diff):.2f})")
     elif is_seamless_mode:
         print(f"[Available Balance] Seamless Mode - não precisa sincronizar")
     

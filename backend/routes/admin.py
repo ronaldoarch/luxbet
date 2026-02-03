@@ -1378,91 +1378,24 @@ async def sync_balance_from_igamewin(
                     status_code=502,
                     detail=f"Erro ao transferir saldo do IGameWin: {api.last_error or 'Erro desconhecido'}"
                 )
-        else:  # Nosso banco tem mais saldo - transferir para IGameWin (caso raro, mas pode acontecer)
-            # IMPORTANTE: Se for para saque, NÃO transferir de volta para IGameWin
-            # O saldo deve ficar no nosso banco para poder sacar
-            if for_withdrawal:
-                print(f"\n[Sync Balance] ⚠️  Sincronização para saque: Nosso banco tem mais saldo (R$ {our_balance:.2f})")
-                print(f"[Sync Balance] IGameWin tem: R$ {igamewin_balance:.2f}")
-                print(f"[Sync Balance] ✅ Mantendo saldo no nosso banco para saque. Não transferindo de volta para IGameWin.")
-                return {
-                    "status": "ok",
-                    "message": "Saldo já está no nosso banco. Pronto para saque.",
-                    "our_balance_before": our_balance,
-                    "our_balance_after": our_balance,
-                    "igamewin_balance": igamewin_balance,
-                    "difference": balance_diff,
-                    "for_withdrawal": True
-                }
+        else:  # Nosso banco tem mais saldo que o IGameWin
+            # IMPORTANTE: Se nosso banco tem mais saldo, NÃO devemos transferir de volta para IGameWin
+            # O saldo deve ficar no nosso banco para poder sacar ou usar normalmente
+            # Só transferimos para IGameWin quando o usuário vai jogar (não durante sincronização manual)
+            print(f"\n[Sync Balance] ℹ️  Nosso banco tem mais saldo (R$ {our_balance:.2f}) que o IGameWin (R$ {igamewin_balance:.2f})")
+            print(f"[Sync Balance] Diferença: R$ {abs(balance_diff):.2f}")
+            print(f"[Sync Balance] ✅ Mantendo saldo no nosso banco. Não transferindo de volta para IGameWin.")
+            print(f"[Sync Balance] O saldo será transferido para IGameWin automaticamente quando o usuário iniciar um jogo.")
             
-            # PROTEÇÃO: Não zerar saldo se nosso banco tem saldo e IGameWin está zerado
-            # Isso pode indicar um problema - melhor sincronizar do IGameWin para nosso banco
-            if our_balance > 0 and igamewin_balance == 0:
-                print(f"\n[Sync Balance] ⚠️  ATENÇÃO: Nosso banco tem saldo (R$ {our_balance:.2f}) mas IGameWin está zerado.")
-                print(f"[Sync Balance] Isso pode indicar que o saldo deveria estar no IGameWin.")
-                print(f"[Sync Balance] Transferindo saldo do nosso banco para IGameWin...")
-            
-            print(f"\n[Sync Balance] 💸 Transferindo R$ {abs(balance_diff):.2f} do nosso banco para IGameWin...")
-            print(f"[Sync Balance] Saldo antes da transferência: R$ {our_balance:.2f}")
-            print(f"[Sync Balance] Saldo esperado após transferência: R$ {our_balance + balance_diff:.2f}")
-            
-            # Verificar se a transferência não vai zerar incorretamente o saldo
-            expected_balance = our_balance + balance_diff  # balance_diff é negativo
-            if expected_balance < 0:
-                print(f"[Sync Balance] ❌ ERRO: Transferência resultaria em saldo negativo! Abortando.")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Erro: Transferência resultaria em saldo negativo. Saldo atual: R$ {our_balance:.2f}, Transferência: R$ {abs(balance_diff):.2f}"
-                )
-            
-            transfer_result = await api.transfer_in(current_user.username, abs(balance_diff))
-            if transfer_result:
-                # Refresh antes de modificar para garantir dados atualizados
-                db.refresh(current_user)
-                our_balance_before_update = float(current_user.balance)
-                
-                # Deduzir do nosso banco
-                current_user.balance += balance_diff  # balance_diff é negativo aqui
-                db.flush()  # Garantir que as mudanças são enviadas ao banco antes do commit
-                db.commit()
-                db.refresh(current_user)  # Atualizar objeto com dados do banco após commit
-                
-                print(f"[Sync Balance] ✅ Transferência concluída!")
-                print(f"[Sync Balance] Saldo antes da atualização: R$ {our_balance_before_update:.2f}")
-                print(f"[Sync Balance] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
-                
-                # Verificar se o saldo foi atualizado corretamente
-                expected_balance_after = our_balance_before_update + balance_diff
-                if abs(current_user.balance - expected_balance_after) > 0.01:
-                    print(f"[Sync Balance] ⚠️  AVISO: Saldo não corresponde ao esperado!")
-                    print(f"[Sync Balance] Esperado: R$ {expected_balance_after:.2f}")
-                    print(f"[Sync Balance] Atual: R$ {current_user.balance:.2f}")
-                
-                # Verificar se o saldo está correto após o commit
-                if current_user.balance < 0:
-                    print(f"[Sync Balance] ❌ ERRO CRÍTICO: Saldo ficou negativo após commit! Revertendo...")
-                    db.rollback()
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Erro crítico: Saldo ficou negativo após sincronização"
-                    )
-                
-                result = {
-                    "status": "ok",
-                    "message": f"Saldo sincronizado com sucesso. Transferidos R$ {abs(balance_diff):.2f} para IGameWin.",
-                    "our_balance_before": our_balance,
-                    "our_balance_after": float(current_user.balance),
-                    "igamewin_balance": igamewin_balance,
-                    "transferred": balance_diff
-                }
-                # Garantir que o commit foi persistido antes de retornar
-                return result
-            else:
-                print(f"[Sync Balance] ❌ Erro na transferência: {api.last_error}")
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Erro ao transferir saldo para IGameWin: {api.last_error or 'Erro desconhecido'}"
-                )
+            return {
+                "status": "ok",
+                "message": f"Saldo já está no nosso banco (R$ {our_balance:.2f}). Pronto para uso.",
+                "our_balance_before": our_balance,
+                "our_balance_after": our_balance,
+                "igamewin_balance": igamewin_balance,
+                "difference": balance_diff,
+                "note": "Saldo mantido no nosso banco. Será transferido para IGameWin ao iniciar jogo."
+            }
     finally:
         # Sempre liberar o lock, mesmo em caso de erro
         _sync_locks[lock_key] = False
