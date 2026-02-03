@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Calendar, Percent, DollarSign, ArrowRight } from 'lucide-react';
+import { Gift, Calendar, Percent, DollarSign, ArrowRight, ArrowLeft } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -96,14 +96,29 @@ export default function Promocoes() {
 
   return (
     <div className="min-h-screen bg-[#0a0e0f] text-white">
-      {/* Header */}
+      {/* Header com botão voltar */}
+      <div className="bg-[#0a4d3e] border-b border-[#0d5d4b] sticky top-0 z-40">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/')}
+              className="p-2 hover:bg-[#0d5d4b] rounded transition-colors"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <h1 className="text-xl md:text-2xl font-bold">Promoções</h1>
+          </div>
+        </div>
+      </div>
+
+      {/* Banner de Promoções */}
       <div className="bg-gradient-to-r from-[#0a4d3e] to-[#0d5d4b] py-12 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="flex items-center gap-4 mb-4">
             <Gift className="text-[#d4af37]" size={48} />
             <div>
-              <h1 className="text-4xl md:text-5xl font-black mb-2">Promoções</h1>
-              <p className="text-gray-300 text-lg">Aproveite nossas ofertas exclusivas!</p>
+              <h2 className="text-3xl md:text-4xl font-black mb-2">Aproveite nossas ofertas exclusivas!</h2>
+              <p className="text-gray-300 text-lg">Confira todas as promoções disponíveis</p>
             </div>
           </div>
           
