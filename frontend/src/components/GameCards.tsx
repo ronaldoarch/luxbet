@@ -38,10 +38,11 @@ export default function GameCards() {
     const fetchGames = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/api/public/games`);
+        // Usar endpoint otimizado para jogos em destaque
+        const res = await fetch(`${API_URL}/api/public/games/featured`);
         if (!res.ok) throw new Error('Falha ao carregar jogos');
         const data = await res.json();
-        const allGames: GameCard[] = (data.games || []).map((g: any) => ({
+        const fetchedGames: GameCard[] = (data.games || []).map((g: any) => ({
           id: g.code || g.name || '',
           title: g.name || g.title || 'Jogo',
           code: g.code,
@@ -49,12 +50,11 @@ export default function GameCards() {
           provider: g.provider,
         }));
 
-        // Filtrar e mapear os jogos destacados
+        // Mapear os jogos retornados com as tags e cores configuradas
         const featuredGames: GameCard[] = [];
         for (const config of featuredGamesConfig) {
-          // Buscar jogo que corresponde ao título (busca parcial, case-insensitive)
           const normalizedConfigTitle = config.title.toLowerCase().trim();
-          const matchedGame = allGames.find((g) => {
+          const matchedGame = fetchedGames.find((g) => {
             const normalizedGameTitle = g.title.toLowerCase().trim();
             return normalizedGameTitle.includes(normalizedConfigTitle) || 
                    normalizedConfigTitle.includes(normalizedGameTitle);
@@ -137,6 +137,7 @@ export default function GameCards() {
                       className="absolute inset-0 w-full h-full object-cover"
                       loading="lazy"
                       decoding="async"
+                      fetchPriority="low"
                       onError={(e) => {
                         // Fallback se a imagem falhar ao carregar
                         const target = e.target as HTMLImageElement;

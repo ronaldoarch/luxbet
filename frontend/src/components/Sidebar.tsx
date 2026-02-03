@@ -35,20 +35,20 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
     const fetchGames = async () => {
       setLoadingGames(true);
       try {
-        const res = await fetch(`${API_URL}/api/public/games`);
+        // Usar endpoint otimizado para jogos populares
+        const res = await fetch(`${API_URL}/api/public/games/popular`);
         if (!res.ok) throw new Error('Falha ao carregar jogos');
         const data = await res.json();
-        const allGames: Game[] = (data.games || []).map((g: any) => ({
+        const fetchedGames: Game[] = (data.games || []).map((g: any) => ({
           name: g.name || g.title || '',
           code: g.code || '',
         }));
 
-        // Filtrar e mapear os jogos que queremos exibir
+        // Mapear os jogos retornados mantendo a ordem desejada
         const matchedGames: Game[] = [];
         for (const gameName of gameNamesToShow) {
-          // Buscar jogo que corresponde ao título (busca parcial, case-insensitive)
           const normalizedGameName = gameName.toLowerCase().trim();
-          const matchedGame = allGames.find((g) => {
+          const matchedGame = fetchedGames.find((g) => {
             const normalizedGameTitle = g.name.toLowerCase().trim();
             return normalizedGameTitle.includes(normalizedGameName) || 
                    normalizedGameName.includes(normalizedGameTitle);

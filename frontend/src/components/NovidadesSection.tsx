@@ -176,6 +176,7 @@ export default function NovidadesSection({ filters, onProvidersLoaded }: Novidad
             className="w-full h-auto object-contain"
             loading="lazy"
             decoding="async"
+            fetchPriority="low"
             onError={(e) => {
               // Fallback se a imagem falhar ao carregar
               const target = e.target as HTMLImageElement;

@@ -967,6 +967,246 @@ async def public_games(
     }
 
 
+@public_router.get("/games/featured")
+async def public_featured_games(db: Session = Depends(get_db)):
+    """
+    Retorna apenas os jogos em destaque (featured games).
+    Otimizado para retornar apenas os jogos necessários sem buscar todos.
+    """
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400, 
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    # Lista de jogos em destaque que queremos buscar
+    featured_game_names = [
+        'Aviator', 'Cachorro Sortudo', 'Roleta', 'Fortune Tiger', 'Mine',
+        'Fortune Snake', 'Spaceman', 'Gate of Olympus', 'Bac Bo',
+        'Slot Da Sorte', 'Big Bass', 'Sweet Bonanza', 'JetX'
+    ]
+    
+    # Verificar cache
+    cache_key = _get_cache_key("featured_games", api.agent_code)
+    cached_featured = _get_cached(cache_key)
+    
+    if cached_featured is not None:
+        return {"games": cached_featured}
+    
+    # Buscar provedores prioritários
+    cache_key_providers = _get_cache_key("providers", api.agent_code)
+    cached_providers = _get_cached(cache_key_providers)
+    
+    if cached_providers is None:
+        providers = await api.get_providers()
+        if providers is None:
+            raise HTTPException(status_code=502, detail="Erro ao buscar provedores")
+        _set_cache(cache_key_providers, providers)
+    else:
+        providers = cached_providers
+    
+    # Obter provedores prioritários
+    provider_orders = db.query(ProviderOrder).all()
+    priority_providers = {po.provider_code.upper().strip() for po in provider_orders if po.is_priority}
+    
+    priority_providers_list = []
+    for p in providers:
+        code = (p.get("code") or p.get("provider_code") or "").upper().strip()
+        if code in priority_providers:
+            priority_providers_list.append(p)
+            if len(priority_providers_list) >= 3:
+                break
+    
+    if not priority_providers_list:
+        priority_providers_list = providers[:3]
+    
+    # Buscar jogos apenas dos provedores prioritários e filtrar por nome
+    featured_games = []
+    found_names = set()
+    
+    for provider in priority_providers_list:
+        prov_code = provider.get("code") or provider.get("provider_code")
+        if not prov_code:
+            continue
+        
+        # Verificar cache para games deste provedor
+        cache_key_provider_games = _get_cache_key("games", api.agent_code, prov_code)
+        cached_provider_games = _get_cached(cache_key_provider_games)
+        
+        if cached_provider_games is None:
+            games = await api.get_games(provider_code=prov_code)
+            if games is None:
+                continue
+            games = _normalize_games(games, prov_code)
+            _set_cache(cache_key_provider_games, games)
+        else:
+            games = cached_provider_games
+        
+        # Aplicar customizações
+        games = _apply_game_customizations(games, db)
+        
+        # Buscar jogos que correspondem aos nomes em destaque
+        for g in games:
+            if len(featured_games) >= len(featured_game_names):
+                break
+            
+            status_val = g.get("status")
+            is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
+            if not is_active:
+                continue
+            
+            game_name = (g.get("game_name") or g.get("name") or g.get("title") or "").lower().strip()
+            game_code = _extract_game_code(g)
+            
+            if not game_code or not game_name:
+                continue
+            
+            # Verificar se corresponde a algum jogo em destaque
+            for featured_name in featured_game_names:
+                if featured_name.lower() in found_names:
+                    continue
+                
+                normalized_featured = featured_name.lower().strip()
+                if normalized_featured in game_name or game_name in normalized_featured:
+                    featured_games.append({
+                        "name": g.get("game_name") or g.get("name") or g.get("title"),
+                        "code": game_code,
+                        "provider": prov_code,
+                        "banner": g.get("banner") or g.get("image") or g.get("icon"),
+                    })
+                    found_names.add(featured_name.lower())
+                    break
+            
+            if len(featured_games) >= len(featured_game_names):
+                break
+        
+        if len(featured_games) >= len(featured_game_names):
+            break
+    
+    # Cachear resultado
+    _set_cache(cache_key, featured_games)
+    
+    return {"games": featured_games}
+
+
+@public_router.get("/games/popular")
+async def public_popular_games(db: Session = Depends(get_db)):
+    """
+    Retorna apenas os jogos populares para o sidebar.
+    Otimizado para retornar apenas os jogos necessários.
+    """
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400, 
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    # Lista de jogos populares que queremos buscar
+    popular_game_names = ['Fortune Tiger', 'Mine', 'Gate of Olympus', 'Aviator']
+    
+    # Verificar cache
+    cache_key = _get_cache_key("popular_games", api.agent_code)
+    cached_popular = _get_cached(cache_key)
+    
+    if cached_popular is not None:
+        return {"games": cached_popular}
+    
+    # Buscar provedores prioritários
+    cache_key_providers = _get_cache_key("providers", api.agent_code)
+    cached_providers = _get_cached(cache_key_providers)
+    
+    if cached_providers is None:
+        providers = await api.get_providers()
+        if providers is None:
+            raise HTTPException(status_code=502, detail="Erro ao buscar provedores")
+        _set_cache(cache_key_providers, providers)
+    else:
+        providers = cached_providers
+    
+    # Obter provedores prioritários
+    provider_orders = db.query(ProviderOrder).all()
+    priority_providers = {po.provider_code.upper().strip() for po in provider_orders if po.is_priority}
+    
+    priority_providers_list = []
+    for p in providers:
+        code = (p.get("code") or p.get("provider_code") or "").upper().strip()
+        if code in priority_providers:
+            priority_providers_list.append(p)
+            if len(priority_providers_list) >= 3:
+                break
+    
+    if not priority_providers_list:
+        priority_providers_list = providers[:3]
+    
+    # Buscar jogos apenas dos provedores prioritários e filtrar por nome
+    popular_games = []
+    found_names = set()
+    
+    for provider in priority_providers_list:
+        prov_code = provider.get("code") or provider.get("provider_code")
+        if not prov_code:
+            continue
+        
+        # Verificar cache para games deste provedor
+        cache_key_provider_games = _get_cache_key("games", api.agent_code, prov_code)
+        cached_provider_games = _get_cached(cache_key_provider_games)
+        
+        if cached_provider_games is None:
+            games = await api.get_games(provider_code=prov_code)
+            if games is None:
+                continue
+            games = _normalize_games(games, prov_code)
+            _set_cache(cache_key_provider_games, games)
+        else:
+            games = cached_provider_games
+        
+        # Aplicar customizações
+        games = _apply_game_customizations(games, db)
+        
+        # Buscar jogos que correspondem aos nomes populares
+        for g in games:
+            if len(popular_games) >= len(popular_game_names):
+                break
+            
+            status_val = g.get("status")
+            is_active = (status_val == 1) or (status_val is True) or (str(status_val).lower() == "active")
+            if not is_active:
+                continue
+            
+            game_name = (g.get("game_name") or g.get("name") or g.get("title") or "").lower().strip()
+            game_code = _extract_game_code(g)
+            
+            if not game_code or not game_name:
+                continue
+            
+            # Verificar se corresponde a algum jogo popular
+            for popular_name in popular_game_names:
+                if popular_name.lower() in found_names:
+                    continue
+                
+                normalized_popular = popular_name.lower().strip()
+                if normalized_popular in game_name or game_name in normalized_popular:
+                    popular_games.append({
+                        "name": g.get("game_name") or g.get("name") or g.get("title"),
+                        "code": game_code,
+                    })
+                    found_names.add(popular_name.lower())
+                    break
+            
+            if len(popular_games) >= len(popular_game_names):
+                break
+        
+        if len(popular_games) >= len(popular_game_names):
+            break
+    
+    # Cachear resultado
+    _set_cache(cache_key, popular_games)
+    
+    return {"games": popular_games}
+
+
 @public_router.get("/games/{game_code}/launch")
 async def launch_game(
     game_code: str,
