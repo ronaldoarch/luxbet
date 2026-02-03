@@ -122,15 +122,18 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
         if bonus_amount > 0:
             # Aplicar bônus ao saldo do usuário
             db.refresh(user)
+            balance_before_bonus = float(user.balance)
             user.balance += bonus_amount
+            db.flush()  # Garantir que o bônus seja persistido imediatamente antes do commit
+            balance_after_bonus = float(user.balance)
             
             print(f"\n{'='*80}")
             print(f"[Promotion] 🎁 BÔNUS APLICADO!")
             print(f"[Promotion] Promoção: {promo.title}")
             print(f"[Promotion] Depósito: R$ {deposit.amount:.2f}")
             print(f"[Promotion] Bônus ({promo.bonus_percentage}%): R$ {bonus_amount:.2f}")
-            print(f"[Promotion] Saldo antes: R$ {(user.balance - bonus_amount):.2f}")
-            print(f"[Promotion] Saldo após bônus: R$ {user.balance:.2f}")
+            print(f"[Promotion] Saldo antes do bônus: R$ {balance_before_bonus:.2f}")
+            print(f"[Promotion] Saldo após bônus: R$ {balance_after_bonus:.2f}")
             print(f"{'='*80}\n")
             
             # Criar notificação sobre o bônus
@@ -144,6 +147,18 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
                 link="/promocoes"
             )
             db.add(notification)
+            db.flush()  # Garantir que a notificação também seja persistida
+            
+            # Refresh do usuário para garantir que o saldo está atualizado no objeto
+            db.refresh(user)
+            
+            # Verificar se o bônus foi aplicado corretamente
+            final_balance = float(user.balance)
+            expected_balance = balance_before_bonus + bonus_amount
+            if abs(final_balance - expected_balance) > 0.01:
+                print(f"[Promotion] ⚠️  AVISO: Saldo não corresponde ao esperado após aplicar bônus!")
+                print(f"[Promotion] Esperado: R$ {expected_balance:.2f}")
+                print(f"[Promotion] Atual: R$ {final_balance:.2f}")
             
             return bonus_amount
     
@@ -788,10 +803,17 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         db.refresh(deposit)
         if 'user' in locals() and user:
             db.refresh(user)
+            final_balance_after_commit = float(user.balance)
             print(f"[Webhook SuitPay] ✅ CONFIRMAÇÃO FINAL:")
             print(f"[Webhook SuitPay]   - Depósito {deposit.id} status: {deposit.status}")
             print(f"[Webhook SuitPay]   - Usuário {user.username}")
-            print(f"[Webhook SuitPay]   - Saldo confirmado: R$ {user.balance:.2f}")
+            print(f"[Webhook SuitPay]   - Saldo confirmado após commit: R$ {final_balance_after_commit:.2f}")
+            if deposit.status == TransactionStatus.APPROVED and 'balance_after_bonus' in locals():
+                expected_balance = balance_after_bonus
+                if abs(final_balance_after_commit - expected_balance) > 0.01:
+                    print(f"[Webhook SuitPay] ⚠️  AVISO: Saldo após commit não corresponde ao esperado!")
+                    print(f"[Webhook SuitPay]   - Esperado: R$ {expected_balance:.2f}")
+                    print(f"[Webhook SuitPay]   - Atual: R$ {final_balance_after_commit:.2f}")
             print(f"[Webhook SuitPay] ✅ Processamento concluído com sucesso!\n")
         
         return {"status": "ok", "message": "Webhook processado com sucesso"}
@@ -892,10 +914,17 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         db.refresh(deposit)
         if 'user' in locals() and user:
             db.refresh(user)
+            final_balance_after_commit = float(user.balance)
             print(f"[Webhook NXGATE] ✅ CONFIRMAÇÃO FINAL:")
             print(f"[Webhook NXGATE]   - Depósito {deposit.id} status: {deposit.status}")
             print(f"[Webhook NXGATE]   - Usuário {user.username}")
-            print(f"[Webhook NXGATE]   - Saldo confirmado: R$ {user.balance:.2f}")
+            print(f"[Webhook NXGATE]   - Saldo confirmado após commit: R$ {final_balance_after_commit:.2f}")
+            if deposit.status == TransactionStatus.APPROVED and 'balance_after_bonus' in locals():
+                expected_balance = balance_after_bonus
+                if abs(final_balance_after_commit - expected_balance) > 0.01:
+                    print(f"[Webhook NXGATE] ⚠️  AVISO: Saldo após commit não corresponde ao esperado!")
+                    print(f"[Webhook NXGATE]   - Esperado: R$ {expected_balance:.2f}")
+                    print(f"[Webhook NXGATE]   - Atual: R$ {final_balance_after_commit:.2f}")
             print(f"[Webhook NXGATE] ✅ Processamento concluído com sucesso!\n")
         
         return {"status": "received"}

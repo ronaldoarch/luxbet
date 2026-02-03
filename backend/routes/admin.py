@@ -242,11 +242,25 @@ async def update_deposit(
     # If approved, update user balance
     if deposit_data.status == TransactionStatus.APPROVED and deposit.status != TransactionStatus.APPROVED:
         user = db.query(User).filter(User.id == deposit.user_id).first()
+        balance_before = float(user.balance)
         user.balance += deposit.amount
+        db.flush()  # Garantir que o depósito seja persistido antes de aplicar bônus
         
         # Aplicar bônus de promoção se houver
         from routes.payments import apply_promotion_bonus
-        apply_promotion_bonus(db, user, deposit)
+        bonus_amount = apply_promotion_bonus(db, user, deposit)
+        
+        # Refresh do usuário para garantir que o saldo está atualizado
+        db.refresh(user)
+        balance_after = float(user.balance)
+        
+        print(f"\n[Admin Update Deposit] 💰 SALDO ATUALIZADO:")
+        print(f"[Admin Update Deposit]   - Saldo antes: R$ {balance_before:.2f}")
+        print(f"[Admin Update Deposit]   - Depósito: R$ {deposit.amount:.2f}")
+        if bonus_amount:
+            print(f"[Admin Update Deposit]   - Bônus aplicado: R$ {bonus_amount:.2f}")
+        print(f"[Admin Update Deposit]   - Saldo após: R$ {balance_after:.2f}")
+        print(f"[Admin Update Deposit]   - Esperado: R$ {balance_before + deposit.amount + (bonus_amount or 0):.2f}\n")
         
         # Check if this is first deposit (FTD)
         existing_ftd = db.query(FTD).filter(FTD.user_id == deposit.user_id).first()
