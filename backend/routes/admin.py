@@ -1188,8 +1188,8 @@ async def launch_game(
                 detail=(
                     f"Erro ao iniciar jogo: {error_detail}. "
                     "O IGameWin está tentando acessar nosso endpoint /gold_api mas não consegue. "
-                    "Verifique se o campo 'Ponto final do site' está configurado como 'https://luxbet.site' "
-                    "no painel administrativo do IGameWin (Agente de atualização). "
+                    "Verifique se o campo 'Ponto final do site' está configurado como 'https://api.luxbet.site' "
+                    "(URL do backend, não do frontend) no painel administrativo do IGameWin (Agente de atualização). "
                     "Aguarde 2-5 minutos após salvar as configurações."
                 )
             )
@@ -2697,10 +2697,10 @@ async def seamless_diagnostics(
             "https://api.luxbet.site/api/admin/gold_api"
         ],
         "configuration_checklist": {
-            "site_endpoint": "Configure no painel IGameWin: 'Ponto final do site' = https://luxbet.site",
+            "site_endpoint": "Configure no painel IGameWin: 'Ponto final do site' = https://api.luxbet.site (URL do backend)",
             "mode": "Configure como 'Seamless Mode' (não Transfer ou Continuous)",
             "wait_time": "Aguarde 2-5 minutos após salvar as configurações",
-            "test_endpoint": "Teste acessando: https://luxbet.site/gold_api (deve retornar JSON)"
+            "test_endpoint": "Teste acessando: https://api.luxbet.site/gold_api (deve retornar JSON)"
         },
         "what_to_look_for": {
             "in_logs": "Procure por: '⚡⚡⚡ CHAMADA RECEBIDA NO /gold_api ⚡⚡⚡'",

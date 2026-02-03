@@ -24,8 +24,10 @@
 ### Passo 2: Configurar Ponto Final do Site
 
 1. **Localize** o campo **"Ponto final do site"** ou **"Site Endpoint"**
-2. **Configure como:** `https://luxbet.site` ou `https://api.luxbet.site`
-   - ⚠️ **IMPORTANTE:** Deve ser a URL pública do seu site (sem `/gold_api` no final)
+2. **Configure como:** `https://api.luxbet.site`
+   - ⚠️ **IMPORTANTE:** Deve ser a URL do **backend** (não do frontend)
+   - ⚠️ **NÃO inclua** `/gold_api` no final - apenas a URL base do backend
+   - O IGameWin automaticamente adiciona `/gold_api` ao final
 3. **Salve** as configurações
 
 ### Passo 3: Aguardar Aplicação
@@ -108,7 +110,7 @@ Quando você jogar, deve ver nos logs:
 
 - [ ] Acessou painel IGameWin
 - [ ] Configurou "Tipo de API" como "Seamless"
-- [ ] Configurou "Ponto final do site" como `https://luxbet.site`
+- [ ] Configurou "Ponto final do site" como `https://api.luxbet.site` (URL do backend)
 - [ ] Salvou configurações
 - [ ] Aguardou 2-5 minutos
 - [ ] Testou iniciar um jogo
@@ -151,9 +153,9 @@ Após configurar Seamless Mode:
 ### Problema: Erro `ERROR_GET_BALANCE_END_POINT`
 
 **Solução:**
-1. Verifique se o campo "Ponto final do site" está configurado
+1. Verifique se o campo "Ponto final do site" está configurado como `https://api.luxbet.site` (URL do backend)
 2. Verifique se o endpoint `/gold_api` está acessível publicamente
-3. Teste acessando: `https://luxbet.site/gold_api` (deve retornar JSON)
+3. Teste acessando: `https://api.luxbet.site/gold_api` (deve retornar JSON)
 
 ### Problema: Não vejo chamadas ao `/gold_api` nos logs
 
