@@ -1455,22 +1455,41 @@ async def launch_game(
     # (O código acima já trata isso no bloco if/else do is_seamless_mode)
     
     # Gerar URL de lançamento do jogo usando user_code (username)
+    # Implementar retry logic para lidar com problemas de rede temporários
     print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
-    launch_url = await api.launch_game(
-        user_code=current_user.username,
-        game_code=game_code,
-        provider_code=provider_code,
-        lang=lang
-    )
+    
+    max_retries = 3
+    launch_url = None
+    last_error = None
+    
+    for attempt in range(1, max_retries + 1):
+        print(f"[Launch Game] Tentativa {attempt}/{max_retries} de lançar o jogo...")
+        launch_url = await api.launch_game(
+            user_code=current_user.username,
+            game_code=game_code,
+            provider_code=provider_code,
+            lang=lang
+        )
+        
+        if launch_url:
+            print(f"[Launch Game] ✅ Sucesso na tentativa {attempt}")
+            break
+        
+        last_error = api.last_error or 'Erro desconhecido'
+        print(f"[Launch Game] ❌ Falha na tentativa {attempt}: {last_error}")
+        
+        # Se não for a última tentativa, aguardar antes de tentar novamente
+        if attempt < max_retries:
+            import asyncio
+            wait_time = attempt * 2  # 2s, 4s, 6s...
+            print(f"[Launch Game] Aguardando {wait_time}s antes da próxima tentativa...")
+            await asyncio.sleep(wait_time)
     
     if not launch_url:
-        error_detail = api.last_error or 'Erro desconhecido'
-        print(f"[Launch Game] Failed - {error_detail}")
+        error_detail = last_error or 'Erro desconhecido após múltiplas tentativas'
+        print(f"[Launch Game] Failed após {max_retries} tentativas - {error_detail}")
         
-        # Se o erro for ERROR_GET_BALANCE_END_POINT, significa que o IGameWin está tentando chamar nosso /gold_api
-        # mas não consegue acessá-lo. Isso pode ser porque:
-        # 1. O campo "Ponto final do site" não está configurado no painel IGameWin
-        # 2. O endpoint /gold_api não está acessível publicamente
+        # Mensagens de erro mais específicas
         if "ERROR_GET_BALANCE_END_POINT" in error_detail:
             raise HTTPException(
                 status_code=502,
@@ -1483,9 +1502,31 @@ async def launch_game(
                 )
             )
         
+        # Erros comuns e suas soluções
+        error_lower = error_detail.lower()
+        if "network" in error_lower or "timeout" in error_lower or "connection" in error_lower:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Erro de conexão com o servidor de jogos: {error_detail}. "
+                    "O servidor pode estar temporariamente indisponível. "
+                    "Por favor, tente novamente em alguns instantes."
+                )
+            )
+        
+        if "login" in error_lower or "auth" in error_lower or "unauthorized" in error_lower:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    f"Erro de autenticação: {error_detail}. "
+                    "Por favor, faça logout e login novamente."
+                )
+            )
+        
         raise HTTPException(
             status_code=502,
-            detail=f"Não foi possível iniciar o jogo. {error_detail}"
+            detail=f"Não foi possível iniciar o jogo após {max_retries} tentativas. {error_detail}. "
+                   "Por favor, tente novamente em alguns instantes ou entre em contato com o suporte."
         )
     
     print(f"[Launch Game] Success - URL length: {len(launch_url)}, starts with: {launch_url[:100]}...")

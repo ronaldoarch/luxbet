@@ -51,13 +51,43 @@ export default function Game() {
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({ detail: 'Erro ao iniciar jogo' }));
-          throw new Error(data.detail || 'Erro ao iniciar jogo');
+          const errorMessage = data.detail || 'Erro ao iniciar jogo';
+          
+          // Mensagens de erro mais amigáveis
+          if (res.status === 503) {
+            setError(`${errorMessage}\n\nO servidor pode estar temporariamente indisponível. Tente novamente em alguns instantes.`);
+          } else if (res.status === 401) {
+            setError(`${errorMessage}\n\nPor favor, faça logout e login novamente.`);
+          } else if (res.status === 502) {
+            setError(`${errorMessage}\n\nPor favor, tente novamente em alguns instantes ou entre em contato com o suporte.`);
+          } else {
+            setError(errorMessage);
+          }
+          return;
         }
 
         const data = await res.json();
-        setGameUrl(data.game_url || data.launch_url);
+        const url = data.game_url || data.launch_url;
+        
+        if (!url) {
+          setError('URL do jogo não foi retornada pelo servidor. Por favor, tente novamente.');
+          return;
+        }
+        
+        // Validar URL antes de definir
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          setError('URL do jogo inválida. Por favor, entre em contato com o suporte.');
+          return;
+        }
+        
+        setGameUrl(url);
       } catch (err: any) {
-        setError(err.message || 'Erro ao carregar jogo');
+        // Tratar erros de rede
+        if (err.name === 'TypeError' && err.message.includes('fetch')) {
+          setError('Erro de conexão. Verifique sua internet e tente novamente.');
+        } else {
+          setError(err.message || 'Erro ao carregar jogo. Por favor, tente novamente.');
+        }
       } finally {
         setLoading(false);
       }
@@ -125,15 +155,37 @@ export default function Game() {
 
       {/* Iframe do jogo */}
       {gameUrl && (
-        <div className="w-full h-[calc(100vh-60px)]">
+        <div className="w-full h-[calc(100vh-60px)] relative">
           <iframe
             src={gameUrl}
             className="w-full h-full border-0"
             title="Jogo"
             allow="fullscreen; autoplay; payment; geolocation; microphone; camera"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
             referrerPolicy="no-referrer-when-downgrade"
+            onError={() => {
+              setError('Erro ao carregar o jogo. Por favor, tente novamente.');
+              setGameUrl(null);
+            }}
+            onLoad={() => {
+              console.log('[Game] Iframe carregado com sucesso');
+            }}
           />
+          {/* Overlay de erro caso o iframe falhe */}
+          <div id="game-error-overlay" className="hidden absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 max-w-md mx-4">
+              <h3 className="text-xl font-bold text-red-400 mb-2">Erro ao carregar jogo</h3>
+              <p className="text-red-200 mb-4">O jogo não pôde ser carregado. Por favor, tente novamente.</p>
+              <button
+                onClick={() => {
+                  window.location.reload();
+                }}
+                className="px-4 py-2 bg-[#ff6b35] hover:bg-[#ff7b35] rounded-lg transition-colors"
+              >
+                Recarregar Página
+              </button>
+            </div>
+          </div>
         </div>
       )}
       
