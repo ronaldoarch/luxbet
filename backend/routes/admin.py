@@ -1158,12 +1158,9 @@ async def launch_game(
         print("\n" + "="*80)
         print(f"[Launch Game] ✅ Saldo sincronizado! Pronto para lançar o jogo.")
         print("="*80 + "\n")
-    else:
-        # Em Seamless Mode, não verificamos saldo final - o IGameWin vai chamar /gold_api
-        print("\n" + "="*80)
-        print(f"[Launch Game] ✅ Pronto para lançar o jogo em modo Seamless")
-        print(f"[Launch Game] O IGameWin vai chamar nosso /gold_api para buscar saldo")
-        print("="*80 + "\n")
+    
+    # Em Seamless Mode, não verificamos saldo final - o IGameWin vai chamar /gold_api
+    # (O código acima já trata isso no bloco if/else do is_seamless_mode)
     
     # Gerar URL de lançamento do jogo usando user_code (username)
     print(f"[Launch Game] Request - game_code={game_code}, provider_code={provider_code}, user={current_user.username}")
