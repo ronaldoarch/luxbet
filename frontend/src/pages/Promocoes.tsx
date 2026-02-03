@@ -85,11 +85,18 @@ export default function Promocoes() {
   };
 
   const handlePromotionClick = (promo: Promotion) => {
+    // Se a promoção tem link_url, usar ele
     if (promo.link_url) {
       if (promo.link_url.startsWith('http')) {
         window.open(promo.link_url, '_blank');
       } else {
         navigate(promo.link_url);
+      }
+    } else {
+      // Se não tem link_url, mas tem bônus, navegar para depósito
+      // O bônus será aplicado automaticamente quando o depósito for aprovado
+      if (promo.bonus_percentage > 0 || promo.cashback_percentage > 0) {
+        navigate('/depositar');
       }
     }
   };
