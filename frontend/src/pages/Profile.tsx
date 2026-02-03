@@ -107,7 +107,12 @@ export default function Profile() {
           }
         });
         if (syncRes.ok) {
-          console.log('[Sync Balance] Saldo do IGameWin sincronizado');
+          const syncData = await syncRes.json();
+          if (syncData.mode === 'seamless') {
+            console.log('[Sync Balance] Seamless Mode - sincronização não necessária');
+          } else {
+            console.log('[Sync Balance] Saldo do IGameWin sincronizado');
+          }
           // Aguardar um pouco para o backend processar a sincronização
           await new Promise(resolve => setTimeout(resolve, 1000));
         }

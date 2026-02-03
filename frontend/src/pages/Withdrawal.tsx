@@ -81,7 +81,12 @@ export default function Withdrawal() {
               if (cancelled) return;
 
               if (syncRes.ok) {
-                console.log('[Withdrawal] Saldo sincronizado com sucesso');
+                const syncData = await syncRes.json();
+                if (syncData.mode === 'seamless') {
+                  console.log('[Withdrawal] Seamless Mode - sincronização não necessária');
+                } else {
+                  console.log('[Withdrawal] Saldo sincronizado com sucesso');
+                }
                 // Aguardar um pouco antes de buscar novamente para garantir que o backend processou
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 

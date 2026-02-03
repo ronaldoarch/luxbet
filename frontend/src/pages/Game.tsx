@@ -198,9 +198,10 @@ export default function Game() {
 }
 
 // Componente para atualizar saldo quando usuário SAI do jogo
-// IMPORTANTE: NÃO sincronizar durante o jogo! Em Transfer Mode o saldo está no IGameWin.
-// Se sincronizarmos a cada X segundos, puxamos o saldo do jogo para nosso banco e zeramos
-// o IGameWin, expulsando o jogador. Só sincronizar ao SAIR da página.
+// IMPORTANTE: 
+// - Em Transfer Mode: precisa sincronizar ao sair do jogo (saldo está no IGameWin)
+// - Em Seamless Mode: NÃO precisa sincronizar (saldo sempre fica no nosso banco, IGameWin chama /gold_api)
+// O backend detecta automaticamente o modo e retorna resposta apropriada.
 function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
   useEffect(() => {
     const token = localStorage.getItem('user_token');
@@ -208,6 +209,7 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
     const syncAndRefresh = async () => {
       if (!token) return;
       try {
+        // Tentar sincronizar (backend vai retornar que não é necessário se estiver em Seamless Mode)
         const syncRes = await fetch(`${API_URL}/api/public/games/sync-balance`, {
           method: 'POST',
           headers: {
@@ -217,17 +219,23 @@ function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> 
         });
         if (syncRes.ok) {
           const syncData = await syncRes.json();
-          console.log('[Game] Saldo sincronizado ao sair:', syncData);
+          if (syncData.mode === 'seamless') {
+            console.log('[Game] Seamless Mode - sincronização não necessária');
+          } else {
+            console.log('[Game] Saldo sincronizado ao sair:', syncData);
+          }
         }
       } catch (err) {
         console.warn('[Game] Erro ao sincronizar saldo:', err);
       }
       try {
+        // Sempre atualizar dados do usuário (saldo já está atualizado no nosso banco)
         await refreshUser();
       } catch (err) {}
     };
     
     // Sincronizar APENAS ao desmontar (usuário sai da página do jogo)
+    // Em Seamless Mode, o backend vai retornar que não é necessário
     return () => {
       syncAndRefresh();
     };

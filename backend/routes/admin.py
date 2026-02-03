@@ -13,7 +13,7 @@ from models import (
     User, Deposit, Withdrawal, FTD, Gateway, IGameWinAgent, FTDSettings,
     TransactionStatus, UserRole, Bet, BetStatus, Notification, NotificationType,
     Affiliate, Manager, Theme, ProviderOrder, TrackingConfig, SupportConfig, GameCustomization,
-    Coupon
+    Coupon, Promotion
 )
 from schemas import (
     UserResponse, UserCreate, UserUpdate,
@@ -1362,11 +1362,41 @@ async def launch_game(
         print(f"\n[Launch Game] 🔄 Modo Transfer - Sincronizando saldo")
         our_balance = float(current_user.balance)
         balance_diff = our_balance - igamewin_balance
+        
+        # Verificar se há depósitos recentes (últimos 5 minutos) que podem ter bônus aplicado
+        # Isso ajuda a evitar transferir bônus antes que o usuário tenha chance de usar
+        recent_deposits = db.query(Deposit).filter(
+            Deposit.user_id == current_user.id,
+            Deposit.status == TransactionStatus.APPROVED,
+            Deposit.created_at >= datetime.utcnow() - timedelta(minutes=5)
+        ).all()
+        
+        has_recent_deposit_with_bonus = False
+        if recent_deposits:
+            # Verificar se algum depósito recente tem promoção com bônus aplicável
+            from routes.payments import apply_promotion_bonus
+            for deposit in recent_deposits:
+                # Verificar se há promoções ativas que dariam bônus para este depósito
+                now_utc = datetime.utcnow()
+                promotions = db.query(Promotion).filter(
+                    Promotion.is_active == True,
+                    Promotion.start_date <= now_utc,
+                    Promotion.end_date >= now_utc,
+                    Promotion.bonus_percentage > 0,
+                    Promotion.min_deposit <= deposit.amount
+                ).first()
+                if promotions:
+                    has_recent_deposit_with_bonus = True
+                    print(f"[Launch Game] ⚠️  Depósito recente detectado (ID: {deposit.id}, R$ {deposit.amount:.2f})")
+                    print(f"[Launch Game] ⚠️  Possível bônus aplicado - transferindo apenas saldo necessário")
+                    break
     
         print(f"\n[Launch Game] 📊 Análise de saldo:")
         print(f"[Launch Game]   - Nosso banco: R$ {our_balance:.2f}")
         print(f"[Launch Game]   - IGameWin: R$ {igamewin_balance:.2f}")
         print(f"[Launch Game]   - Diferença: R$ {balance_diff:.2f}")
+        if has_recent_deposit_with_bonus:
+            print(f"[Launch Game]   - ⚠️  Depósito recente com possível bônus detectado")
         
         if balance_diff > 0.01:  # Transferir se diferença > 1 centavo (nosso banco tem mais)
             print(f"\n[Launch Game] 💸 Transferindo R$ {balance_diff:.2f} para o IGameWin...")
@@ -1375,6 +1405,14 @@ async def launch_game(
                 # Deduzir do nosso banco
                 db.refresh(current_user)  # Garantir dados atualizados
                 balance_before = float(current_user.balance)
+                
+                # Verificar se há depósitos recentes antes de deduzir
+                if has_recent_deposit_with_bonus:
+                    print(f"[Launch Game] ⚠️  ATENÇÃO: Depósito recente com bônus detectado!")
+                    print(f"[Launch Game] ⚠️  Transferindo apenas o necessário para o jogo")
+                    print(f"[Launch Game] ⚠️  Saldo antes da dedução: R$ {balance_before:.2f}")
+                    print(f"[Launch Game] ⚠️  Valor a deduzir: R$ {balance_diff:.2f}")
+                
                 current_user.balance -= balance_diff
                 db.flush()
                 db.commit()
@@ -1383,6 +1421,13 @@ async def launch_game(
                 print(f"[Launch Game] Saldo antes: R$ {balance_before:.2f}")
                 print(f"[Launch Game] Valor transferido: R$ {balance_diff:.2f}")
                 print(f"[Launch Game] Novo saldo no nosso banco: R$ {current_user.balance:.2f}")
+                
+                # Verificar se o saldo após dedução está correto
+                expected_balance = balance_before - balance_diff
+                if abs(float(current_user.balance) - expected_balance) > 0.01:
+                    print(f"[Launch Game] ⚠️  AVISO: Saldo após dedução não corresponde ao esperado!")
+                    print(f"[Launch Game] Esperado: R$ {expected_balance:.2f}")
+                    print(f"[Launch Game] Atual: R$ {current_user.balance:.2f}")
             else:
                 print(f"[Launch Game] ❌ Erro na transferência: {api.last_error}")
                 print(f"[Launch Game] ⚠️  Saldo NÃO foi deduzido devido ao erro")
@@ -1600,10 +1645,65 @@ async def sync_balance_from_igamewin(
     Use este endpoint após jogar para atualizar o saldo do usuário.
     Protegido contra chamadas simultâneas para evitar race conditions.
     
+    IMPORTANTE: Em Seamless Mode, NÃO é necessário sincronizar. O saldo sempre fica no nosso banco
+    e o IGameWin chama nosso /gold_api para buscar saldo e processar transações.
+    
     Args:
         for_withdrawal: Se True, apenas sincroniza do IGameWin para nosso banco,
                        sem transferir de volta. Use quando o usuário vai sacar.
     """
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    # Verificar se está em Seamless Mode
+    try:
+        igamewin_balance_test = await api.get_user_balance(current_user.username)
+        if igamewin_balance_test is None:
+            error_str = api.last_error or ""
+            if "ERROR_GET_BALANCE_END_POINT" in error_str:
+                # Seamless Mode detectado - não precisa sincronizar
+                print("\n" + "="*80)
+                print(f"[Sync Balance] ⚡ Seamless Mode detectado")
+                print(f"[Sync Balance] 👤 Usuário: {current_user.username}")
+                print(f"[Sync Balance] ℹ️  Em Seamless Mode, o saldo sempre fica no nosso banco.")
+                print(f"[Sync Balance] ℹ️  O IGameWin chama nosso /gold_api para buscar saldo.")
+                print(f"[Sync Balance] ✅ NÃO é necessário sincronizar em Seamless Mode.")
+                print("="*80 + "\n")
+                
+                db.refresh(current_user)
+                return {
+                    "status": "ok",
+                    "message": "Seamless Mode detectado. Sincronização não é necessária.",
+                    "mode": "seamless",
+                    "our_balance": float(current_user.balance),
+                    "igamewin_balance": None,
+                    "note": "O saldo sempre fica no nosso banco em Seamless Mode. O IGameWin chama nosso /gold_api."
+                }
+    except Exception as e:
+        error_str = str(e) if e else ""
+        if "ERROR_GET_BALANCE_END_POINT" in error_str:
+            # Seamless Mode detectado
+            print("\n" + "="*80)
+            print(f"[Sync Balance] ⚡ Seamless Mode detectado (via exception)")
+            print(f"[Sync Balance] 👤 Usuário: {current_user.username}")
+            print(f"[Sync Balance] ℹ️  Em Seamless Mode, o saldo sempre fica no nosso banco.")
+            print(f"[Sync Balance] ✅ NÃO é necessário sincronizar em Seamless Mode.")
+            print("="*80 + "\n")
+            
+            db.refresh(current_user)
+            return {
+                "status": "ok",
+                "message": "Seamless Mode detectado. Sincronização não é necessária.",
+                "mode": "seamless",
+                "our_balance": float(current_user.balance),
+                "igamewin_balance": None,
+                "note": "O saldo sempre fica no nosso banco em Seamless Mode."
+            }
+    
     # Verificar se já está sincronizando para este usuário
     lock_key = f"sync_{current_user.username}"
     if _sync_locks.get(lock_key, False):
@@ -1617,15 +1717,8 @@ async def sync_balance_from_igamewin(
     _sync_locks[lock_key] = True
     
     try:
-        api = get_igamewin_api(db)
-        if not api:
-            raise HTTPException(
-                status_code=400,
-                detail="Nenhum agente IGameWin ativo configurado"
-            )
-        
         print("\n" + "="*80)
-        print(f"[Sync Balance] 🔄 Sincronizando saldo do IGameWin")
+        print(f"[Sync Balance] 🔄 Sincronizando saldo do IGameWin (Transfer Mode)")
         print(f"[Sync Balance] 👤 Usuário: {current_user.username}")
         print("="*80 + "\n")
         
@@ -1733,6 +1826,21 @@ async def sync_balance_from_igamewin(
             # IMPORTANTE: Se nosso banco tem mais saldo, NÃO devemos transferir de volta para IGameWin
             # O saldo deve ficar no nosso banco para poder sacar ou usar normalmente
             # Só transferimos para IGameWin quando o usuário vai jogar (não durante sincronização manual)
+            
+            # Verificar se há depósitos recentes (últimos 10 minutos) que podem ter bônus aplicado
+            # Se houver, garantir que o saldo não seja sobrescrito por sincronização incorreta
+            recent_deposits = db.query(Deposit).filter(
+                Deposit.user_id == current_user.id,
+                Deposit.status == TransactionStatus.APPROVED,
+                Deposit.created_at >= datetime.utcnow() - timedelta(minutes=10)
+            ).all()
+            
+            if recent_deposits:
+                print(f"[Sync Balance] ⚠️  Depósitos recentes detectados ({len(recent_deposits)} depósito(s))")
+                print(f"[Sync Balance] ⚠️  Possível bônus aplicado - NÃO sincronizar para preservar bônus")
+                for deposit in recent_deposits:
+                    print(f"[Sync Balance]   - Depósito ID: {deposit.id}, Valor: R$ {deposit.amount:.2f}, Data: {deposit.created_at}")
+            
             print(f"\n[Sync Balance] ℹ️  Nosso banco tem mais saldo (R$ {our_balance:.2f}) que o IGameWin (R$ {igamewin_balance:.2f})")
             print(f"[Sync Balance] Diferença: R$ {abs(balance_diff):.2f}")
             print(f"[Sync Balance] ✅ Mantendo saldo no nosso banco. Não transferindo de volta para IGameWin.")
