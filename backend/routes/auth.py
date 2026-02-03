@@ -153,29 +153,43 @@ async def get_available_balance(
     """
     our_balance = float(current_user.balance)
     
-    # Tentar obter saldo do IGameWin
+    # Tentar obter saldo do IGameWin para detectar modo e verificar se precisa sincronizar
     api = get_igamewin_api(db)
     igamewin_balance = None
+    is_seamless_mode = False
+    
     if api:
         try:
             igamewin_balance = await api.get_user_balance(current_user.username)
         except Exception as e:
-            print(f"[Available Balance] Erro ao obter saldo do IGameWin: {e}")
+            error_str = str(e) if e else ""
+            # Se receber ERROR_GET_BALANCE_END_POINT, está em Seamless Mode
+            if "ERROR_GET_BALANCE_END_POINT" in error_str:
+                print(f"[Available Balance] Seamless Mode detectado - não precisa sincronizar")
+                is_seamless_mode = True
+            else:
+                print(f"[Available Balance] Erro ao obter saldo do IGameWin: {e}")
             # Continuar mesmo se não conseguir obter saldo do IGameWin
     
-    # IMPORTANTE: Em Transfer Mode, o saldo exibido deve SEMPRE ser o saldo do nosso banco
+    # IMPORTANTE: Em Seamless Mode, o saldo sempre fica no nosso banco
+    # Em Transfer Mode, o saldo exibido deve SEMPRE ser o saldo do nosso banco
     # O saldo do IGameWin só é usado durante o jogo, mas para exibição e operações,
     # sempre usamos o saldo do nosso banco como fonte da verdade
     
     # Calcular saldo disponível
-    # Em Transfer Mode, o saldo disponível é sempre o saldo do nosso banco
-    # Se há saldo no IGameWin diferente do nosso banco, precisamos sincronizar
+    # Em Seamless Mode, nunca precisa sincronizar
+    # Em Transfer Mode, só precisa sincronizar se há diferença significativa
     needs_sync = False
-    if igamewin_balance is not None:
+    if not is_seamless_mode and igamewin_balance is not None:
         # Verificar se há diferença significativa (> 5 centavos)
         balance_diff = abs(igamewin_balance - our_balance)
         if balance_diff > 0.05:
             needs_sync = True
+            print(f"[Available Balance] Diferença detectada: R$ {balance_diff:.2f} - precisa sincronizar")
+        else:
+            print(f"[Available Balance] Saldos sincronizados (diferença: R$ {balance_diff:.2f})")
+    elif is_seamless_mode:
+        print(f"[Available Balance] Seamless Mode - não precisa sincronizar")
     
     # SEMPRE retornar o saldo do nosso banco como available_balance
     # Este é o saldo que o usuário pode usar e que deve ser exibido

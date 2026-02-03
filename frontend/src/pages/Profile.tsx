@@ -108,6 +108,8 @@ export default function Profile() {
         });
         if (syncRes.ok) {
           console.log('[Sync Balance] Saldo do IGameWin sincronizado');
+          // Aguardar um pouco para o backend processar a sincronização
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (err) {
         console.warn('[Sync Balance] Erro ao sincronizar IGameWin:', err);
@@ -115,6 +117,8 @@ export default function Profile() {
       
       // Depois atualizar dados do usuário
       await refreshUser();
+      // Aguardar um pouco antes de buscar saldo disponível
+      await new Promise(resolve => setTimeout(resolve, 500));
       // Atualizar informações de saldo disponível
       await fetchAvailableBalance();
       
