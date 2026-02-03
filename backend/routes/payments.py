@@ -1113,15 +1113,19 @@ async def webhook_igamewin_bet(request: Request, db: Session = Depends(get_db)):
         if not user_code or not transaction_id:
             return {"status": "error", "message": "user_code e transaction_id são obrigatórios"}
         
+        # Converter transaction_id para string (campos são VARCHAR no banco)
+        transaction_id_str = str(transaction_id) if transaction_id else None
+        
         # Buscar usuário pelo username (user_code)
         user = db.query(User).filter(User.username == user_code).first()
         if not user:
             return {"status": "error", "message": f"Usuário {user_code} não encontrado"}
         
         # Verificar se a aposta já foi processada
-        existing_bet = db.query(Bet).filter(Bet.transaction_id == transaction_id).first()
-        if existing_bet:
-            return {"status": "ok", "message": "Aposta já processada"}
+        if transaction_id_str:
+            existing_bet = db.query(Bet).filter(Bet.transaction_id == transaction_id_str).first()
+            if existing_bet:
+                return {"status": "ok", "message": "Aposta já processada"}
         
         # Criar registro de aposta
         bet_status = BetStatus.WON if status == "win" else BetStatus.LOST
@@ -1136,8 +1140,8 @@ async def webhook_igamewin_bet(request: Request, db: Session = Depends(get_db)):
             amount=bet_amount,
             win_amount=win_amount,
             status=bet_status,
-            transaction_id=transaction_id,
-            external_id=transaction_id,
+            transaction_id=transaction_id_str,
+            external_id=transaction_id_str,
             metadata_json=json.dumps(data)
         )
         

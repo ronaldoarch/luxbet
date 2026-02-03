@@ -3188,6 +3188,8 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             print(f"[Gold API] Debit applied - bet: {bet_money}, new balance: {user.balance}")
             
             # Criar registro de aposta
+            # Converter txn_id para string (external_id é VARCHAR no banco)
+            txn_id_str = str(txn_id) if txn_id else None
             bet = Bet(
                 user_id=user.id,
                 game_id=game_code,
@@ -3196,8 +3198,8 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
                 amount=bet_money,
                 win_amount=0.0,
                 status=BetStatus.PENDING,
-                transaction_id=txn_id or str(uuid.uuid4()),
-                external_id=txn_id,
+                transaction_id=txn_id_str or str(uuid.uuid4()),
+                external_id=txn_id_str,
                 metadata_json=json.dumps({
                     "txn_type": txn_type,
                     "game_type": game_type_detail,
@@ -3214,8 +3216,10 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             print(f"[Gold API] Credit applied - win: {win_money}, new balance: {user.balance}")
             
             # Atualizar aposta existente se houver
+            # Converter txn_id para string para comparação (external_id é VARCHAR)
             if txn_id:
-                bet = db.query(Bet).filter(Bet.external_id == txn_id).first()
+                txn_id_str = str(txn_id)
+                bet = db.query(Bet).filter(Bet.external_id == txn_id_str).first()
                 if bet:
                     bet.win_amount = win_money
                     bet.status = BetStatus.WON if win_money > 0 else BetStatus.LOST
@@ -3238,8 +3242,10 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             print(f"[Gold API] Debit+Credit applied - bet: {bet_money}, win: {win_money}, net_change: {net_change}, new balance: {user.balance}")
             
             # Criar ou atualizar registro de aposta
+            # Converter txn_id para string (external_id é VARCHAR no banco)
             if txn_id:
-                bet = db.query(Bet).filter(Bet.external_id == txn_id).first()
+                txn_id_str = str(txn_id)
+                bet = db.query(Bet).filter(Bet.external_id == txn_id_str).first()
                 if bet:
                     bet.win_amount = win_money
                     bet.status = BetStatus.WON if win_money > bet_money else BetStatus.LOST
@@ -3253,8 +3259,8 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
                         amount=bet_money,
                         win_amount=win_money,
                         status=BetStatus.WON if win_money > bet_money else BetStatus.LOST,
-                        transaction_id=txn_id or str(uuid.uuid4()),
-                        external_id=txn_id,
+                        transaction_id=txn_id_str or str(uuid.uuid4()),
+                        external_id=txn_id_str,
                         metadata_json=json.dumps({
                             "txn_type": txn_type,
                             "game_type": game_type_detail,
