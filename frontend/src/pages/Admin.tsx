@@ -3810,6 +3810,71 @@ function TrackingTab({ token }: { token: string }) {
         </button>
       </div>
 
+      {/* Eventos Ativos */}
+      {form.pixel_id && form.is_active && (
+        <div className="bg-gray-800/60 p-4 rounded border border-gray-700">
+          <h3 className="text-lg font-semibold mb-3">Eventos Ativos</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Quando o pixel está configurado e ativo, os seguintes eventos são rastreados automaticamente:
+          </p>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-green-400">PageView</span>
+              </div>
+              <p className="text-xs text-gray-400">Disparado automaticamente em todas as páginas</p>
+            </div>
+            
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-green-400">CompleteRegistration</span>
+              </div>
+              <p className="text-xs text-gray-400">Quando um usuário se registra</p>
+            </div>
+            
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-green-400">InitiateCheckout</span>
+              </div>
+              <p className="text-xs text-gray-400">Quando um usuário inicia um depósito</p>
+            </div>
+            
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-green-400">Purchase</span>
+              </div>
+              <p className="text-xs text-gray-400">Quando um depósito é confirmado</p>
+            </div>
+            
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-green-400">Lead</span>
+              </div>
+              <p className="text-xs text-gray-400">Quando um usuário completa o primeiro depósito (FTD)</p>
+            </div>
+            
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-green-400">AddToCart</span>
+              </div>
+              <p className="text-xs text-gray-400">Quando um usuário adiciona saldo ao carrinho</p>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded">
+            <p className="text-xs text-blue-300">
+              <strong>Nota:</strong> Os eventos são enviados automaticamente quando as ações correspondentes ocorrem no site. 
+              Certifique-se de que o pixel está instalado corretamente no frontend para que os eventos sejam capturados.
+            </p>
+          </div>
+        </div>
+      )}
+
       {configs.length > 0 && (
         <div className="bg-gray-800/60 p-4 rounded border border-gray-700">
           <h3 className="text-lg font-semibold mb-3">Configurações Salvas</h3>
