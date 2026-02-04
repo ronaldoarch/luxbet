@@ -1179,11 +1179,7 @@ async def webhook_igamewin_bet(request: Request, db: Session = Depends(get_db)):
         # NOTA: Em Seamless Mode, o saldo já está sendo atualizado pelo endpoint /gold_api
         # quando o IGameWin processa transações. Este webhook é apenas para registro.
         # Não precisamos atualizar saldo aqui para evitar duplicação.
-        # 
-        # Se você estiver usando Transfer Mode, descomente o código abaixo:
-        # user.balance -= bet_amount
-        # if win_amount > 0:
-        #     user.balance += win_amount
+        # O saldo é atualizado diretamente pelo /gold_api em Seamless Mode.
         
         db.commit()
         db.refresh(bet)

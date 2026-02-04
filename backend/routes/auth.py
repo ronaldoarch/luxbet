@@ -150,71 +150,23 @@ async def get_available_balance(
     db: Session = Depends(get_db)
 ):
     """
-    Retorna o saldo disponível para saque, considerando saldo no nosso banco e no IGameWin.
-    Em Transfer Mode, o saldo pode estar no IGameWin e precisa ser sincronizado antes do saque.
+    Retorna o saldo disponível para saque.
+    Sistema usa apenas Seamless Mode - o saldo sempre fica no nosso banco.
     """
+    db.refresh(current_user)
     our_balance = float(current_user.balance)
     
-    # Tentar obter saldo do IGameWin para detectar modo e verificar se precisa sincronizar
-    api = get_igamewin_api(db)
-    igamewin_balance = None
-    is_seamless_mode = False
-    
-    if api:
-        try:
-            igamewin_balance = await api.get_user_balance(current_user.username)
-        except Exception as e:
-            error_str = str(e) if e else ""
-            # Se receber ERROR_GET_BALANCE_END_POINT, está em Seamless Mode
-            if "ERROR_GET_BALANCE_END_POINT" in error_str:
-                print(f"[Available Balance] Seamless Mode detectado - não precisa sincronizar")
-                is_seamless_mode = True
-            else:
-                print(f"[Available Balance] Erro ao obter saldo do IGameWin: {e}")
-            # Continuar mesmo se não conseguir obter saldo do IGameWin
-    
-    # IMPORTANTE: Em Seamless Mode, o saldo sempre fica no nosso banco
-    # Em Transfer Mode, o saldo exibido deve SEMPRE ser o saldo do nosso banco
-    # O saldo do IGameWin só é usado durante o jogo, mas para exibição e operações,
-    # sempre usamos o saldo do nosso banco como fonte da verdade
-    
-    # Calcular saldo disponível
-    # Em Seamless Mode, nunca precisa sincronizar
-    # Em Transfer Mode, só precisa sincronizar se o IGameWin tem MAIS saldo que nosso banco
-    # Se nosso banco tem mais saldo, não precisa sincronizar (saldo já está no lugar certo)
-    needs_sync = False
-    if not is_seamless_mode and igamewin_balance is not None:
-        balance_diff = igamewin_balance - our_balance  # Positivo se IGameWin tem mais
-        # Só precisa sincronizar se IGameWin tem mais saldo (diferença > 5 centavos)
-        if balance_diff > 0.05:
-            needs_sync = True
-            print(f"[Available Balance] IGameWin tem mais saldo: R$ {balance_diff:.2f} - precisa sincronizar")
-        elif balance_diff < -0.05:
-            # Nosso banco tem mais saldo - não precisa sincronizar, saldo já está no lugar certo
-            print(f"[Available Balance] Nosso banco tem mais saldo (R$ {abs(balance_diff):.2f} a mais) - não precisa sincronizar")
-        else:
-            print(f"[Available Balance] Saldos sincronizados (diferença: R$ {abs(balance_diff):.2f})")
-    elif is_seamless_mode:
-        print(f"[Available Balance] Seamless Mode - não precisa sincronizar")
-    
-    # SEMPRE retornar o saldo do nosso banco como available_balance
-    # Este é o saldo que o usuário pode usar e que deve ser exibido
-    available_balance = our_balance
-    
-    # total_balance é a soma do nosso banco + IGameWin (para informação apenas)
-    # Mas available_balance sempre é o nosso banco
-    total_balance = our_balance
-    if igamewin_balance is not None and igamewin_balance > our_balance:
-        # Se IGameWin tem mais, o total é o IGameWin (mas não usamos para exibição)
-        total_balance = igamewin_balance
+    # Em Seamless Mode, o saldo sempre fica no nosso banco
+    # Não é necessário verificar ou sincronizar com IGameWin
+    print(f"[Available Balance] Seamless Mode - saldo disponível: R$ {our_balance:.2f}")
     
     return {
-        "available_balance": round(available_balance, 2),  # SEMPRE saldo do nosso banco
+        "available_balance": round(our_balance, 2),
         "our_balance": round(our_balance, 2),
-        "igamewin_balance": round(igamewin_balance, 2) if igamewin_balance is not None else None,
-        "total_balance": round(total_balance, 2),  # Informação apenas, não usar para exibição
-        "needs_sync": needs_sync,
-        "message": "Sincronize o saldo do IGameWin antes de sacar" if needs_sync else "Saldo disponível para saque"
+        "igamewin_balance": None,
+        "total_balance": round(our_balance, 2),
+        "needs_sync": False,
+        "message": "Saldo disponível para saque"
     }
 
 
