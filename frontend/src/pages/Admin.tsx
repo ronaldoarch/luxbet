@@ -3919,6 +3919,7 @@ function TrackingTab({ token }: { token: string }) {
 function PromotionsTab({ token }: { token: string }) {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [message, setMessage] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -3961,6 +3962,50 @@ function PromotionsTab({ token }: { token: string }) {
   useEffect(() => {
     fetchPromotions();
   }, []);
+
+  const handleBannerUpload = async (file: File | null) => {
+    if (!file) return;
+    
+    setUploadingBanner(true);
+    setMessage('');
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('media_type', 'banner');
+      
+      const res = await fetch(`${API_URL}/api/admin/media/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Erro ao fazer upload do banner');
+      }
+      
+      const data = await res.json();
+      // Preencher o campo banner_url com a URL retornada
+      setForm({...form, banner_url: data.url});
+      setMessage('Banner enviado com sucesso!');
+    } catch (err: any) {
+      setMessage(err.message || 'Erro ao fazer upload do banner');
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const getImageUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/api')) {
+      return `${API_URL}${url}`;
+    }
+    return `${API_URL}/api/public/media${url}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4120,15 +4165,57 @@ function PromotionsTab({ token }: { token: string }) {
               placeholder="Breve descrição para cards"
             />
           </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">URL do Banner</label>
-            <input
-              type="url"
-              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
-              value={form.banner_url}
-              onChange={e => setForm({...form, banner_url: e.target.value})}
-              placeholder="https://..."
-            />
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-400 mb-1">Banner da Promoção</label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <label className="flex-1 cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                    onChange={(e) => handleBannerUpload(e.target.files?.[0] || null)}
+                    disabled={uploadingBanner}
+                    className="hidden"
+                    id="banner-upload"
+                  />
+                  <div className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 hover:border-[#d4af37] transition-colors cursor-pointer flex items-center justify-center">
+                    {uploadingBanner ? 'Enviando...' : '📤 Fazer Upload do Banner'}
+                  </div>
+                </label>
+              </div>
+              {form.banner_url && (
+                <div className="relative">
+                  <img 
+                    src={getImageUrl(form.banner_url)} 
+                    alt="Banner preview" 
+                    className="w-full max-h-48 object-cover rounded border border-gray-600"
+                    onError={(e) => {
+                      // Se a imagem não carregar, tentar como URL externa
+                      const target = e.target as HTMLImageElement;
+                      if (!form.banner_url.startsWith('http')) {
+                        target.src = form.banner_url;
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({...form, banner_url: ''})}
+                    className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
+                    title="Remover banner"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+              <input
+                type="url"
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                value={form.banner_url}
+                onChange={e => setForm({...form, banner_url: e.target.value})}
+                placeholder="Ou cole a URL do banner aqui..."
+              />
+              <p className="text-xs text-gray-500">Você pode fazer upload de uma imagem ou colar uma URL externa</p>
+            </div>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Data Início *</label>
