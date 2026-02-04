@@ -52,24 +52,64 @@ export default function NotificationToast() {
             if (latest.title?.includes('Depósito') || latest.message?.includes('depósito')) {
               refreshUser().catch(() => {});
               
-              // Extrair valor do depósito da mensagem
-              const amountMatch = latest.message.match(/R\$\s*([\d,]+\.?\d*)/);
-              const amount = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : 0;
-              
-              // Disparar evento Purchase do Meta Pixel
-              trackMetaEvent('Purchase', {
-                value: amount,
-                currency: 'BRL'
-              });
-              
-              // Verificar se é primeiro depósito (FTD) para disparar Lead
-              // Isso será verificado via API ou podemos assumir que se a mensagem menciona "primeiro" ou similar
-              if (latest.message.toLowerCase().includes('primeiro') || latest.message.toLowerCase().includes('ftd')) {
-                trackMetaEvent('Lead', {
-                  content_name: 'First Time Deposit',
-                  value: amount,
-                  currency: 'BRL'
-                });
+              // Buscar o depósito mais recente aprovado para obter o valor exato
+              if (token) {
+                fetch(`${API_URL}/api/auth/transactions`, {
+                  headers: { 'Authorization': `Bearer ${token}` }
+                })
+                  .then(res => res.ok ? res.json() : null)
+                  .then(data => {
+                    if (data && data.transactions) {
+                      // Buscar depósitos aprovados ordenados por data (mais recente primeiro)
+                      const approvedDeposits = (data.transactions || [])
+                        .filter((t: any) => t.type === 'deposit' && t.status === 'approved')
+                        .sort((a: any, b: any) => {
+                          const dateA = new Date(a.created_at || 0).getTime();
+                          const dateB = new Date(b.created_at || 0).getTime();
+                          return dateB - dateA; // Mais recente primeiro
+                        });
+                      
+                      if (approvedDeposits.length > 0) {
+                        const latestDeposit = approvedDeposits[0];
+                        const depositAmount = latestDeposit.amount || 0;
+                        const isFTD = approvedDeposits.length === 1;
+                        
+                        // Disparar evento Purchase do Meta Pixel com valor do depósito
+                        trackMetaEvent('Purchase', {
+                          value: depositAmount,
+                          currency: 'BRL',
+                          content_name: isFTD ? 'First Time Deposit (FTD)' : 'Deposit',
+                          content_category: isFTD ? 'FTD' : 'Deposit'
+                        });
+                        
+                        console.log(`[Meta Pixel] Purchase disparado: R$ ${depositAmount.toFixed(2)} ${isFTD ? '(FTD)' : ''}`);
+                      } else {
+                        // Fallback: tentar extrair da mensagem se não encontrar na API
+                        const amountMatch = latest.message.match(/R\$\s*([\d,]+\.?\d*)/);
+                        const amount = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : 0;
+                        if (amount > 0) {
+                          trackMetaEvent('Purchase', {
+                            value: amount,
+                            currency: 'BRL'
+                          });
+                          console.log(`[Meta Pixel] Purchase disparado (fallback): R$ ${amount.toFixed(2)}`);
+                        }
+                      }
+                    }
+                  })
+                  .catch(err => {
+                    console.warn('[Meta Pixel] Erro ao buscar depósito:', err);
+                    // Fallback: tentar extrair da mensagem
+                    const amountMatch = latest.message.match(/R\$\s*([\d,]+\.?\d*)/);
+                    const amount = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : 0;
+                    if (amount > 0) {
+                      trackMetaEvent('Purchase', {
+                        value: amount,
+                        currency: 'BRL'
+                      });
+                      console.log(`[Meta Pixel] Purchase disparado (fallback): R$ ${amount.toFixed(2)}`);
+                    }
+                  });
               }
             }
             

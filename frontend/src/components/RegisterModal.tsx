@@ -213,8 +213,12 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                   phone: formData.telefone,
                   affiliate_code: ref,
                 });
-                // Disparar evento CompleteRegistration do Meta Pixel
+                // Disparar eventos do Meta Pixel
                 trackMetaEvent('CompleteRegistration');
+                trackMetaEvent('Lead', {
+                  content_name: 'User Registration',
+                  content_category: 'Sign Up'
+                });
                 onClose();
               } catch (err: any) {
                 setError(err.message || 'Erro ao criar conta');

@@ -190,37 +190,72 @@ export default function Deposit() {
             // Atualizar saldo do usuário
             await refreshUser();
             
-            // Extrair valor do depósito
-            const depositAmount = deposit?.amount || 0;
-            
-            // Disparar evento Purchase do Meta Pixel
-            trackMetaEvent('Purchase', {
-              value: depositAmount,
-              currency: 'BRL'
-            });
-            
-            // Verificar se é primeiro depósito (FTD) para disparar Lead
-            // Verificar histórico de depósitos para determinar se é FTD
-            try {
-              const transactionsRes = await fetch(`${API_URL}/api/auth/transactions`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-              if (transactionsRes.ok) {
-                const transactionsData = await transactionsRes.json();
-                const deposits = (transactionsData.transactions || []).filter((t: any) => 
-                  t.type === 'deposit' && t.status === 'approved'
-                );
-                // Se este é o primeiro depósito aprovado, disparar Lead
-                if (deposits.length === 1) {
-                  trackMetaEvent('Lead', {
-                    content_name: 'First Time Deposit',
+            // Buscar o depósito aprovado mais recente para obter o valor exato
+            if (token) {
+              try {
+                const transactionsRes = await fetch(`${API_URL}/api/auth/transactions`, {
+                  headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (transactionsRes.ok) {
+                  const transactionsData = await transactionsRes.json();
+                  
+                  // Buscar depósitos aprovados ordenados por data (mais recente primeiro)
+                  const approvedDeposits = (transactionsData.transactions || [])
+                    .filter((t: any) => t.type === 'deposit' && t.status === 'approved')
+                    .sort((a: any, b: any) => {
+                      const dateA = new Date(a.created_at || 0).getTime();
+                      const dateB = new Date(b.created_at || 0).getTime();
+                      return dateB - dateA; // Mais recente primeiro
+                    });
+                  
+                  if (approvedDeposits.length > 0) {
+                    const latestDeposit = approvedDeposits[0];
+                    const depositAmount = latestDeposit.amount || 0;
+                    const isFTD = approvedDeposits.length === 1;
+                    
+                    // Disparar evento Purchase do Meta Pixel com valor do depósito
+                    trackMetaEvent('Purchase', {
+                      value: depositAmount,
+                      currency: 'BRL',
+                      content_name: isFTD ? 'First Time Deposit (FTD)' : 'Deposit',
+                      content_category: isFTD ? 'FTD' : 'Deposit'
+                    });
+                    
+                    console.log(`[Meta Pixel] Purchase disparado: R$ ${depositAmount.toFixed(2)} ${isFTD ? '(FTD)' : ''}`);
+                  } else {
+                    // Fallback: usar valor do depósito atual se disponível
+                    const depositAmount = deposit?.amount || 0;
+                    if (depositAmount > 0) {
+                      trackMetaEvent('Purchase', {
+                        value: depositAmount,
+                        currency: 'BRL'
+                      });
+                      console.log(`[Meta Pixel] Purchase disparado (fallback): R$ ${depositAmount.toFixed(2)}`);
+                    }
+                  }
+                } else {
+                  // Fallback: usar valor do depósito atual
+                  const depositAmount = deposit?.amount || 0;
+                  if (depositAmount > 0) {
+                    trackMetaEvent('Purchase', {
+                      value: depositAmount,
+                      currency: 'BRL'
+                    });
+                    console.log(`[Meta Pixel] Purchase disparado (fallback): R$ ${depositAmount.toFixed(2)}`);
+                  }
+                }
+              } catch (err) {
+                console.warn('[Deposit] Erro ao buscar depósito:', err);
+                // Fallback: usar valor do depósito atual
+                const depositAmount = deposit?.amount || 0;
+                if (depositAmount > 0) {
+                  trackMetaEvent('Purchase', {
                     value: depositAmount,
                     currency: 'BRL'
                   });
+                  console.log(`[Meta Pixel] Purchase disparado (fallback): R$ ${depositAmount.toFixed(2)}`);
                 }
               }
-            } catch (err) {
-              console.warn('[Deposit] Erro ao verificar FTD:', err);
             }
             
             // Limpar erro se houver

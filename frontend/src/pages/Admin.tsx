@@ -620,15 +620,63 @@ function DepositsTab({ token }: { token: string }) {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'approved': return '✅ Pago';
+      case 'pending': return '⏳ Pendente';
+      case 'rejected': return '❌ Rejeitado';
+      case 'cancelled': return '🚫 Cancelado';
+      default: return status || '-';
+    }
+  };
+
+  const approvedDeposits = items.filter(d => d.status?.toLowerCase() === 'approved');
+  const totalPaid = approvedDeposits.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const totalPending = items.filter(d => d.status?.toLowerCase() === 'pending').reduce((sum, d) => sum + (d.amount || 0), 0);
+
   return (
-    <TabTable
-      title="Depósitos"
-      loading={loading}
-      error={error}
-      onRefresh={fetchData}
-      columns={['ID','User','Valor','Status','Criado em']}
-      rows={items.map(d => [d.id, d.user_id, `R$ ${d.amount?.toFixed(2)}`, d.status, formatDate(d.created_at)])}
-    />
+    <div>
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
+          <div className="text-sm text-gray-400 mb-1">Total Pago</div>
+          <div className="text-2xl font-bold text-green-400">R$ {totalPaid.toFixed(2)}</div>
+          <div className="text-xs text-gray-500 mt-1">{approvedDeposits.length} depósito(s) aprovado(s)</div>
+        </div>
+        <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4">
+          <div className="text-sm text-gray-400 mb-1">Pendente</div>
+          <div className="text-2xl font-bold text-yellow-400">R$ {totalPending.toFixed(2)}</div>
+          <div className="text-xs text-gray-500 mt-1">{items.filter(d => d.status?.toLowerCase() === 'pending').length} depósito(s) pendente(s)</div>
+        </div>
+        <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4">
+          <div className="text-sm text-gray-400 mb-1">Total Geral</div>
+          <div className="text-2xl font-bold text-blue-400">R$ {items.reduce((sum, d) => sum + (d.amount || 0), 0).toFixed(2)}</div>
+          <div className="text-xs text-gray-500 mt-1">{items.length} depósito(s) total(is)</div>
+        </div>
+      </div>
+      <TabTable
+        title="Depósitos"
+        loading={loading}
+        error={error}
+        onRefresh={fetchData}
+        columns={['ID','User','Valor Pago','Status','Criado em']}
+        rows={items.map(d => [
+          d.id, 
+          d.user_id, 
+          <span key={`amount-${d.id}`} className={d.status?.toLowerCase() === 'approved' ? 'text-green-400 font-semibold' : ''}>
+            R$ {d.amount?.toFixed(2) || '0.00'}
+          </span>, 
+          <span key={`status-${d.id}`} className={
+            d.status?.toLowerCase() === 'approved' ? 'text-green-400' :
+            d.status?.toLowerCase() === 'pending' ? 'text-yellow-400' :
+            d.status?.toLowerCase() === 'rejected' ? 'text-red-400' :
+            'text-gray-400'
+          }>
+            {getStatusLabel(d.status)}
+          </span>, 
+          formatDate(d.created_at)
+        ])}
+      />
+    </div>
   );
 }
 
@@ -3105,7 +3153,7 @@ function ThemesTab({ token }: { token: string }) {
 }
 
 // Table helper
-function TabTable({ title, loading, error, onRefresh, columns, rows }:{ title:string; loading:boolean; error:string; onRefresh:()=>void; columns:string[]; rows:(string|number)[][] }) {
+function TabTable({ title, loading, error, onRefresh, columns, rows }:{ title:string; loading:boolean; error:string; onRefresh:()=>void; columns:string[]; rows:any[][] }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
