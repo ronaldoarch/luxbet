@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Detectar se está em produção (não localhost)
+const isProduction = typeof window !== 'undefined' && 
+  !window.location.hostname.includes('localhost') && 
+  !window.location.hostname.includes('127.0.0.1');
+
+const API_URL = import.meta.env.VITE_API_URL || (isProduction ? '' : 'http://localhost:8000');
 
 declare global {
   interface Window {
@@ -16,10 +21,19 @@ export function MetaPixel() {
 
   useEffect(() => {
     const loadPixel = async () => {
+      // Verificar se API_URL está configurada
+      if (!API_URL) {
+        console.warn('[Meta Pixel] VITE_API_URL não configurada. Pixel não será carregado.');
+        return;
+      }
+
       try {
         // Buscar configuração do pixel do backend
         const res = await fetch(`${API_URL}/api/public/tracking-config?platform=meta`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn('[Meta Pixel] Erro ao buscar configuração:', res.status);
+          return;
+        }
         
         const config = await res.json();
         if (!config.is_active || !config.pixel_id) {

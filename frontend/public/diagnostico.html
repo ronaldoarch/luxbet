@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico - LuxBet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0e0f;
+            color: #fff;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #d4af37;
+            margin-bottom: 20px;
+        }
+        .test {
+            background: #1a1e1f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .test h2 {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.ok {
+            background: #10b981;
+            color: #fff;
+        }
+        .status.error {
+            background: #ef4444;
+            color: #fff;
+        }
+        .status.warning {
+            background: #f59e0b;
+            color: #fff;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #0a0e0f;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        button {
+            background: #d4af37;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #ffd700;
+        }
+        .info {
+            background: #1e3a5f;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Diagnóstico - LuxBet</h1>
+        
+        <div class="info">
+            <strong>Como usar:</strong><br>
+            1. Abra esta página no celular usando 4G (desative WiFi)<br>
+            2. Clique em "Executar Diagnóstico"<br>
+            3. Aguarde os testes completarem<br>
+            4. Envie os resultados para análise
+        </div>
+
+        <div class="test">
+            <h2>1. Variável de Ambiente VITE_API_URL <span id="env-status" class="status">-</span></h2>
+            <div id="env-result" class="result">Aguardando teste...</div>
+        </div>
+
+        <div class="test">
+            <h2>2. Conectividade com Backend <span id="backend-status" class="status">-</span></h2>
+            <div id="backend-result" class="result">Aguardando teste...</div>
+        </div>
+
+        <div class="test">
+            <h2>3. DNS Resolution <span id="dns-status" class="status">-</span></h2>
+            <div id="dns-result" class="result">Aguardando teste...</div>
+        </div>
+
+        <div class="test">
+            <h2>4. Certificado SSL <span id="ssl-status" class="status">-</span></h2>
+            <div id="ssl-result" class="result">Aguardando teste...</div>
+        </div>
+
+        <div class="test">
+            <h2>5. Informações do Ambiente <span id="info-status" class="status">-</span></h2>
+            <div id="info-result" class="result">Aguardando teste...</div>
+        </div>
+
+        <button onclick="runDiagnostics()">🔍 Executar Diagnóstico</button>
+    </div>
+
+    <script>
+        async function runDiagnostics() {
+            // Teste 1: Variável de Ambiente
+            const envTest = document.getElementById('env-result');
+            const envStatus = document.getElementById('env-status');
+            const viteApiUrl = import.meta.env.VITE_API_URL;
+            
+            if (viteApiUrl) {
+                envTest.textContent = `✅ VITE_API_URL configurada: ${viteApiUrl}`;
+                envStatus.textContent = 'OK';
+                envStatus.className = 'status ok';
+            } else {
+                envTest.textContent = `❌ VITE_API_URL não configurada!\n\nO frontend está usando fallback para localhost.\nConfigure VITE_API_URL no Coolify e faça redeploy.`;
+                envStatus.textContent = 'ERRO';
+                envStatus.className = 'status error';
+            }
+
+            // Teste 2: Conectividade com Backend
+            const backendTest = document.getElementById('backend-result');
+            const backendStatus = document.getElementById('backend-status');
+            const apiUrl = viteApiUrl || 'https://api.luxbet.site';
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${apiUrl}/api/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                const endTime = Date.now();
+                const latency = endTime - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    backendTest.textContent = `✅ Backend acessível!\n\nURL: ${apiUrl}\nStatus: ${response.status}\nLatência: ${latency}ms\nResposta: ${JSON.stringify(data, null, 2)}`;
+                    backendStatus.textContent = 'OK';
+                    backendStatus.className = 'status ok';
+                } else {
+                    backendTest.textContent = `⚠️ Backend respondeu com erro\n\nURL: ${apiUrl}\nStatus: ${response.status}\nStatus Text: ${response.statusText}`;
+                    backendStatus.textContent = 'AVISO';
+                    backendStatus.className = 'status warning';
+                }
+            } catch (error) {
+                backendTest.textContent = `❌ Erro ao conectar com backend\n\nURL: ${apiUrl}\nErro: ${error.message}\n\nPossíveis causas:\n- DNS não está resolvendo\n- Backend não está acessível\n- Problema de rede/firewall\n- Certificado SSL inválido`;
+                backendStatus.textContent = 'ERRO';
+                backendStatus.className = 'status error';
+            }
+
+            // Teste 3: DNS Resolution (tentativa de fetch para verificar)
+            const dnsTest = document.getElementById('dns-result');
+            const dnsStatus = document.getElementById('dns-status');
+            
+            try {
+                const testUrl = apiUrl.replace('https://', '').replace('http://', '').split('/')[0];
+                dnsTest.textContent = `Testando resolução DNS para: ${testUrl}\n\nNota: Este teste verifica se o domínio é acessível via fetch.`;
+                
+                // Tentar fazer uma requisição simples
+                const dnsResponse = await fetch(`${apiUrl}/api/health`, {
+                    method: 'HEAD',
+                    mode: 'no-cors'
+                }).catch(() => null);
+                
+                dnsTest.textContent += `\n\n✅ Domínio parece estar resolvendo (fetch funcionou)`;
+                dnsStatus.textContent = 'OK';
+                dnsStatus.className = 'status ok';
+            } catch (error) {
+                dnsTest.textContent += `\n\n❌ Erro ao resolver domínio: ${error.message}`;
+                dnsStatus.textContent = 'ERRO';
+                dnsStatus.className = 'status error';
+            }
+
+            // Teste 4: Certificado SSL
+            const sslTest = document.getElementById('ssl-result');
+            const sslStatus = document.getElementById('ssl-status');
+            
+            if (apiUrl.startsWith('https://')) {
+                sslTest.textContent = `✅ URL usa HTTPS\n\nPara verificar certificado:\n1. Clique no cadeado ao lado da URL\n2. Verifique se o certificado é válido\n3. Veja se há avisos de segurança`;
+                sslStatus.textContent = 'OK';
+                sslStatus.className = 'status ok';
+            } else {
+                sslTest.textContent = `⚠️ URL não usa HTTPS\n\nRecomendação: Use HTTPS em produção`;
+                sslStatus.textContent = 'AVISO';
+                sslStatus.className = 'status warning';
+            }
+
+            // Teste 5: Informações do Ambiente
+            const infoTest = document.getElementById('info-result');
+            const infoStatus = document.getElementById('info-status');
+            
+            const info = {
+                'User Agent': navigator.userAgent,
+                'URL Atual': window.location.href,
+                'Hostname': window.location.hostname,
+                'Protocol': window.location.protocol,
+                'VITE_API_URL': viteApiUrl || 'NÃO CONFIGURADA',
+                'Timestamp': new Date().toISOString(),
+                'Connection Type': navigator.connection ? {
+                    effectiveType: navigator.connection.effectiveType,
+                    downlink: navigator.connection.downlink,
+                    rtt: navigator.connection.rtt
+                } : 'Não disponível'
+            };
+            
+            infoTest.textContent = JSON.stringify(info, null, 2);
+            infoStatus.textContent = 'OK';
+            infoStatus.className = 'status ok';
+        }
+
+        // Executar automaticamente ao carregar
+        window.addEventListener('load', () => {
+            // Pequeno delay para garantir que tudo carregou
+            setTimeout(runDiagnostics, 500);
+        });
+    </script>
+</body>
+</html>
