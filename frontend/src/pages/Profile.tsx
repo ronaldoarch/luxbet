@@ -13,6 +13,8 @@ export default function Profile() {
   const [isManager, setIsManager] = useState(false);
   const [syncingBalance, setSyncingBalance] = useState(false);
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [bonusBalance, setBonusBalance] = useState<number | null>(null);
+  const [totalBalance, setTotalBalance] = useState<number | null>(null);
   const [balanceInfo, setBalanceInfo] = useState<any>(null);
 
   useEffect(() => {
@@ -42,11 +44,15 @@ export default function Profile() {
       if (res.ok) {
         const data = await res.json();
         setAvailableBalance(data.available_balance || user?.balance || 0);
+        setBonusBalance(data.bonus_balance || 0);
+        setTotalBalance(data.our_balance || data.total_balance || user?.balance || 0);
         setBalanceInfo(data);
       }
     } catch (err) {
       // Silenciar erros
       setAvailableBalance(user?.balance || 0);
+      setBonusBalance(0);
+      setTotalBalance(user?.balance || 0);
     }
   };
 
@@ -172,10 +178,20 @@ export default function Profile() {
                 <Wallet className="text-[#d4af37]" size={24} />
               </div>
               <div>
-                <p className="text-gray-300 text-sm">Saldo Disponível</p>
+                <p className="text-gray-300 text-sm">Saldo Total</p>
                 <p className="text-3xl font-bold text-white">
-                  R$ {(availableBalance !== null ? availableBalance : user.balance).toFixed(2).replace('.', ',')}
+                  R$ {(totalBalance !== null ? totalBalance : user.balance).toFixed(2).replace('.', ',')}
                 </p>
+                <div className="mt-2 space-y-1">
+                  {bonusBalance !== null && bonusBalance > 0 && (
+                    <p className="text-[#d4af37] text-sm">
+                      🎁 Bônus: R$ {bonusBalance.toFixed(2).replace('.', ',')}
+                    </p>
+                  )}
+                  <p className="text-gray-400 text-xs">
+                    Disponível para saque: R$ {(availableBalance !== null ? availableBalance : user.balance).toFixed(2).replace('.', ',')}
+                  </p>
+                </div>
                 {balanceInfo && balanceInfo.needs_sync && (
                   <p className="text-yellow-400 text-xs mt-1">
                     ⚠️ Sincronize o saldo do IGameWin para sacar R$ {balanceInfo.total_balance?.toFixed(2).replace('.', ',')}
