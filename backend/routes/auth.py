@@ -151,22 +151,25 @@ async def get_available_balance(
 ):
     """
     Retorna o saldo disponível para saque.
-    Sistema usa apenas Seamless Mode - o saldo sempre fica no nosso banco.
+    Apenas saldo real (depósitos + ganhos) é sacável. Bônus de promoção não são sacáveis.
     """
     db.refresh(current_user)
-    our_balance = float(current_user.balance)
+    total_balance = float(current_user.balance)
+    bonus_balance = float(current_user.bonus_balance) if hasattr(current_user, 'bonus_balance') else 0.0
+    withdrawable_balance = total_balance - bonus_balance
     
     # Em Seamless Mode, o saldo sempre fica no nosso banco
     # Não é necessário verificar ou sincronizar com IGameWin
-    print(f"[Available Balance] Seamless Mode - saldo disponível: R$ {our_balance:.2f}")
+    print(f"[Available Balance] Saldo total: R$ {total_balance:.2f}, Bônus não sacável: R$ {bonus_balance:.2f}, Saldo sacável: R$ {withdrawable_balance:.2f}")
     
     return {
-        "available_balance": round(our_balance, 2),
-        "our_balance": round(our_balance, 2),
+        "available_balance": round(withdrawable_balance, 2),  # Apenas saldo sacável
+        "our_balance": round(total_balance, 2),  # Saldo total
+        "bonus_balance": round(bonus_balance, 2),  # Bônus não sacável
         "igamewin_balance": None,
-        "total_balance": round(our_balance, 2),
+        "total_balance": round(total_balance, 2),
         "needs_sync": False,
-        "message": "Saldo disponível para saque"
+        "message": f"Saldo disponível para saque: R$ {withdrawable_balance:.2f} (Bônus não sacável: R$ {bonus_balance:.2f})"
     }
 
 

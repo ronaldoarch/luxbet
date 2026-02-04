@@ -31,6 +31,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     balance = Column(Float, default=0.0, nullable=False)
+    bonus_balance = Column(Float, default=0.0, nullable=False)  # Saldo de bônus não sacável
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     referred_by_affiliate_id = Column(Integer, ForeignKey("affiliates.id"), nullable=True, index=True)  # Afiliado que indicou

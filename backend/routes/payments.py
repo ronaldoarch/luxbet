@@ -120,12 +120,15 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
             bonus_amount = promo.max_bonus
         
         if bonus_amount > 0:
-            # Aplicar bônus ao saldo do usuário
+            # Aplicar bônus ao saldo do usuário (tanto balance quanto bonus_balance)
             db.refresh(user)
             balance_before_bonus = float(user.balance)
+            bonus_balance_before = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
             user.balance += bonus_amount
+            user.bonus_balance += bonus_amount  # Rastrear bônus separadamente (não sacável)
             db.flush()  # Garantir que o bônus seja persistido imediatamente antes do commit
             balance_after_bonus = float(user.balance)
+            bonus_balance_after = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
             
             print(f"\n{'='*80}")
             print(f"[Promotion] 🎁 BÔNUS APLICADO!")
@@ -134,6 +137,9 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
             print(f"[Promotion] Bônus ({promo.bonus_percentage}%): R$ {bonus_amount:.2f}")
             print(f"[Promotion] Saldo antes do bônus: R$ {balance_before_bonus:.2f}")
             print(f"[Promotion] Saldo após bônus: R$ {balance_after_bonus:.2f}")
+            print(f"[Promotion] Bônus não sacável antes: R$ {bonus_balance_before:.2f}")
+            print(f"[Promotion] Bônus não sacável após: R$ {bonus_balance_after:.2f}")
+            print(f"[Promotion] Saldo sacável: R$ {balance_after_bonus - bonus_balance_after:.2f}")
             print(f"{'='*80}\n")
             
             # Criar notificação sobre o bônus
@@ -439,10 +445,19 @@ async def create_pix_withdrawal(
     """
     # Usar usuário autenticado
     user = current_user
+    db.refresh(user)  # Garantir dados atualizados
     
-    # Verificar saldo
-    if user.balance < request.amount:
-        raise HTTPException(status_code=400, detail="Saldo insuficiente")
+    # Calcular saldo sacável (balance - bonus_balance)
+    bonus_balance = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
+    total_balance = float(user.balance)
+    withdrawable_balance = total_balance - bonus_balance
+    
+    # Verificar saldo sacável
+    if withdrawable_balance < request.amount:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Saldo sacável insuficiente. Saldo total: R$ {total_balance:.2f}, Bônus não sacável: R$ {bonus_balance:.2f}, Saldo sacável: R$ {withdrawable_balance:.2f}"
+        )
     
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Valor deve ser maior que zero")
@@ -659,15 +674,25 @@ async def create_pix_withdrawal(
     # Bloquear saldo do usuário
     db.refresh(user)  # Garantir dados atualizados
     balance_before = float(user.balance)
+    bonus_balance_before = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
+    withdrawable_before = balance_before - bonus_balance_before
+    
+    # Deduzir apenas do balance (bonus_balance permanece intacto)
     user.balance -= request.amount
     balance_after = float(user.balance)
+    bonus_balance_after = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
+    withdrawable_after = balance_after - bonus_balance_after
     
     print(f"\n{'='*80}")
     print(f"[Withdrawal] 💰 SALDO SENDO DEDUZIDO:")
     print(f"[Withdrawal]   - Usuário: {user.username} (ID: {user.id})")
-    print(f"[Withdrawal]   - Saldo anterior: R$ {balance_before:.2f}")
+    print(f"[Withdrawal]   - Saldo total anterior: R$ {balance_before:.2f}")
+    print(f"[Withdrawal]   - Bônus não sacável: R$ {bonus_balance_before:.2f}")
+    print(f"[Withdrawal]   - Saldo sacável anterior: R$ {withdrawable_before:.2f}")
     print(f"[Withdrawal]   - Valor do saque: R$ {request.amount:.2f}")
-    print(f"[Withdrawal]   - Saldo após dedução: R$ {balance_after:.2f}")
+    print(f"[Withdrawal]   - Saldo total após dedução: R$ {balance_after:.2f}")
+    print(f"[Withdrawal]   - Bônus não sacável (inalterado): R$ {bonus_balance_after:.2f}")
+    print(f"[Withdrawal]   - Saldo sacável após dedução: R$ {withdrawable_after:.2f}")
     print(f"{'='*80}\n")
     
     db.add(withdrawal)

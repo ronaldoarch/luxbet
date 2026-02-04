@@ -2899,16 +2899,36 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
         # Calcular novo saldo baseado no tipo de transação
         if txn_type == "debit":
             # Apenas aposta (debitar)
-            new_balance = user.balance - bet_money
-            if new_balance < 0:
-                print(f"[Gold API] Insufficient funds - current: {user.balance}, bet: {bet_money}")
-                return {
-                    "status": 0,
-                    "user_balance": user.balance,
-                    "msg": "INSUFFICIENT_USER_FUNDS"
-                }
-            user.balance = new_balance
-            print(f"[Gold API] Debit applied - bet: {bet_money}, new balance: {user.balance}")
+            # Reduzir primeiro do bonus_balance se houver, depois do balance
+            db.refresh(user)
+            bonus_balance = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
+            total_balance = float(user.balance)
+            
+            # Reduzir primeiro do bonus_balance
+            remaining_bet = bet_money
+            if bonus_balance > 0:
+                if bonus_balance >= remaining_bet:
+                    # Todo o valor da aposta vem do bônus
+                    user.bonus_balance -= remaining_bet
+                    remaining_bet = 0
+                else:
+                    # Parte vem do bônus, parte do saldo real
+                    remaining_bet -= bonus_balance
+                    user.bonus_balance = 0.0
+            
+            # Reduzir o restante do balance
+            if remaining_bet > 0:
+                new_balance = total_balance - remaining_bet
+                if new_balance < 0:
+                    print(f"[Gold API] Insufficient funds - current: {total_balance}, bonus: {bonus_balance}, bet: {bet_money}")
+                    return {
+                        "status": 0,
+                        "user_balance": total_balance,
+                        "msg": "INSUFFICIENT_USER_FUNDS"
+                    }
+                user.balance = new_balance
+            
+            print(f"[Gold API] Debit applied - bet: {bet_money}, bonus used: {min(bonus_balance, bet_money):.2f}, balance used: {remaining_bet:.2f}, new balance: {user.balance}, new bonus: {user.bonus_balance}")
             
             # Criar registro de aposta
             # Converter txn_id para string (external_id é VARCHAR no banco)
@@ -2934,9 +2954,11 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             
         elif txn_type == "credit":
             # Apenas ganho (creditar)
+            # Ganhos são sempre sacáveis - adicionar apenas ao balance
+            db.refresh(user)
             new_balance = user.balance + win_money
             user.balance = new_balance
-            print(f"[Gold API] Credit applied - win: {win_money}, new balance: {user.balance}")
+            print(f"[Gold API] Credit applied - win: {win_money}, new balance: {user.balance} (ganhos são sempre sacáveis)")
             
             # Atualizar aposta existente se houver
             # Converter txn_id para string para comparação (external_id é VARCHAR)
@@ -2950,19 +2972,38 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
             
         elif txn_type == "debit_credit":
             # Aposta e ganho juntos
-            net_change = win_money - bet_money
-            new_balance = user.balance + net_change
+            # Reduzir primeiro do bonus_balance se houver, depois do balance
+            # Ganhos são sempre sacáveis - adicionar apenas ao balance
+            db.refresh(user)
+            bonus_balance = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
+            total_balance = float(user.balance)
             
-            if user.balance < bet_money:
-                print(f"[Gold API] Insufficient funds - current: {user.balance}, bet: {bet_money}")
+            # Reduzir primeiro do bonus_balance
+            remaining_bet = bet_money
+            if bonus_balance > 0:
+                if bonus_balance >= remaining_bet:
+                    # Todo o valor da aposta vem do bônus
+                    user.bonus_balance -= remaining_bet
+                    remaining_bet = 0
+                else:
+                    # Parte vem do bônus, parte do saldo real
+                    remaining_bet -= bonus_balance
+                    user.bonus_balance = 0.0
+            
+            # Verificar se tem saldo suficiente
+            if total_balance < remaining_bet:
+                print(f"[Gold API] Insufficient funds - current: {total_balance}, bonus: {bonus_balance}, bet: {bet_money}")
                 return {
                     "status": 0,
-                    "user_balance": user.balance,
+                    "user_balance": total_balance,
                     "msg": "INSUFFICIENT_USER_FUNDS"
                 }
             
+            # Reduzir o restante do balance e adicionar ganho
+            new_balance = total_balance - remaining_bet + win_money
             user.balance = new_balance
-            print(f"[Gold API] Debit+Credit applied - bet: {bet_money}, win: {win_money}, net_change: {net_change}, new balance: {user.balance}")
+            
+            print(f"[Gold API] Debit+Credit applied - bet: {bet_money}, win: {win_money}, bonus used: {min(bonus_balance, bet_money):.2f}, balance used: {remaining_bet:.2f}, new balance: {user.balance}, new bonus: {user.bonus_balance}")
             
             # Criar ou atualizar registro de aposta
             # Converter txn_id para string (external_id é VARCHAR no banco)

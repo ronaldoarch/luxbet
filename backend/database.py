@@ -74,6 +74,16 @@ def init_db():
             conn.commit()
     except Exception:
         pass  # Coluna já existe
+    # Migração: adicionar coluna bonus_balance em users (bônus não sacável)
+    try:
+        with engine.connect() as conn:
+            if "sqlite" in DATABASE_URL:
+                conn.execute(text("ALTER TABLE users ADD COLUMN bonus_balance REAL DEFAULT 0.0"))
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_balance DOUBLE PRECISION DEFAULT 0.0"))
+            conn.commit()
+    except Exception:
+        pass  # Coluna já existe
 
 
 def get_db():
