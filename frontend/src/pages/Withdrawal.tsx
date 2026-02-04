@@ -18,6 +18,8 @@ export default function Withdrawal() {
   const [success, setSuccess] = useState(false);
   const [withdrawal, setWithdrawal] = useState<any>(null);
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [bonusBalance, setBonusBalance] = useState<number | null>(null);
+  const [totalBalance, setTotalBalance] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [syncingBalance, setSyncingBalance] = useState(false);
   const [hasSynced, setHasSynced] = useState(false); // Flag para sincronizar apenas uma vez
@@ -64,6 +66,11 @@ export default function Withdrawal() {
         if (balanceRes.ok) {
           const balanceData = await balanceRes.json();
           
+          // Atualizar estados de saldo
+          setAvailableBalance(balanceData.available_balance || user.balance || 0);
+          setBonusBalance(balanceData.bonus_balance || 0);
+          setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance || 0);
+          
           // Sincronizar apenas UMA vez quando necessário e ainda não foi sincronizado
           if (balanceData.needs_sync && !syncingBalance && !hasSynced) {
             setSyncingBalance(true);
@@ -100,26 +107,34 @@ export default function Withdrawal() {
                 
                 if (updatedBalanceRes.ok) {
                   const updatedBalanceData = await updatedBalanceRes.json();
-                  setAvailableBalance(updatedBalanceData.available_balance || user.balance);
+                  setAvailableBalance(updatedBalanceData.available_balance || user.balance || 0);
+                  setBonusBalance(updatedBalanceData.bonus_balance || 0);
+                  setTotalBalance(updatedBalanceData.our_balance || updatedBalanceData.total_balance || user.balance || 0);
                 } else {
-                  setAvailableBalance(balanceData.available_balance || user.balance);
+                  setAvailableBalance(balanceData.available_balance || user.balance || 0);
+                  setBonusBalance(balanceData.bonus_balance || 0);
+                  setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance || 0);
                 }
               } else {
-                setAvailableBalance(balanceData.available_balance || user.balance);
+                setAvailableBalance(balanceData.available_balance || user.balance || 0);
+                setBonusBalance(balanceData.bonus_balance || 0);
+                setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance || 0);
               }
             } finally {
               setSyncingBalance(false);
             }
-          } else {
-            setAvailableBalance(balanceData.available_balance || user.balance);
           }
         } else {
           setAvailableBalance(user?.balance || 0);
+          setBonusBalance(0);
+          setTotalBalance(user?.balance || 0);
         }
       } catch (err) {
         if (cancelled) return;
         console.error('[Withdrawal] Erro ao buscar saldo disponível:', err);
         setAvailableBalance(user?.balance || 0);
+        setBonusBalance(0);
+        setTotalBalance(user?.balance || 0);
       } finally {
         if (!cancelled) {
           setLoadingBalance(false);
@@ -207,13 +222,19 @@ export default function Withdrawal() {
                   const updatedBalanceData = await updatedBalanceRes.json();
                   currentBalance = updatedBalanceData.available_balance || user.balance;
                   setAvailableBalance(currentBalance);
+                  setBonusBalance(updatedBalanceData.bonus_balance || 0);
+                  setTotalBalance(updatedBalanceData.our_balance || updatedBalanceData.total_balance || user.balance);
                 } else {
                   currentBalance = balanceData.available_balance || user.balance;
                   setAvailableBalance(currentBalance);
+                  setBonusBalance(balanceData.bonus_balance || 0);
+                  setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance);
                 }
               } else {
                 currentBalance = balanceData.available_balance || user.balance;
                 setAvailableBalance(currentBalance);
+                setBonusBalance(balanceData.bonus_balance || 0);
+                setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance);
               }
             } finally {
               setSyncingBalance(false);
@@ -221,6 +242,8 @@ export default function Withdrawal() {
           } else {
             currentBalance = balanceData.available_balance || user.balance;
             setAvailableBalance(currentBalance);
+            setBonusBalance(balanceData.bonus_balance || 0);
+            setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance);
           }
         }
       }
@@ -309,15 +332,27 @@ export default function Withdrawal() {
               <p className="text-gray-300 text-sm mb-4">
                 Digite o valor e a chave PIX de destino. O saque será processado automaticamente.
               </p>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3 text-sm">
                 <p className="text-yellow-400">⚠️ Valor mínimo: R$ {minWithdrawal.toFixed(2).replace('.', ',')}</p>
-                <p className="text-white">
-                  💰 Saldo disponível: {
-                    loadingBalance 
-                      ? 'Carregando...' 
-                      : `R$ ${(availableBalance !== null ? availableBalance : user?.balance || 0).toFixed(2).replace('.', ',')}`
-                  }
-                </p>
+                <div className="space-y-2">
+                  <p className="text-white font-semibold">
+                    💰 Saldo disponível para saque: {
+                      loadingBalance 
+                        ? 'Carregando...' 
+                        : `R$ ${(availableBalance !== null ? availableBalance : user?.balance || 0).toFixed(2).replace('.', ',')}`
+                    }
+                  </p>
+                  {bonusBalance !== null && bonusBalance > 0 && (
+                    <p className="text-gray-300">
+                      🎁 Bônus não sacável: R$ {bonusBalance.toFixed(2).replace('.', ',')}
+                    </p>
+                  )}
+                  {totalBalance !== null && (
+                    <p className="text-gray-400 text-xs">
+                      Saldo total: R$ {totalBalance.toFixed(2).replace('.', ',')}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
