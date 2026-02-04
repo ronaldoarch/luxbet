@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { trackMetaEvent } from './MetaPixel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -212,6 +213,8 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                   phone: formData.telefone,
                   affiliate_code: ref,
                 });
+                // Disparar evento CompleteRegistration do Meta Pixel
+                trackMetaEvent('CompleteRegistration');
                 onClose();
               } catch (err: any) {
                 setError(err.message || 'Erro ao criar conta');

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Copy, Check, Loader2, QrCode, AlertCircle } from 'lucide-react';
 import QRCodeSVG from 'react-qr-code';
+import { trackMetaEvent } from '../components/MetaPixel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -92,6 +93,13 @@ export default function Deposit() {
       const data = await response.json();
       setDeposit(data);
       setQrCodeError(false); // Reset QR code error when new deposit is created
+      
+      // Disparar evento InitiateCheckout do Meta Pixel
+      trackMetaEvent('InitiateCheckout', {
+        content_name: 'Depósito PIX',
+        value: value,
+        currency: 'BRL'
+      });
     } catch (err: any) {
       setError(err.message || 'Erro ao processar depósito. Tente novamente.');
     } finally {
@@ -181,6 +189,39 @@ export default function Deposit() {
             
             // Atualizar saldo do usuário
             await refreshUser();
+            
+            // Extrair valor do depósito
+            const depositAmount = deposit?.amount || 0;
+            
+            // Disparar evento Purchase do Meta Pixel
+            trackMetaEvent('Purchase', {
+              value: depositAmount,
+              currency: 'BRL'
+            });
+            
+            // Verificar se é primeiro depósito (FTD) para disparar Lead
+            // Verificar histórico de depósitos para determinar se é FTD
+            try {
+              const transactionsRes = await fetch(`${API_URL}/api/auth/transactions`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (transactionsRes.ok) {
+                const transactionsData = await transactionsRes.json();
+                const deposits = (transactionsData.transactions || []).filter((t: any) => 
+                  t.type === 'deposit' && t.status === 'approved'
+                );
+                // Se este é o primeiro depósito aprovado, disparar Lead
+                if (deposits.length === 1) {
+                  trackMetaEvent('Lead', {
+                    content_name: 'First Time Deposit',
+                    value: depositAmount,
+                    currency: 'BRL'
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn('[Deposit] Erro ao verificar FTD:', err);
+            }
             
             // Limpar erro se houver
             setError('');

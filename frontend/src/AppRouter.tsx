@@ -13,10 +13,12 @@ import TransactionHistory from './pages/TransactionHistory';
 import BetsHistory from './pages/BetsHistory';
 import AdminRoute from './components/AdminRoute';
 import AdminLoginRoute from './components/AdminLoginRoute';
+import { MetaPixel } from './components/MetaPixel';
 
 export default function AppRouter() {
   return (
     <BrowserRouter>
+      <MetaPixel />
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/conta" element={<Profile />} />

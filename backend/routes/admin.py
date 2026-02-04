@@ -2484,6 +2484,30 @@ async def delete_tracking_config(
     db.commit()
 
 
+@public_router.get("/tracking-config")
+async def get_active_tracking_config(
+    platform: str = Query("meta", description="Plataforma de tracking (meta, google, tiktok)"),
+    db: Session = Depends(get_db)
+):
+    """Retorna a configuração de tracking ativa para o frontend"""
+    config = db.query(TrackingConfig).filter(
+        TrackingConfig.platform == platform,
+        TrackingConfig.is_active == True
+    ).first()
+    
+    if not config:
+        return {
+            "is_active": False,
+            "pixel_id": None
+        }
+    
+    return {
+        "is_active": config.is_active,
+        "pixel_id": config.pixel_id,
+        "platform": config.platform
+    }
+
+
 # ========== SUPPORT CONFIG ==========
 
 @router.get("/support-config", response_model=SupportConfigResponse)

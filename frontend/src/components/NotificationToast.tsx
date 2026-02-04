@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { CheckCircle, X, Bell } from 'lucide-react';
+import { trackMetaEvent } from './MetaPixel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -47,9 +48,29 @@ export default function NotificationToast() {
             setShowNotification(true);
             checkedIdsRef.current.add(latest.id);
             
-            // Se for notificação de depósito aprovado, atualizar saldo imediatamente
+            // Se for notificação de depósito aprovado, atualizar saldo e disparar eventos do pixel
             if (latest.title?.includes('Depósito') || latest.message?.includes('depósito')) {
               refreshUser().catch(() => {});
+              
+              // Extrair valor do depósito da mensagem
+              const amountMatch = latest.message.match(/R\$\s*([\d,]+\.?\d*)/);
+              const amount = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : 0;
+              
+              // Disparar evento Purchase do Meta Pixel
+              trackMetaEvent('Purchase', {
+                value: amount,
+                currency: 'BRL'
+              });
+              
+              // Verificar se é primeiro depósito (FTD) para disparar Lead
+              // Isso será verificado via API ou podemos assumir que se a mensagem menciona "primeiro" ou similar
+              if (latest.message.toLowerCase().includes('primeiro') || latest.message.toLowerCase().includes('ftd')) {
+                trackMetaEvent('Lead', {
+                  content_name: 'First Time Deposit',
+                  value: amount,
+                  currency: 'BRL'
+                });
+              }
             }
             
             // Fechar popup após 6 segundos (ou usuário pode fechar antes)
