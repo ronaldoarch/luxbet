@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_
 from typing import List, Optional, Dict, Any
@@ -33,7 +34,7 @@ from schemas import (
     CouponResponse, CouponCreate, CouponUpdate
 )
 from auth import get_password_hash
-from igamewin_api import get_igamewin_api
+from igamewin_api import get_igamewin_api, IGameWinAPI
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
@@ -574,6 +575,26 @@ async def create_igamewin_agent(
     db.add(agent)
     db.commit()
     db.refresh(agent)
+    
+    # Sincronizar RTP com IGameWin se agente estiver ativo e tiver credenciais
+    if agent.is_active and agent.agent_code and agent.agent_key:
+        try:
+            api = IGameWinAPI(
+                agent_code=agent.agent_code,
+                agent_key=agent.agent_key,
+                api_url=agent.api_url
+            )
+            rtp_value = agent.rtp if agent.rtp is not None else 96.0
+            if rtp_value <= 95:  # Validar RTP antes de sincronizar
+                result = await api.control_rtp(rtp=rtp_value)
+                if result:
+                    print(f"[IGameWin Agent] RTP sincronizado automaticamente: {rtp_value}%")
+                else:
+                    print(f"[IGameWin Agent] Aviso: Não foi possível sincronizar RTP automaticamente: {api.last_error}")
+        except Exception as e:
+            print(f"[IGameWin Agent] Erro ao sincronizar RTP automaticamente: {str(e)}")
+            # Não bloquear criação do agente se sincronização falhar
+    
     return agent
 
 
@@ -599,11 +620,35 @@ async def update_igamewin_agent(
         if existing_agent:
             raise HTTPException(status_code=400, detail="Agent code already exists")
     
+    # Verificar se RTP está sendo atualizado
+    rtp_updated = 'rtp' in update_data
+    old_rtp = agent.rtp
+    
     for field, value in update_data.items():
         setattr(agent, field, value)
     
     db.commit()
     db.refresh(agent)
+    
+    # Sincronizar RTP com IGameWin se RTP foi atualizado e agente estiver ativo
+    if rtp_updated and agent.is_active and agent.agent_code and agent.agent_key:
+        try:
+            api = IGameWinAPI(
+                agent_code=agent.agent_code,
+                agent_key=agent.agent_key,
+                api_url=agent.api_url
+            )
+            rtp_value = agent.rtp if agent.rtp is not None else 96.0
+            if rtp_value <= 95:  # Validar RTP antes de sincronizar
+                result = await api.control_rtp(rtp=rtp_value)
+                if result:
+                    print(f"[IGameWin Agent] RTP atualizado e sincronizado: {old_rtp}% → {rtp_value}%")
+                else:
+                    print(f"[IGameWin Agent] Aviso: Não foi possível sincronizar RTP após atualização: {api.last_error}")
+        except Exception as e:
+            print(f"[IGameWin Agent] Erro ao sincronizar RTP após atualização: {str(e)}")
+            # Não bloquear atualização do agente se sincronização falhar
+    
     return agent
 
 
@@ -692,6 +737,130 @@ def _normalize_games(games: list, chosen_provider: Optional[str]) -> list:
             if not g.get("provider_code"):
                 g["provider_code"] = chosen_provider
     return games
+
+
+# ========== RTP CONTROL ==========
+class ControlRTPRequest(BaseModel):
+    rtp: float
+    user_code: Optional[str] = None
+    user_codes: Optional[List[str]] = None
+
+
+@router.post("/igamewin/control-rtp/agent")
+async def control_agent_rtp(
+    request: ControlRTPRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Control Agent RTP - sets RTP for the entire agent
+    RTP must be <= 95
+    """
+    if request.rtp > 95:
+        raise HTTPException(
+            status_code=400,
+            detail="rtp must be less than or equal to 95"
+        )
+    
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    result = await api.control_rtp(rtp=request.rtp)
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Erro ao controlar RTP do agente: {api.last_error or 'erro desconhecido'}"
+        )
+    
+    # Atualizar RTP no banco de dados
+    agent = db.query(IGameWinAgent).filter(IGameWinAgent.is_active == True).first()
+    if agent:
+        agent.rtp = request.rtp
+        db.commit()
+    
+    return result
+
+
+@router.post("/igamewin/control-rtp/user")
+async def control_user_rtp(
+    request: ControlRTPRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Control User RTP - sets RTP for a specific user
+    RTP must be <= 95
+    """
+    if not request.user_code:
+        raise HTTPException(
+            status_code=400,
+            detail="user_code is required"
+        )
+    
+    if request.rtp > 95:
+        raise HTTPException(
+            status_code=400,
+            detail="rtp must be less than or equal to 95"
+        )
+    
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    result = await api.control_rtp(rtp=request.rtp, user_code=request.user_code)
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Erro ao controlar RTP do usuário: {api.last_error or 'erro desconhecido'}"
+        )
+    
+    return result
+
+
+@router.post("/igamewin/control-rtp/bulk-users")
+async def control_bulk_users_rtp(
+    request: ControlRTPRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Control Bulk Users RTP - sets RTP for multiple users at once
+    RTP must be <= 95
+    """
+    if not request.user_codes or len(request.user_codes) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="user_codes is required and must not be empty"
+        )
+    
+    if request.rtp > 95:
+        raise HTTPException(
+            status_code=400,
+            detail="rtp must be less than or equal to 95"
+        )
+    
+    api = get_igamewin_api(db)
+    if not api:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum agente IGameWin ativo configurado"
+        )
+    
+    result = await api.control_rtp(rtp=request.rtp, user_codes=request.user_codes)
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Erro ao controlar RTP dos usuários: {api.last_error or 'erro desconhecido'}"
+        )
+    
+    return result
 
 
 @router.get("/igamewin/agent-balance")

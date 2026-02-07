@@ -139,9 +139,9 @@ export default function Game() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e0f] text-white">
+    <div className="min-h-screen bg-[#0a0e0f] text-white game-container">
       {/* Header com botão voltar */}
-      <div className="bg-[#0a4d3e] border-b border-[#0d5d4b] sticky top-0 z-40">
+      <div className="bg-[#0a4d3e] border-b border-[#0d5d4b] sticky top-0 z-40 game-header">
         <div className="container mx-auto px-4 py-3">
           <button
             onClick={() => navigate('/')}
@@ -155,7 +155,7 @@ export default function Game() {
 
       {/* Iframe do jogo */}
       {gameUrl && (
-        <div className="w-full h-[calc(100vh-60px)] relative">
+        <div className="w-full game-iframe-container relative">
           <iframe
             src={gameUrl}
             className="w-full h-full border-0"

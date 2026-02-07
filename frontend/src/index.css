@@ -120,3 +120,67 @@ html {
 .sidebar-custom button:hover {
   transform: translateX(2px);
 }
+
+/* Estilos para página de jogo - corrigir viewport mobile */
+.game-container {
+  /* Usar altura dinâmica que considera barras do navegador */
+  min-height: 100dvh; /* Dynamic viewport height - considera barras do navegador */
+  min-height: 100vh; /* Fallback para navegadores antigos */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header do jogo com safe area support */
+.game-header {
+  /* Considerar safe area no topo (notch, status bar) */
+  padding-top: env(safe-area-inset-top, 0);
+  /* Garantir que não fique atrás da barra de status */
+  position: sticky;
+  top: 0;
+}
+
+/* Container do iframe do jogo */
+.game-iframe-container {
+  /* Altura dinâmica que considera barras do navegador e header */
+  height: calc(100dvh - 60px - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0));
+  height: calc(100vh - 60px); /* Fallback para navegadores antigos */
+  flex: 1;
+  overflow: hidden;
+  /* Considerar safe areas nas laterais se necessário */
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+/* Em mobile, garantir que o iframe ocupe toda a altura disponível */
+@media (max-width: 768px) {
+  .game-container {
+    height: 100dvh;
+    height: 100vh; /* Fallback */
+  }
+  
+  .game-iframe-container {
+    /* No mobile, considerar altura do header + safe areas */
+    height: calc(100dvh - 60px - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0));
+    height: calc(100vh - 60px); /* Fallback */
+    min-height: 0; /* Permitir que o flexbox funcione */
+  }
+  
+  /* Se o header tiver altura diferente no mobile, ajustar */
+  .game-header {
+    flex-shrink: 0; /* Não encolher o header */
+  }
+}
+
+/* Suporte para telas com notch (iPhone X+) */
+@supports (padding: max(0px)) {
+  .game-header {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  
+  .game-iframe-container {
+    padding-left: max(env(safe-area-inset-left), 0px);
+    padding-right: max(env(safe-area-inset-right), 0px);
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+}

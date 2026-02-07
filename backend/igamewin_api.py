@@ -277,6 +277,66 @@ class IGameWinAPI:
         
         print(f"[IGameWin] Success! Launch URL: {launch_url[:100]}...")
         return launch_url
+    
+    async def control_rtp(
+        self,
+        rtp: float,
+        user_code: Optional[str] = None,
+        user_codes: Optional[List[str]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Control RTP (Return to Player) - follows IGameWin API documentation
+        
+        Args:
+            rtp: RTP value (must be <= 95)
+            user_code: Single user code (for user-specific RTP)
+            user_codes: List of user codes (for bulk user RTP)
+        
+        Returns:
+            Response dict with status and changed_rtp, or None on error
+        """
+        # Validar RTP
+        if rtp > 95:
+            self.last_error = "rtp must be less than or equal to 95"
+            return None
+        
+        payload = {
+            "method": "control_rtp",
+            "agent_code": self.agent_code,
+            "agent_token": self.agent_key,
+            "rtp": rtp
+        }
+        
+        # Se user_code fornecido, adicionar ao payload (user-specific RTP)
+        if user_code:
+            payload["user_code"] = user_code
+            print(f"[IGameWin] Controlling RTP for user - user_code={user_code}, rtp={rtp}")
+        # Se user_codes fornecido, adicionar ao payload (bulk user RTP)
+        elif user_codes:
+            payload["user_code"] = user_codes
+            print(f"[IGameWin] Controlling RTP for bulk users - user_codes={user_codes}, rtp={rtp}")
+        # Se nenhum user_code fornecido, controla RTP do agente
+        else:
+            print(f"[IGameWin] Controlling RTP for agent - rtp={rtp}")
+        
+        data = await self._post(payload)
+        if not data:
+            print(f"[IGameWin] Failed to control RTP: {self.last_error}")
+            return None
+        
+        # Verificar se status é 1 (sucesso)
+        status = data.get("status")
+        if status == 1:
+            changed_rtp = data.get("changed_rtp")
+            print(f"[IGameWin] RTP controlled successfully - changed_rtp={changed_rtp}")
+            return data
+        
+        # Se status é 0, retornar erro
+        error_msg = data.get("msg", "Erro desconhecido")
+        detail = data.get("detail", "")
+        self.last_error = f"status={status} msg={error_msg} detail={detail}"
+        print(f"[IGameWin] Error controlling RTP: {self.last_error}")
+        return None
 
 
 def get_igamewin_api(db: Session) -> Optional[IGameWinAPI]:
