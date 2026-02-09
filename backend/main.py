@@ -41,36 +41,31 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configurar CORS - permite variáveis de ambiente para produção
+# NOTA: Atualmente usando allow_origins=["*"] para máxima compatibilidade
+# A variável CORS_ORIGINS é apenas para referência/logs, não é usada no middleware
 cors_origins_env = os.getenv("CORS_ORIGINS", "").strip()
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()] if cors_origins_env else []
 
-# Se não houver variável, usa defaults de desenvolvimento
+# Filtrar localhost da lista (não faz sentido em produção)
+cors_origins = [origin for origin in cors_origins if not origin.startswith(("http://localhost", "http://127.0.0.1"))]
+
+# Se não houver variável, usa defaults de desenvolvimento (apenas para logs)
 if not cors_origins:
     cors_origins = [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:3000",
         "https://luxbet.site",
         "https://www.luxbet.site",
         "https://api.luxbet.site",
-        "http://luxbet.site",
-        "http://www.luxbet.site",
-        # Permite qualquer origem do domínio agenciamidas.com em produção
-        "https://*.agenciamidas.com",
-        "http://*.agenciamidas.com",
     ]
 
 # Forçar logs para debug
-print(f"CORS Origins from env: {cors_origins_env}")
-print(f"CORS Origins configured: {cors_origins}")
-print(f"⚠️  CORS MODE: ALLOWING ALL ORIGINS (*) for maximum compatibility")
+print(f"CORS Origins from env (filtered): {cors_origins_env}")
+print(f"CORS Origins configured (for reference only): {cors_origins}")
+print(f"⚠️  CORS MODE: ALLOWING ALL ORIGINS (*) - Variável CORS_ORIGINS é apenas para referência")
+print(f"⚠️  IMPORTANTE: localhost foi removido da lista - não afeta acessos via 4G/WiFi")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permitir todas as origens para máxima compatibilidade entre dispositivos
+    allow_origins=["*"],  # Permitir TODAS as origens para máxima compatibilidade entre dispositivos (WiFi, 4G, etc)
     allow_credentials=True,
     allow_methods=["*"],  # Permitir todos os métodos HTTP
     allow_headers=["*"],  # Permitir todos os headers
