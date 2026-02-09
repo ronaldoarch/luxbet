@@ -11,6 +11,9 @@ interface SidebarProps {
 }
 
 // Backend FastAPI - usa variável de ambiente ou fallback inteligente
+// IP do servidor para fallback quando DNS não funciona
+const SERVER_IP = '147.93.147.33';
+
 function getAPIUrl(): string {
   const envUrl = import.meta.env.VITE_API_URL;
   
@@ -49,6 +52,7 @@ const API_URL = getAPIUrl();
 
 // Log final da URL que será usada
 console.log('[API Config] URL final da API:', API_URL);
+console.log('[API Config] IP do servidor para fallback:', SERVER_IP);
 
 interface Game {
   name: string;
@@ -143,17 +147,39 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
           console.error('VITE_API_URL configurada:', import.meta.env.VITE_API_URL);
           console.error('Hostname atual:', window.location.hostname);
           
-          // Tentar usar o mesmo domínio do frontend como fallback
-          const currentHost = window.location.hostname;
-          const currentProtocol = window.location.protocol;
-          const fallbackUrl = `${currentProtocol}//${currentHost}`;
+          // Tentar múltiplos fallbacks em sequência
+          const fallbackUrls = [
+            // 1. Mesmo domínio do frontend
+            `${window.location.protocol}//${window.location.hostname}`,
+            // 2. IP direto (HTTP - pode dar erro de certificado mas funciona)
+            `http://${SERVER_IP}`,
+          ];
           
-          console.log('🔄 Tentando fallback com mesmo domínio:', fallbackUrl);
+          let fallbackIndex = 0;
           
-          // Tentar novamente com o mesmo domínio após 1 segundo
-          setTimeout(async () => {
+          const tryFallback = async () => {
+            if (fallbackIndex >= fallbackUrls.length) {
+              console.error('❌ Todos os fallbacks falharam');
+              // Usar lista estática como último recurso
+              setPopularGames([
+                { name: 'Fortune Tiger', code: 'fortune-tiger' },
+                { name: 'Mine', code: 'mine' },
+                { name: 'Gate of Olympus', code: 'gate-of-olympus' },
+                { name: 'Aviator', code: 'aviator' },
+              ]);
+              setLoadingGames(false);
+              return;
+            }
+            
+            const fallbackUrl = fallbackUrls[fallbackIndex];
+            console.log(`🔄 Tentando fallback ${fallbackIndex + 1}/${fallbackUrls.length}:`, fallbackUrl);
+            
             try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+              
               const fallbackRes = await fetch(`${fallbackUrl}/api/public/games`, {
+                signal: controller.signal,
                 headers: {
                   'Accept': 'application/json',
                   'Cache-Control': 'no-cache',
@@ -161,6 +187,8 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
                 cache: 'no-store',
                 mode: 'cors',
               });
+              
+              clearTimeout(timeoutId);
               
               if (fallbackRes.ok) {
                 const fallbackData = await fallbackRes.json();
@@ -186,15 +214,23 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
                   }
                 }
                 
-                console.log('✅ Fallback funcionou! Usando mesmo domínio.');
+                console.log(`✅ Fallback ${fallbackIndex + 1} funcionou! Usando:`, fallbackUrl);
                 setPopularGames(matchedGames);
                 setLoadingGames(false);
                 return;
+              } else {
+                throw new Error(`Status ${fallbackRes.status}`);
               }
-            } catch (fallbackErr) {
-              console.error('❌ Fallback também falhou:', fallbackErr);
+            } catch (fallbackErr: any) {
+              console.warn(`⚠️ Fallback ${fallbackIndex + 1} falhou:`, fallbackErr.message);
+              fallbackIndex++;
+              setTimeout(tryFallback, 1000);
             }
-          }, 1000);
+          };
+          
+          // Iniciar tentativas de fallback
+          setTimeout(tryFallback, 500);
+          return; // Não continuar com o código abaixo
         }
         
         // Se for erro de timeout ou rede, tentar novamente após um delay
