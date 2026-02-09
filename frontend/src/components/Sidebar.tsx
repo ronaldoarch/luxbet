@@ -35,11 +35,22 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
     const fetchGames = async () => {
       setLoadingGames(true);
       try {
+        // Detectar erro de DNS e tentar alternativas
+        let apiUrl = API_URL;
+        
+        // Se API_URL estiver vazia ou for localhost em produção, tentar detectar automaticamente
+        if (!apiUrl || apiUrl.includes('localhost')) {
+          const hostname = window.location.hostname;
+          if (hostname.includes('luxbet.site')) {
+            apiUrl = 'https://api.luxbet.site';
+          }
+        }
+        
         // Usar fetch com timeout e melhor tratamento de erros para compatibilidade entre dispositivos
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
         
-        const res = await fetch(`${API_URL}/api/public/games`, {
+        const res = await fetch(`${apiUrl}/api/public/games`, {
           signal: controller.signal,
           headers: {
             'Accept': 'application/json',
@@ -82,6 +93,17 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
         setPopularGames(matchedGames);
       } catch (err: any) {
         console.error('Erro ao buscar jogos para o menu', err);
+        
+        // Detectar erro de DNS especificamente
+        const isDNSError = err.message?.includes('ERR_NAME_NOT_RESOLVED') || 
+                          err.message?.includes('Failed to fetch') ||
+                          err.message?.includes('name_not_resolved');
+        
+        if (isDNSError) {
+          console.error('❌ Erro de DNS detectado! O domínio não está resolvendo.');
+          console.error('Verifique se VITE_API_URL está configurada corretamente no Coolify.');
+          console.error('URL tentada:', API_URL);
+        }
         
         // Se for erro de timeout ou rede, tentar novamente após um delay
         if (err.name === 'AbortError' || err.message?.includes('Timeout') || err.message?.includes('conexão') || err.message?.includes('fetch')) {

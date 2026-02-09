@@ -1,199 +1,161 @@
-# 🔧 Solução - Erro DNS no 4G
+# 🔧 Solução para Erro DNS em 4G (ERR_NAME_NOT_RESOLVED)
 
-## 🚨 Problema Identificado
+## Problema Identificado
 
-**Erro**: `DNS_PROBE_FINISHED_BAD_CONFIG`
-**Mensagem**: "Não foi possível encontrar o endereço IP do servidor de luxbet.site"
+O erro `ERR_NAME_NOT_RESOLVED` ocorre quando o DNS não consegue resolver o domínio da API. Isso acontece especificamente em redes 4G, mas funciona no WiFi.
 
-**Causa**: O DNS do domínio `luxbet.site` não está configurado corretamente ou não está propagado para todas as redes.
+## Causas Possíveis
 
----
+1. **Variável `VITE_API_URL` não configurada corretamente**
+   - O frontend está tentando usar um domínio que não existe ou não está acessível
+   - Pode estar usando `localhost` em produção
 
-## ✅ Soluções
+2. **Problema de DNS do provedor 4G**
+   - Alguns provedores 4G têm DNS mais restritivos
+   - Pode haver bloqueio ou cache DNS incorreto
 
-### Solução 1: Verificar Configuração DNS (Recomendado)
+3. **Domínio não configurado globalmente**
+   - O domínio pode não estar acessível de todas as redes
+   - Pode haver problema de propagação DNS
 
-O domínio `luxbet.site` precisa ter registros DNS configurados corretamente.
+## Solução Imediata
 
-#### No seu provedor de domínio (ex: Hostinger, GoDaddy, etc.):
+### 1. Verificar Variável de Ambiente no Coolify
 
-1. **Acesse o painel de DNS do domínio**
-2. **Verifique se existem registros A ou CNAME**:
-
-   **Registro A** (para domínio principal):
-   ```
-   Tipo: A
-   Nome: @ ou luxbet.site
-   Valor: IP_DO_SERVIDOR
-   TTL: 3600
-   ```
-
-   **Registro A** (para subdomínio api):
-   ```
-   Tipo: A
-   Nome: api
-   Valor: IP_DO_SERVIDOR
-   TTL: 3600
-   ```
-
-   **OU Registro CNAME**:
-   ```
-   Tipo: CNAME
-   Nome: api
-   Valor: dominio-do-coolify.com
-   TTL: 3600
-   ```
-
-3. **Verifique os Nameservers**:
-   - Devem apontar para o provedor correto
-   - Exemplo Hostinger: `ns1.dns-parking.com` e `ns2.dns-parking.com`
-
----
-
-### Solução 2: Verificar Propagação DNS
-
-Use ferramentas online para verificar se o DNS está propagado:
-
-1. **DNS Checker**: https://dnschecker.org
-   - Digite: `luxbet.site`
-   - Selecione tipo: `A`
-   - Verifique se todos os servidores DNS retornam o mesmo IP
-
-2. **What's My DNS**: https://www.whatsmydns.net
-   - Digite: `luxbet.site`
-   - Verifique propagação global
-
-**Se alguns servidores retornam IP e outros não:**
-- DNS ainda está propagando (pode levar até 48h)
-- Aguarde ou verifique configuração
-
----
-
-### Solução 3: Usar IP Direto Temporariamente
-
-Enquanto o DNS não resolve, você pode usar o IP direto do servidor:
-
-1. **Descubra o IP do servidor**:
-   - No Coolify, veja o IP do servidor
-   - Ou use ferramentas como `ping` ou `nslookup` em outro dispositivo
-
-2. **Configure temporariamente no Coolify**:
-   ```
-   VITE_API_URL=https://IP_DO_SERVIDOR
-   ```
-   **⚠️ ATENÇÃO**: Isso só funciona se o servidor aceitar conexões por IP e tiver certificado SSL válido para o IP.
-
-3. **Faça redeploy do frontend**
-
----
-
-### Solução 4: Verificar DNS no Celular
-
-No celular (4G), teste:
-
-1. **Usar DNS público**:
-   - Vá em Configurações → WiFi → (seu WiFi) → Configurações Avançadas
-   - Altere DNS para: `8.8.8.8` (Google) ou `1.1.1.1` (Cloudflare)
-   - Teste novamente
-
-2. **Testar com aplicativo de DNS**:
-   - Use app como "DNS Changer" para testar diferentes DNS
-
----
-
-### Solução 5: Verificar no Coolify
-
-1. **Verifique se o domínio está configurado**:
-   - Coolify → Projeto → Domains
-   - Verifique se `luxbet.site` e `api.luxbet.site` estão configurados
-
-2. **Verifique certificado SSL**:
-   - Certificado deve estar válido para ambos os domínios
-   - Renove se necessário
-
----
-
-## 🔍 Diagnóstico Rápido
-
-### Teste 1: DNS funciona em WiFi mas não no 4G?
-
-**Possível causa**: DNS do provedor móvel está bloqueando ou não propagado
-
-**Solução**: 
-- Use DNS público no celular (8.8.8.8)
-- Ou aguarde propagação DNS
-
-### Teste 2: DNS não funciona em lugar nenhum?
-
-**Possível causa**: DNS não configurado ou configurado incorretamente
-
-**Solução**:
-- Verifique configuração DNS no provedor
-- Verifique se registros A/CNAME estão corretos
-
-### Teste 3: Backend funciona mas frontend não?
-
-**Possível causa**: Frontend também precisa de DNS configurado
-
-**Solução**:
-- Configure DNS para `luxbet.site` (não apenas `api.luxbet.site`)
-
----
-
-## 📋 Checklist DNS
-
-- [ ] Registro A configurado para `luxbet.site` → IP do servidor
-- [ ] Registro A configurado para `api.luxbet.site` → IP do servidor
-- [ ] Nameservers corretos no provedor de domínio
-- [ ] DNS propagado (verificar em dnschecker.org)
-- [ ] Certificado SSL válido para ambos domínios
-- [ ] Domínios configurados no Coolify
-- [ ] TTL não muito alto (recomendado: 3600 segundos)
-
----
-
-## 🚀 Configuração DNS Recomendada
-
-### Para Hostinger (exemplo):
+No Coolify, vá em **Frontend → Environment Variables** e verifique:
 
 ```
-Tipo    Nome    Valor                    TTL
-A       @       IP_DO_SERVIDOR           3600
-A       api     IP_DO_SERVIDOR           3600
-CNAME   www     luxbet.site              3600
+VITE_API_URL=https://api.luxbet.site
 ```
 
-### Para Cloudflare (se usar):
+**IMPORTANTE:**
+- ✅ Use `https://` (não `http://`)
+- ✅ Use o domínio completo (`api.luxbet.site`, não `localhost`)
+- ✅ Não use `localhost` ou `127.0.0.1` em produção
 
-1. Adicione domínio no Cloudflare
-2. Configure registros A:
-   - `luxbet.site` → IP do servidor
-   - `api.luxbet.site` → IP do servidor
-3. Ative Proxy (laranja) se quiser proteção DDoS
+### 2. Verificar DNS do Domínio
 
----
+Teste se o domínio está resolvendo corretamente:
 
-## ⚠️ Importante
+```bash
+# No terminal ou usando ferramentas online
+nslookup api.luxbet.site
+dig api.luxbet.site
+```
 
-1. **Propagação DNS pode levar até 48 horas**
-2. **Diferentes provedores DNS propagam em velocidades diferentes**
-3. **DNS móvel pode ser mais lento que DNS residencial**
-4. **Use DNS público (8.8.8.8) para testar se é problema do provedor**
+Se não resolver, o problema é de DNS/configuração do domínio.
 
----
+### 3. Verificar Configuração do Domínio
 
-## 📞 Próximos Passos
+Certifique-se de que:
+- O domínio `api.luxbet.site` está configurado no DNS
+- O registro A ou CNAME aponta para o IP correto do servidor
+- O SSL está configurado corretamente
 
-1. **Verifique configuração DNS no provedor de domínio**
-2. **Confirme que registros A estão apontando para o IP correto**
-3. **Aguarde propagação DNS (ou use DNS público para testar)**
-4. **Teste novamente no 4G após algumas horas**
+### 4. Testar em Diferentes Redes
 
----
+- ✅ WiFi: Funciona
+- ❌ 4G: Não funciona (ERR_NAME_NOT_RESOLVED)
 
-## 🔗 Links Úteis
+Isso indica problema de DNS específico do provedor 4G ou configuração incorreta.
 
-- **DNS Checker**: https://dnschecker.org
-- **What's My DNS**: https://www.whatsmydns.net
-- **Google DNS**: 8.8.8.8 e 8.8.4.4
-- **Cloudflare DNS**: 1.1.1.1 e 1.0.0.1
+## Solução Implementada no Código
+
+O código agora:
+
+1. **Detecta automaticamente o domínio** se `VITE_API_URL` não estiver configurada
+2. **Tenta usar `https://api.luxbet.site`** automaticamente se estiver em `luxbet.site`
+3. **Loga erros de DNS** especificamente para facilitar debug
+4. **Usa fallback** para evitar que a aplicação quebre completamente
+
+## Como Verificar se Está Funcionando
+
+### No Console do Navegador (4G)
+
+Abra o console e procure por:
+
+```
+❌ Erro de DNS detectado! O domínio não está resolvendo.
+Verifique se VITE_API_URL está configurada corretamente no Coolify.
+URL tentada: [URL]
+```
+
+### Verificar Variável de Ambiente no Frontend
+
+No console do navegador, execute:
+
+```javascript
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+```
+
+Se retornar `undefined` ou `localhost`, o problema é a variável de ambiente.
+
+## Passos para Resolver
+
+### Passo 1: Verificar Variável no Coolify
+
+1. Acesse o Coolify
+2. Vá em **Frontend → Environment Variables**
+3. Verifique se `VITE_API_URL` está configurada como:
+   ```
+   VITE_API_URL=https://api.luxbet.site
+   ```
+
+### Passo 2: Fazer Redeploy
+
+Após alterar a variável de ambiente:
+1. Salve as alterações
+2. Faça redeploy do frontend
+3. Aguarde o build completar
+
+### Passo 3: Limpar Cache
+
+No dispositivo com problema (4G):
+1. Limpe o cache do navegador
+2. Ou use modo anônimo
+3. Teste novamente
+
+### Passo 4: Verificar DNS
+
+Se ainda não funcionar, verifique:
+- Se o domínio `api.luxbet.site` está acessível publicamente
+- Se o DNS está propagado corretamente
+- Se há algum bloqueio do provedor 4G
+
+## Teste Rápido
+
+Para testar se o problema é DNS ou código:
+
+1. No dispositivo com 4G, abra o navegador
+2. Acesse diretamente: `https://api.luxbet.site/api/health`
+3. Se não carregar, o problema é DNS/configuração do servidor
+4. Se carregar, o problema é na configuração do frontend
+
+## Solução Alternativa (Temporária)
+
+Se o problema persistir, você pode:
+
+1. **Usar IP direto** (não recomendado para produção):
+   ```
+   VITE_API_URL=https://[IP_DO_SERVIDOR]
+   ```
+
+2. **Usar outro domínio** que funcione no 4G
+
+3. **Configurar DNS alternativo** no dispositivo (8.8.8.8 do Google)
+
+## Monitoramento
+
+O código agora loga especificamente erros de DNS. Monitore os logs para identificar:
+- Quantos usuários estão tendo problema de DNS
+- Qual domínio está sendo tentado
+- Se há padrão (todos 4G, todos WiFi, etc)
+
+## Contato com Suporte
+
+Se o problema persistir após seguir todos os passos:
+
+1. Coletar logs do console do navegador
+2. Verificar qual URL está sendo tentada
+3. Testar acesso direto ao domínio
+4. Verificar configuração DNS do domínio
