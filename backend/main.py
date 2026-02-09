@@ -64,16 +64,16 @@ if not cors_origins:
     ]
 
 # Forçar logs para debug
+print(f"CORS Origins from env: {cors_origins_env}")
 print(f"CORS Origins configured: {cors_origins}")
+print(f"⚠️  CORS MODE: ALLOWING ALL ORIGINS (*) for maximum compatibility")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Temporarily allow all for debugging
-    # allow_origins=cors_origins,
-    allow_origin_regex=r"https?://.*", # Allow all regex
+    allow_origins=["*"],  # Permitir todas as origens para máxima compatibilidade entre dispositivos
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Permitir todos os métodos HTTP
+    allow_headers=["*"],  # Permitir todos os headers
     expose_headers=["*"],  # Expor todos os headers para compatibilidade
     max_age=3600,  # Cache preflight por 1 hora
 )
@@ -87,7 +87,10 @@ async def add_compatibility_headers(request: Request, call_next):
     # Log da requisição
     client_ip = get_client_ip(request)
     user_agent = request.headers.get("User-Agent", "Unknown")
-    logger.info(f"Request: {request.method} {request.url.path} - IP: {client_ip} - UA: {user_agent[:100]}")
+    origin = request.headers.get("Origin", "No Origin")
+    
+    # Log detalhado para debug de CORS
+    logger.info(f"Request: {request.method} {request.url.path} - IP: {client_ip} - Origin: {origin} - UA: {user_agent[:100]}")
     
     try:
         response = await call_next(request)
@@ -104,7 +107,9 @@ async def add_compatibility_headers(request: Request, call_next):
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
         
-        logger.info(f"Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s")
+        # Log CORS headers na resposta para debug
+        cors_origin = response.headers.get("Access-Control-Allow-Origin", "Not Set")
+        logger.info(f"Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s - CORS-Origin: {cors_origin}")
         
         return response
     except Exception as e:
