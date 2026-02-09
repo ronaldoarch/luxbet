@@ -71,18 +71,18 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
   useEffect(() => {
     const fetchGames = async () => {
       setLoadingGames(true);
-      try {
-        // Detectar erro de DNS e tentar alternativas
-        let apiUrl = API_URL;
-        
-        // Se API_URL estiver vazia ou for localhost em produção, tentar detectar automaticamente
-        if (!apiUrl || apiUrl.includes('localhost')) {
-          const hostname = window.location.hostname;
-          if (hostname.includes('luxbet.site')) {
-            apiUrl = 'https://api.luxbet.site';
-          }
+      // Detectar erro de DNS e tentar alternativas (fora do try para estar no escopo do catch)
+      let apiUrl = API_URL;
+      
+      // Se API_URL estiver vazia ou for localhost em produção, tentar detectar automaticamente
+      if (!apiUrl || apiUrl.includes('localhost')) {
+        const hostname = window.location.hostname;
+        if (hostname.includes('luxbet.site')) {
+          apiUrl = 'https://api.luxbet.site';
         }
-        
+      }
+      
+      try {
         // Usar fetch com timeout e melhor tratamento de erros para compatibilidade entre dispositivos
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
