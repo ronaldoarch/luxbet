@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug API - Lux Bet</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0a0e0f;
+            color: #fff;
+        }
+        .section {
+            background: #1a1a1a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .warning { color: #fbbf24; }
+        .info { color: #60a5fa; }
+        button {
+            background: #0a4d3e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0d5d4b;
+        }
+        pre {
+            background: #000;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug API - Lux Bet</h1>
+    
+    <div class="section">
+        <h2>1. Variável de Ambiente</h2>
+        <div id="env-info"></div>
+    </div>
+    
+    <div class="section">
+        <h2>2. Teste de DNS</h2>
+        <button onclick="testDNS()">Testar DNS</button>
+        <div id="dns-result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>3. Teste de Conexão</h2>
+        <button onclick="testConnection()">Testar Conexão</button>
+        <div id="connection-result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>4. Informações do Navegador</h2>
+        <div id="browser-info"></div>
+    </div>
+
+    <script type="module">
+        // Verificar variável de ambiente
+        const viteApiUrl = import.meta.env.VITE_API_URL;
+        const envInfo = document.getElementById('env-info');
+        
+        if (viteApiUrl) {
+            envInfo.innerHTML = `
+                <p class="success">✅ VITE_API_URL configurada: <strong>${viteApiUrl}</strong></p>
+            `;
+        } else {
+            envInfo.innerHTML = `
+                <p class="error">❌ VITE_API_URL não configurada!</p>
+                <p>O frontend está usando fallback.</p>
+            `;
+        }
+        
+        // Informações do navegador
+        const browserInfo = document.getElementById('browser-info');
+        browserInfo.innerHTML = `
+            <p><strong>Hostname:</strong> ${window.location.hostname}</p>
+            <p><strong>Protocol:</strong> ${window.location.protocol}</p>
+            <p><strong>User Agent:</strong> ${navigator.userAgent}</p>
+            <p><strong>Connection:</strong> ${navigator.connection?.effectiveType || 'Unknown'}</p>
+        `;
+        
+        // Função para testar DNS
+        window.testDNS = async function() {
+            const dnsResult = document.getElementById('dns-result');
+            dnsResult.innerHTML = '<p class="info">Testando DNS...</p>';
+            
+            const apiUrl = viteApiUrl || 'https://api.luxbet.site';
+            const domain = apiUrl.replace('https://', '').replace('http://', '').split('/')[0];
+            
+            try {
+                // Tentar fazer uma requisição simples para testar DNS
+                const startTime = Date.now();
+                const response = await fetch(`${apiUrl}/api/health`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                const latency = Date.now() - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    dnsResult.innerHTML = `
+                        <p class="success">✅ DNS resolvido com sucesso!</p>
+                        <p><strong>Domínio:</strong> ${domain}</p>
+                        <p><strong>Latência:</strong> ${latency}ms</p>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    dnsResult.innerHTML = `
+                        <p class="warning">⚠️ DNS resolveu, mas servidor retornou erro</p>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                    `;
+                }
+            } catch (error) {
+                dnsResult.innerHTML = `
+                    <p class="error">❌ Erro ao resolver DNS</p>
+                    <p><strong>Domínio tentado:</strong> ${domain}</p>
+                    <p><strong>Erro:</strong> ${error.message}</p>
+                    <p><strong>Tipo:</strong> ${error.name}</p>
+                    <p><strong>Possíveis causas:</strong></p>
+                    <ul>
+                        <li>DNS não está resolvendo o domínio</li>
+                        <li>Provedor 4G está bloqueando</li>
+                        <li>Domínio não está configurado corretamente</li>
+                        <li>Problema de rede temporário</li>
+                    </ul>
+                `;
+            }
+        };
+        
+        // Função para testar conexão
+        window.testConnection = async function() {
+            const connectionResult = document.getElementById('connection-result');
+            connectionResult.innerHTML = '<p class="info">Testando conexão...</p>';
+            
+            const apiUrl = viteApiUrl || 'https://api.luxbet.site';
+            const urlsToTest = [
+                apiUrl,
+                `https://${window.location.hostname}`,
+                `http://${window.location.hostname}`
+            ];
+            
+            let results = [];
+            
+            for (const url of urlsToTest) {
+                try {
+                    const startTime = Date.now();
+                    const response = await fetch(`${url}/api/health`, {
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    });
+                    const latency = Date.now() - startTime;
+                    
+                    if (response.ok) {
+                        results.push({
+                            url,
+                            status: 'success',
+                            latency,
+                            statusCode: response.status
+                        });
+                    } else {
+                        results.push({
+                            url,
+                            status: 'error',
+                            statusCode: response.status
+                        });
+                    }
+                } catch (error) {
+                    results.push({
+                        url,
+                        status: 'failed',
+                        error: error.message
+                    });
+                }
+            }
+            
+            let html = '<h3>Resultados dos Testes:</h3>';
+            results.forEach(result => {
+                if (result.status === 'success') {
+                    html += `<p class="success">✅ ${result.url} - ${result.latency}ms (Status: ${result.statusCode})</p>`;
+                } else if (result.status === 'error') {
+                    html += `<p class="warning">⚠️ ${result.url} - Status: ${result.statusCode}</p>`;
+                } else {
+                    html += `<p class="error">❌ ${result.url} - ${result.error}</p>`;
+                }
+            });
+            
+            connectionResult.innerHTML = html;
+        };
+        
+        // Executar testes automaticamente ao carregar
+        setTimeout(() => {
+            testDNS();
+            setTimeout(() => testConnection(), 1000);
+        }, 500);
+    </script>
+</body>
+</html>

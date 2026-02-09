@@ -10,8 +10,45 @@ interface SidebarProps {
   providers?: string[];
 }
 
-// Backend FastAPI - usa variável de ambiente ou fallback para localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Backend FastAPI - usa variável de ambiente ou fallback inteligente
+function getAPIUrl(): string {
+  const envUrl = import.meta.env.VITE_API_URL;
+  
+  // Log para debug
+  console.log('[API Config] VITE_API_URL from env:', envUrl);
+  
+  if (envUrl) {
+    console.log('[API Config] Usando URL da variável de ambiente:', envUrl);
+    return envUrl;
+  }
+  
+  // Fallback inteligente: usar o mesmo domínio do frontend
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    
+    // Se estiver em luxbet.site, tentar api.luxbet.site primeiro
+    if (hostname.includes('luxbet.site')) {
+      const apiUrl = `${protocol}//api.luxbet.site`;
+      console.log('[API Config] Fallback: usando', apiUrl, 'baseado no hostname:', hostname);
+      return apiUrl;
+    }
+    
+    // Se não conseguir resolver api.luxbet.site, tentar o mesmo domínio
+    const sameDomainUrl = `${protocol}//${hostname}`;
+    console.log('[API Config] Fallback alternativo: usando mesmo domínio:', sameDomainUrl);
+    return sameDomainUrl;
+  }
+  
+  // Último fallback para desenvolvimento
+  console.warn('[API Config] Usando localhost como último fallback');
+  return 'http://localhost:8000';
+}
+
+const API_URL = getAPIUrl();
+
+// Log final da URL que será usada
+console.log('[API Config] URL final da API:', API_URL);
 
 interface Game {
   name: string;
@@ -97,12 +134,67 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
         // Detectar erro de DNS especificamente
         const isDNSError = err.message?.includes('ERR_NAME_NOT_RESOLVED') || 
                           err.message?.includes('Failed to fetch') ||
-                          err.message?.includes('name_not_resolved');
+                          err.message?.includes('name_not_resolved') ||
+                          err.name === 'TypeError';
         
         if (isDNSError) {
           console.error('❌ Erro de DNS detectado! O domínio não está resolvendo.');
-          console.error('Verifique se VITE_API_URL está configurada corretamente no Coolify.');
-          console.error('URL tentada:', API_URL);
+          console.error('URL tentada:', apiUrl);
+          console.error('VITE_API_URL configurada:', import.meta.env.VITE_API_URL);
+          console.error('Hostname atual:', window.location.hostname);
+          
+          // Tentar usar o mesmo domínio do frontend como fallback
+          const currentHost = window.location.hostname;
+          const currentProtocol = window.location.protocol;
+          const fallbackUrl = `${currentProtocol}//${currentHost}`;
+          
+          console.log('🔄 Tentando fallback com mesmo domínio:', fallbackUrl);
+          
+          // Tentar novamente com o mesmo domínio após 1 segundo
+          setTimeout(async () => {
+            try {
+              const fallbackRes = await fetch(`${fallbackUrl}/api/public/games`, {
+                headers: {
+                  'Accept': 'application/json',
+                  'Cache-Control': 'no-cache',
+                },
+                cache: 'no-store',
+                mode: 'cors',
+              });
+              
+              if (fallbackRes.ok) {
+                const fallbackData = await fallbackRes.json();
+                const allGames: Game[] = (fallbackData.games || []).map((g: any) => ({
+                  name: g.name || g.title || '',
+                  code: g.code || '',
+                }));
+                
+                const matchedGames: Game[] = [];
+                for (const gameName of gameNamesToShow) {
+                  const normalizedGameName = gameName.toLowerCase().trim();
+                  const matchedGame = allGames.find((g) => {
+                    const normalizedGameTitle = g.name.toLowerCase().trim();
+                    return normalizedGameTitle.includes(normalizedGameName) || 
+                           normalizedGameName.includes(normalizedGameTitle);
+                  });
+                  
+                  if (matchedGame && matchedGame.code) {
+                    matchedGames.push({
+                      name: matchedGame.name,
+                      code: matchedGame.code,
+                    });
+                  }
+                }
+                
+                console.log('✅ Fallback funcionou! Usando mesmo domínio.');
+                setPopularGames(matchedGames);
+                setLoadingGames(false);
+                return;
+              }
+            } catch (fallbackErr) {
+              console.error('❌ Fallback também falhou:', fallbackErr);
+            }
+          }, 1000);
         }
         
         // Se for erro de timeout ou rede, tentar novamente após um delay
