@@ -35,11 +35,28 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
     const fetchGames = async () => {
       setLoadingGames(true);
       try {
-        // Usar endpoint otimizado para jogos populares
-        const res = await fetch(`${API_URL}/api/public/games/popular`);
-        if (!res.ok) throw new Error('Falha ao carregar jogos');
+        // Usar fetch com timeout e melhor tratamento de erros para compatibilidade entre dispositivos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
+        
+        const res = await fetch(`${API_URL}/api/public/games`, {
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+          cache: 'no-store',
+          mode: 'cors',
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) {
+          throw new Error(`Erro ${res.status}: Falha ao carregar jogos`);
+        }
+        
         const data = await res.json();
-        const fetchedGames: Game[] = (data.games || []).map((g: any) => ({
+        const allGames: Game[] = (data.games || []).map((g: any) => ({
           name: g.name || g.title || '',
           code: g.code || '',
         }));
@@ -48,7 +65,7 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
         const matchedGames: Game[] = [];
         for (const gameName of gameNamesToShow) {
           const normalizedGameName = gameName.toLowerCase().trim();
-          const matchedGame = fetchedGames.find((g) => {
+          const matchedGame = allGames.find((g) => {
             const normalizedGameTitle = g.name.toLowerCase().trim();
             return normalizedGameTitle.includes(normalizedGameName) || 
                    normalizedGameName.includes(normalizedGameTitle);
@@ -63,8 +80,18 @@ export default function Sidebar({ isOpen, onClose, filters, onFiltersChange, pro
         }
 
         setPopularGames(matchedGames);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Erro ao buscar jogos para o menu', err);
+        
+        // Se for erro de timeout ou rede, tentar novamente após um delay
+        if (err.name === 'AbortError' || err.message?.includes('Timeout') || err.message?.includes('conexão') || err.message?.includes('fetch')) {
+          console.log('Tentando novamente após erro de rede...');
+          setTimeout(() => {
+            fetchGames();
+          }, 2000);
+          return;
+        }
+        
         // Em caso de erro, usar lista estática como fallback
         setPopularGames([
           { name: 'Fortune Tiger', code: 'fortune-tiger' },

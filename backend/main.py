@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -7,12 +7,34 @@ from database import init_db, get_db
 from auth import create_admin_user
 from sqlalchemy.orm import Session
 import os
+import time
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import routes
 from routes import auth, admin, media, payments, promotions
 
-# Configurar rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# Função melhorada para obter IP do cliente (considera proxies e headers)
+def get_client_ip(request: Request) -> str:
+    """Obtém o IP real do cliente, considerando proxies e headers"""
+    # Verificar headers de proxy primeiro
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # Pegar o primeiro IP da lista (IP original do cliente)
+        return forwarded_for.split(",")[0].strip()
+    
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    
+    # Fallback para o método padrão
+    return get_remote_address(request)
+
+# Configurar rate limiter com função melhorada
+limiter = Limiter(key_func=get_client_ip)
 
 app = FastAPI(title="Lux Bet API", version="1.0.0")
 app.state.limiter = limiter
@@ -52,7 +74,42 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],  # Expor todos os headers para compatibilidade
+    max_age=3600,  # Cache preflight por 1 hora
 )
+
+# Middleware de logging e headers de compatibilidade
+@app.middleware("http")
+async def add_compatibility_headers(request: Request, call_next):
+    """Adiciona headers de compatibilidade e logging"""
+    start_time = time.time()
+    
+    # Log da requisição
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("User-Agent", "Unknown")
+    logger.info(f"Request: {request.method} {request.url.path} - IP: {client_ip} - UA: {user_agent[:100]}")
+    
+    try:
+        response = await call_next(request)
+        
+        # Adicionar headers de compatibilidade
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        
+        # Adicionar header de timing para debug
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        
+        logger.info(f"Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s")
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request {request.method} {request.url.path}: {str(e)}", exc_info=True)
+        raise
 
 # Include routers
 app.include_router(auth.router)
@@ -87,5 +144,14 @@ async def root():
 
 
 @app.get("/api/health")
-async def health():
-    return {"status": "healthy"}
+async def health(request: Request):
+    """Health check endpoint com informações de debug"""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("User-Agent", "Unknown")
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "client_ip": client_ip,
+        "user_agent": user_agent[:100],
+        "headers": dict(request.headers)
+    }
