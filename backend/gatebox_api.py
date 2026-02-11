@@ -97,8 +97,20 @@ class GateboxAPI:
                 print(f"[Gatebox] create-immediate-qrcode Status: {response.status_code}")
                 if response.status_code != 200:
                     print(f"[Gatebox] Response: {response.text[:500]}")
+                if response.status_code == 422:
+                    try:
+                        body = response.json()
+                        msg = body.get("message")
+                        if isinstance(msg, list):
+                            msg = "; ".join(str(m) for m in msg)
+                        return {"_error": "VALIDATION", "message": msg or "Dados inválidos (ex.: telefone)"}
+                    except Exception:
+                        return {"_error": "VALIDATION", "message": response.text[:200] or "Dados inválidos"}
                 response.raise_for_status()
                 return response.json()
+        except httpx.HTTPStatusError as e:
+            print(f"[Gatebox] Erro create_pix_deposit HTTP: {e}")
+            return None
         except Exception as e:
             print(f"[Gatebox] Erro create_pix_deposit: {e}")
             return None

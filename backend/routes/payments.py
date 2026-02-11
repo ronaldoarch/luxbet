@@ -15,7 +15,7 @@ from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, With
 from dependencies import get_current_user
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
-from utils import generate_fake_cpf, clean_cpf
+from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox
 from datetime import datetime, timedelta
 import json
 import uuid
@@ -325,6 +325,8 @@ async def create_pix_deposit(
     
     elif isinstance(payment_client, GateboxAPI):
         # Gatebox: externalId é nosso id de conciliação; expire em segundos
+        # Telefone: Gatebox exige formato válido (ex: +5511999999999); senão não enviar
+        phone_gatebox = normalize_phone_for_gatebox(request.payer_phone)
         external_id_dep = f"DEP_{user.id}_{int(datetime.utcnow().timestamp())}"
         pix_response = await payment_client.create_pix_deposit(
             external_id=external_id_dep,
@@ -333,7 +335,7 @@ async def create_pix_deposit(
             name=request.payer_name,
             expire_seconds=3600,
             email=request.payer_email or None,
-            phone=request.payer_phone or None,
+            phone=phone_gatebox,
             description=f"Depósito Lux Bet - {user.username}",
         )
         if pix_response:
@@ -395,6 +397,11 @@ async def create_pix_deposit(
             else:
                 print(f"ERROR: pix_response is not a dict: {type(pix_response)}")
                 print(f"ERROR: pix_response value: {pix_response}")
+    
+    # Gatebox (ou outro gateway) pode retornar erro de validação (ex.: telefone inválido)
+    if isinstance(pix_response, dict) and pix_response.get("_error") == "VALIDATION":
+        msg = pix_response.get("message", "Dados inválidos. Verifique telefone e e-mail.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     
     if not pix_response:
         raise HTTPException(
