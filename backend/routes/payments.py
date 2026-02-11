@@ -342,14 +342,17 @@ async def create_pix_deposit(
             # Usar nosso external_id como id_transaction para o depósito (webhook Gatebox envia externalId)
             id_transaction = external_id_dep
             gatebox_tx_id = (
-                pix_response.get("transactionId") or pix_response.get("id")
+                pix_response.get("uuid") or pix_response.get("identifier")
+                or pix_response.get("transactionId") or pix_response.get("id")
                 or pix_response.get("transaction_id")
             )
             if gatebox_tx_id and isinstance(pix_response, dict):
                 pix_response = dict(pix_response)
                 pix_response["gatebox_transaction_id"] = gatebox_tx_id
+            # Gatebox devolve o PIX em "key" (código copy-paste); keyType "QRCODE"
             pix_code = (
-                pix_response.get("qrCode") or pix_response.get("pixCode")
+                pix_response.get("key")
+                or pix_response.get("qrCode") or pix_response.get("pixCode")
                 or pix_response.get("copyPaste") or pix_response.get("pix_copy_and_paste")
                 or pix_response.get("paymentCode") or pix_response.get("qr_code")
             )

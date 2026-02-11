@@ -39,7 +39,9 @@ class GateboxAPI:
                 )
                 response.raise_for_status()
                 data = response.json()
-                self._token = data.get("access_token")
+                if isinstance(data, dict) and "data" in data:
+                    data = data["data"]
+                self._token = data.get("access_token") if isinstance(data, dict) else None
                 return self._token
         except Exception as e:
             print(f"[Gatebox] Erro ao obter token: {e}")
@@ -107,7 +109,11 @@ class GateboxAPI:
                     except Exception:
                         return {"_error": "VALIDATION", "message": response.text[:200] or "Dados inválidos"}
                 response.raise_for_status()
-                return response.json()
+                body = response.json()
+                # Gatebox retorna { "statusCode": 200, "data": { "key": "...", "uuid": "...", ... } }
+                if isinstance(body, dict) and "data" in body:
+                    return body["data"]
+                return body
         except httpx.HTTPStatusError as e:
             print(f"[Gatebox] Erro create_pix_deposit HTTP: {e}")
             return None
@@ -143,7 +149,10 @@ class GateboxAPI:
                     headers=self._auth_headers(token),
                 )
                 response.raise_for_status()
-                return response.json()
+                body = response.json()
+                if isinstance(body, dict) and "data" in body:
+                    return body["data"]
+                return body
         except Exception as e:
             print(f"[Gatebox] Erro get_pix_status: {e}")
             return None
@@ -185,7 +194,10 @@ class GateboxAPI:
                 if response.status_code != 200:
                     print(f"[Gatebox] Response: {response.text[:500]}")
                 response.raise_for_status()
-                return response.json()
+                body = response.json()
+                if isinstance(body, dict) and "data" in body:
+                    return body["data"]
+                return body
         except Exception as e:
             print(f"[Gatebox] Erro withdraw_pix: {e}")
             return None
@@ -203,7 +215,10 @@ class GateboxAPI:
                     headers=self._auth_headers(token),
                 )
                 response.raise_for_status()
-                return response.json()
+                body = response.json()
+                if isinstance(body, dict) and "data" in body:
+                    return body["data"]
+                return body
         except Exception as e:
             print(f"[Gatebox] Erro get_balance: {e}")
             return None
@@ -223,7 +238,10 @@ class GateboxAPI:
                     headers=self._auth_headers(token),
                 )
                 response.raise_for_status()
-                return response.json()
+                body = response.json()
+                if isinstance(body, dict) and "data" in body:
+                    return body["data"]
+                return body
         except Exception as e:
             print(f"[Gatebox] Erro validate_pix_key: {e}")
             return None
