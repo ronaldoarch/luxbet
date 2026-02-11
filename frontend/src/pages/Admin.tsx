@@ -924,7 +924,11 @@ function GatewaysTab({ token }: { token: string }) {
     client_id: '',
     client_secret: '',
     api_key: '', // Para NXGATE
-    sandbox: true
+    sandbox: true,
+    // Gatebox
+    api_url: 'https://api.gatebox.com.br',
+    username: '',
+    password: ''
   });
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -941,12 +945,20 @@ function GatewaysTab({ token }: { token: string }) {
   };
 
   const resetForm = () => {
-    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true });
+    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true, api_url: 'https://api.gatebox.com.br', username: '', password: '' });
     setEditingId(null);
   };
 
   const prepareCredentials = () => {
     const gatewayName = form.name.toLowerCase();
+    // Gatebox usa username, password e api_url
+    if (gatewayName.includes('gatebox')) {
+      return JSON.stringify({
+        username: form.username,
+        password: form.password,
+        api_url: (form.api_url || 'https://api.gatebox.com.br').trim() || 'https://api.gatebox.com.br'
+      });
+    }
     // NXGATE usa apenas api_key
     if (gatewayName.includes('nxgate') || gatewayName.includes('nx')) {
       return JSON.stringify({
@@ -1026,7 +1038,10 @@ function GatewaysTab({ token }: { token: string }) {
       client_id: '',
       client_secret: '',
       api_key: '',
-      sandbox: true
+      sandbox: true,
+      api_url: 'https://api.gatebox.com.br',
+      username: '',
+      password: ''
     });
 
     // Parse credentials se existir
@@ -1038,7 +1053,10 @@ function GatewaysTab({ token }: { token: string }) {
           client_id: creds.client_id || creds.ci || '',
           client_secret: creds.client_secret || creds.cs || '',
           api_key: creds.api_key || '',
-          sandbox: creds.sandbox !== undefined ? creds.sandbox : true
+          sandbox: creds.sandbox !== undefined ? creds.sandbox : true,
+          api_url: creds.api_url || 'https://api.gatebox.com.br',
+          username: creds.username || '',
+          password: creds.password || ''
         }));
       } catch (e) {
         // Se não for JSON, deixa vazio
@@ -1099,7 +1117,42 @@ function GatewaysTab({ token }: { token: string }) {
           </div>
 
           {/* Campos dinâmicos baseados no nome do gateway */}
-          {(form.name.toLowerCase().includes('nxgate') || form.name.toLowerCase().includes('nx')) ? (
+          {form.name.toLowerCase().includes('gatebox') ? (
+            // Gatebox - API URL, Username, Password
+            <>
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-400 mb-1">API URL</label>
+                <input 
+                  type="text"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+                  placeholder="https://api.gatebox.com.br"
+                  value={form.api_url} 
+                  onChange={e=>setForm({...form, api_url:e.target.value})}
+                />
+                <p className="text-xs text-gray-500 mt-1">URL base da API Gatebox (opcional: padrão https://api.gatebox.com.br)</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Username</label>
+                <input 
+                  type="text"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+                  placeholder="Ex: CNPJ ou usuário Gatebox"
+                  value={form.username} 
+                  onChange={e=>setForm({...form, username:e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Password</label>
+                <input 
+                  type="password"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none" 
+                  placeholder="Senha de acesso à API Gatebox"
+                  value={form.password} 
+                  onChange={e=>setForm({...form, password:e.target.value})}
+                />
+              </div>
+            </>
+          ) : (form.name.toLowerCase().includes('nxgate') || form.name.toLowerCase().includes('nx')) ? (
             // NXGATE - apenas API Key
             <div className="md:col-span-2">
               <label className="block text-sm text-gray-400 mb-1">API Key</label>
@@ -1246,7 +1299,29 @@ function GatewaysTab({ token }: { token: string }) {
                   {credentials && (
                     <div className="space-y-3 pt-4 border-t border-gray-700/50">
                       {/* Mostrar campos baseados no tipo de gateway */}
-                      {credentials.api_key ? (
+                      {credentials.username !== undefined ? (
+                        // Gatebox
+                        <>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">API URL</span>
+                            <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded truncate max-w-[180px]" title={credentials.api_url || ''}>
+                              {credentials.api_url || 'https://api.gatebox.com.br'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Username</span>
+                            <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                              {credentials.username || '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Password</span>
+                            <span className="text-white font-mono text-xs bg-gray-900/50 px-2 py-1 rounded">
+                              {credentials.password ? '••••••••••••' : '—'}
+                            </span>
+                          </div>
+                        </>
+                      ) : credentials.api_key ? (
                         // NXGATE
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-gray-400">API Key</span>
