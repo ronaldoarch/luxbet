@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -73,10 +74,36 @@ app.add_middleware(
     max_age=3600,  # Cache preflight por 1 hora
 )
 
+
+def _cors_headers(origin=None) -> dict:
+    """Headers CORS para garantir que a resposta seja aceita pelo browser (luxbet.site -> api.luxbet.site).
+    Com credentials=true, o browser exige que Allow-Origin seja o origin específico, não *."""
+    allow_origin = origin if origin else "*"
+    return {
+        "Access-Control-Allow-Origin": allow_origin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "3600",
+    }
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Garante que qualquer exceção não tratada retorne JSON com headers CORS (evita CORS block no browser)."""
+    logger.error(f"Unhandled exception: {request.method} {request.url.path} - {exc}", exc_info=True)
+    origin = request.headers.get("Origin")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Erro interno no servidor. Tente novamente ou contate o suporte."},
+        headers=_cors_headers(origin),
+    )
+
+
 # Middleware de logging e headers de compatibilidade
 @app.middleware("http")
 async def add_compatibility_headers(request: Request, call_next):
-    """Adiciona headers de compatibilidade e logging"""
+    """Adiciona headers de compatibilidade e CORS em todas as respostas."""
     start_time = time.time()
     
     # Log da requisição
@@ -84,13 +111,17 @@ async def add_compatibility_headers(request: Request, call_next):
     user_agent = request.headers.get("User-Agent", "Unknown")
     origin = request.headers.get("Origin", "No Origin")
     
-    # Log detalhado para debug de CORS
     logger.info(f"Request: {request.method} {request.url.path} - IP: {client_ip} - Origin: {origin} - UA: {user_agent[:100]}")
     
     try:
         response = await call_next(request)
         
-        # Adicionar headers de compatibilidade
+        # Garantir CORS em toda resposta (evita "blocked by CORS" quando proxy ou erro não envia o header)
+        origin = request.headers.get("Origin")
+        for key, value in _cors_headers(origin).items():
+            response.headers[key] = value
+        
+        # Outros headers de compatibilidade
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -98,18 +129,20 @@ async def add_compatibility_headers(request: Request, call_next):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
         
-        # Adicionar header de timing para debug
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
         
-        # Log CORS headers na resposta para debug
-        cors_origin = response.headers.get("Access-Control-Allow-Origin", "Not Set")
-        logger.info(f"Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s - CORS-Origin: {cors_origin}")
+        logger.info(f"Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s")
         
         return response
     except Exception as e:
         logger.error(f"Error processing request {request.method} {request.url.path}: {str(e)}", exc_info=True)
-        raise
+        origin = request.headers.get("Origin")
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Falha temporária no servidor. Tente novamente."},
+            headers=_cors_headers(origin),
+        )
 
 # Include routers
 app.include_router(auth.router)
