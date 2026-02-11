@@ -118,6 +118,23 @@ class NXGateAPI:
                 except:
                     response_data = None
                 
+                # Verificar erro de autenticação LottoPay (HTTP 500)
+                if response.status_code == 500 and response_data:
+                    error_msg = response_data.get("error", "")
+                    detalhe = response_data.get("detalhe", "")
+                    
+                    if "LottoPay" in error_msg or "lottopay" in str(response_data).lower() or "autenticar" in detalhe.lower():
+                        print(f"\n{'='*80}")
+                        print(f"NXGATE {endpoint} - ⚠️  ERRO 500: Falha ao autenticar na LottoPay")
+                        print(f"NXGATE {endpoint} - Response: {response_data}")
+                        print(f"NXGATE {endpoint} - Possíveis causas:")
+                        print(f"  - API Key inválida ou expirada")
+                        print(f"  - API Key sem permissão para usar LottoPay")
+                        print(f"  - Credenciais LottoPay não configuradas no NXGate")
+                        print(f"  - Problema na conta LottoPay vinculada")
+                        print(f"{'='*80}\n")
+                        return {"_error": "LOTTOPAY_AUTH_FAILED", "message": detalhe or error_msg, "response": response_data}
+                
                 # Verificar erros específicos antes de fazer raise_for_status
                 if response.status_code == 403:
                     # Tentar obter mensagem de erro de várias formas
@@ -196,6 +213,27 @@ class NXGateAPI:
                         print(f"NXGATE {endpoint} - ⚠️  Verifique se este IP está autorizado na conta NXGate")
                     print(f"{'='*80}\n")
                     return {"_error": "IP_NOT_AUTHORIZED", "message": error_message or "IP não autorizado", "detected_ip": server_ip}
+            
+            # Verificar erro de autenticação LottoPay (HTTP 500) no exception handler
+            if e.response and e.response.status_code == 500:
+                try:
+                    error_json = e.response.json() if e.response else {}
+                    error_msg = error_json.get("error", "")
+                    detalhe = error_json.get("detalhe", "")
+                    
+                    if "LottoPay" in error_msg or "lottopay" in str(error_json).lower() or "autenticar" in detalhe.lower():
+                        print(f"\n{'='*80}")
+                        print(f"NXGATE {endpoint} - ⚠️  ERRO 500: Falha ao autenticar na LottoPay")
+                        print(f"NXGATE {endpoint} - Response: {error_json}")
+                        print(f"NXGATE {endpoint} - Possíveis causas:")
+                        print(f"  - API Key inválida ou expirada")
+                        print(f"  - API Key sem permissão para usar LottoPay")
+                        print(f"  - Credenciais LottoPay não configuradas no NXGate")
+                        print(f"  - Problema na conta LottoPay vinculada")
+                        print(f"{'='*80}\n")
+                        return {"_error": "LOTTOPAY_AUTH_FAILED", "message": detalhe or error_msg, "response": error_json}
+                except:
+                    pass
             
             print(f"\n{'='*80}")
             print(f"NXGATE {endpoint} - ❌ ERRO HTTP {e.response.status_code}")

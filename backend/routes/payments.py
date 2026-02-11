@@ -10,6 +10,7 @@ from database import get_db
 from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, BetStatus, Affiliate, Manager, FTD, Notification, NotificationType, FTDSettings, UserRole, Promotion, PromotionType
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
+from gatebox_api import GateboxAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse, ManagerCreateSubAffiliate
 from dependencies import get_current_user
 from auth import get_password_hash
@@ -45,14 +46,26 @@ def get_active_pix_gateway(db: Session) -> Gateway:
 def get_payment_client(gateway: Gateway):
     """
     Cria cliente de pagamento baseado no nome do gateway
-    Suporta: SuitPay e NXGATE
+    Suporta: SuitPay, NXGATE e Gatebox
     """
     try:
         credentials = json.loads(gateway.credentials) if gateway.credentials else {}
         gateway_name = gateway.name.lower()
         print(f"[Payment Client] Criando cliente para gateway: {gateway.name} (nome normalizado: {gateway_name})")
         
-        if "nxgate" in gateway_name or "nx" in gateway_name:
+        if "gatebox" in gateway_name:
+            print(f"[Payment Client] Detectado como Gatebox")
+            username = credentials.get("username")
+            password = credentials.get("password")
+            api_url = credentials.get("api_url", "https://api.gatebox.com.br").rstrip("/")
+            if not username or not password:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Credenciais do gateway Gatebox não configuradas (username e password)"
+                )
+            return GateboxAPI(username=username, password=password, api_url=api_url)
+        
+        elif "nxgate" in gateway_name or "nx" in gateway_name:
             print(f"[Payment Client] Detectado como NXGATE")
             # NXGATE usa apenas api_key
             api_key = credentials.get("api_key")
@@ -82,7 +95,7 @@ def get_payment_client(gateway: Gateway):
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Gateway '{gateway.name}' não suportado. Use 'NXGATE' ou 'SuitPay'"
+                detail=f"Gateway '{gateway.name}' não suportado. Use 'Gatebox', 'NXGATE' ou 'SuitPay'"
             )
     except json.JSONDecodeError:
         raise HTTPException(
@@ -294,9 +307,55 @@ async def create_pix_deposit(
             webhook=callback_url
         )
         
+        # Verificar erro específico de autenticação LottoPay
+        if pix_response and isinstance(pix_response, dict) and pix_response.get("_error") == "LOTTOPAY_AUTH_FAILED":
+            error_message = pix_response.get("message", "Falha ao autenticar na LottoPay")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    f"Erro de autenticação NXGate com LottoPay: {error_message}. "
+                    "Verifique: (1) API Key válida no painel NXGate, (2) Integração LottoPay ativa, "
+                    "(3) Credenciais LottoPay configuradas no NXGate, ou (4) Contate suporte NXGate."
+                )
+            )
+        
         if pix_response:
             id_transaction = pix_response.get("idTransaction")
             pix_code = pix_response.get("pix_copy_and_paste") or pix_response.get("qr_code")
+    
+    elif isinstance(payment_client, GateboxAPI):
+        # Gatebox: externalId é nosso id de conciliação; expire em segundos
+        external_id_dep = f"DEP_{user.id}_{int(datetime.utcnow().timestamp())}"
+        pix_response = await payment_client.create_pix_deposit(
+            external_id=external_id_dep,
+            amount=request.amount,
+            document=payer_tax_id,
+            name=request.payer_name,
+            expire_seconds=3600,
+            email=request.payer_email or None,
+            phone=request.payer_phone or None,
+            description=f"Depósito Lux Bet - {user.username}",
+        )
+        if pix_response:
+            # Usar nosso external_id como id_transaction para o depósito (webhook Gatebox envia externalId)
+            id_transaction = external_id_dep
+            gatebox_tx_id = (
+                pix_response.get("transactionId") or pix_response.get("id")
+                or pix_response.get("transaction_id")
+            )
+            if gatebox_tx_id and isinstance(pix_response, dict):
+                pix_response = dict(pix_response)
+                pix_response["gatebox_transaction_id"] = gatebox_tx_id
+            pix_code = (
+                pix_response.get("qrCode") or pix_response.get("pixCode")
+                or pix_response.get("copyPaste") or pix_response.get("pix_copy_and_paste")
+                or pix_response.get("paymentCode") or pix_response.get("qr_code")
+            )
+            if not pix_response.get("paymentCodeBase64"):
+                qr_b64 = pix_response.get("qrCodeBase64") or pix_response.get("base_64_image")
+                if qr_b64:
+                    pix_response = dict(pix_response)
+                    pix_response["paymentCodeBase64"] = qr_b64
     
     elif isinstance(payment_client, SuitPayAPI):
         # SuitPay
@@ -589,6 +648,28 @@ async def create_pix_withdrawal(
                         print(f"[Withdrawal] ✅ NXGate processou saque (status não claro mas tem ID). ID: {id_transaction}")
                     else:
                         print(f"[Withdrawal] ⚠️  Resposta da NXGate sem ID de transação: {transfer_response}")
+        
+        elif isinstance(payment_client, GateboxAPI):
+            # Gatebox: key, name, amount, documentNumber (se validação ativa), externalId
+            print(f"[Withdrawal] Usando Gatebox para processar saque")
+            doc_number = request.document_validation or (user.cpf if getattr(user, "cpf", None) else None)
+            if not doc_number and getattr(user, "cpf", None):
+                doc_number = user.cpf
+            transfer_response = await payment_client.withdraw_pix(
+                external_id=external_id,
+                key=request.pix_key,
+                name=user.username or "Cliente",
+                amount=request.amount,
+                document_number=doc_number,
+                description=f"Saque Lux Bet - {user.username}",
+            )
+            if transfer_response:
+                id_transaction = (
+                    transfer_response.get("transactionId") or transfer_response.get("id")
+                    or transfer_response.get("endToEnd") or transfer_response.get("externalId")
+                    or external_id
+                )
+                print(f"[Withdrawal] Gatebox Response - ID: {id_transaction}")
         
         elif isinstance(payment_client, SuitPayAPI):
             # SuitPay
@@ -1063,6 +1144,99 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
         import traceback
         traceback.print_exc()
         print(f"{'='*80}\n")
+        return {"status": "error", "message": str(e)}
+
+
+@webhook_router.post("/gatebox/pix-cashin")
+async def webhook_gatebox_pix_cashin(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook para notificações de PIX Cash-in (depósitos) da Gatebox.
+    Configure na Gatebox a URL: {WEBHOOK_BASE_URL}/api/webhooks/gatebox/pix-cashin
+    Payload esperado (ex.): externalId, transactionId, status (ex.: PAID, COMPLETED, CONCLUIDO).
+    """
+    try:
+        data = await request.json()
+        external_id = data.get("externalId") or data.get("external_id")
+        transaction_id = data.get("transactionId") or data.get("transaction_id")
+        status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
+        if not external_id and not transaction_id:
+            return {"status": "received", "message": "externalId ou transactionId não encontrado"}
+        deposit = None
+        if external_id:
+            deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
+        if not deposit and transaction_id:
+            deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+        if not deposit:
+            return {"status": "received", "message": "Depósito não encontrado"}
+        if status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+            if deposit.status != TransactionStatus.APPROVED:
+                deposit.status = TransactionStatus.APPROVED
+                user = db.query(User).filter(User.id == deposit.user_id).first()
+                if user:
+                    db.refresh(user)
+                    user.balance += deposit.amount
+                    apply_promotion_bonus(db, user, deposit)
+                    update_affiliate_on_deposit_approved(db, user, deposit)
+                    notification = Notification(
+                        title="✅ Depósito Aprovado!",
+                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado. Saldo atual: R$ {float(user.balance):.2f}",
+                        type=NotificationType.SUCCESS,
+                        user_id=user.id,
+                        is_read=False,
+                        is_active=True,
+                        link="/conta",
+                    )
+                    db.add(notification)
+        metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+        metadata["webhook_data"] = data
+        metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+        deposit.metadata_json = json.dumps(metadata)
+        db.commit()
+        return {"status": "ok", "message": "Webhook processado"}
+    except Exception as e:
+        print(f"[Webhook Gatebox pix-cashin] Erro: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@webhook_router.post("/gatebox/pix-cashout")
+async def webhook_gatebox_pix_cashout(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook para notificações de PIX Cash-out (saques) da Gatebox.
+    Configure na Gatebox: {WEBHOOK_BASE_URL}/api/webhooks/gatebox/pix-cashout
+    Payload esperado: externalId ou transactionId, status (ex.: COMPLETED, SUCCESS, ERROR, CANCELLED).
+    """
+    try:
+        data = await request.json()
+        external_id = data.get("externalId") or data.get("external_id")
+        transaction_id = data.get("transactionId") or data.get("transaction_id")
+        status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
+        if not external_id and not transaction_id:
+            return {"status": "received", "message": "externalId ou transactionId não encontrado"}
+        withdrawal = None
+        if external_id:
+            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == external_id).first()
+        if not withdrawal and transaction_id:
+            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
+        if not withdrawal:
+            return {"status": "received", "message": "Saque não encontrado"}
+        if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO"):
+            if withdrawal.status != TransactionStatus.APPROVED:
+                withdrawal.status = TransactionStatus.APPROVED
+        elif status_val in ("ERROR", "CANCELLED", "REJECTED", "FAILED"):
+            if withdrawal.status == TransactionStatus.PENDING:
+                user = db.query(User).filter(User.id == withdrawal.user_id).first()
+                if user:
+                    db.refresh(user)
+                    user.balance += withdrawal.amount
+            withdrawal.status = TransactionStatus.REJECTED
+        metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
+        metadata["webhook_data"] = data
+        metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+        withdrawal.metadata_json = json.dumps(metadata)
+        db.commit()
+        return {"status": "ok", "message": "Webhook processado"}
+    except Exception as e:
+        print(f"[Webhook Gatebox pix-cashout] Erro: {e}")
         return {"status": "error", "message": str(e)}
 
 
