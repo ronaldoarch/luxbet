@@ -15,7 +15,7 @@ from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, With
 from dependencies import get_current_user
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
-from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox
+from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox, normalize_pix_key_for_gatebox
 from datetime import datetime, timedelta
 import json
 import logging
@@ -327,8 +327,7 @@ async def create_pix_deposit(
             pix_code = pix_response.get("pix_copy_and_paste") or pix_response.get("qr_code")
     
     elif isinstance(payment_client, GateboxAPI):
-        # Gatebox: externalId é nosso id de conciliação; expire em segundos
-        # Telefone: Gatebox exige formato válido (ex: +5511999999999); senão não enviar
+        # Gatebox: externalId, document, name; telefone em E.164 com +55 (só envia se normalizar para +55)
         phone_gatebox = normalize_phone_for_gatebox(request.payer_phone)
         external_id_dep = f"DEP_{user.id}_{int(datetime.utcnow().timestamp())}"
         pix_response = await payment_client.create_pix_deposit(
@@ -680,17 +679,21 @@ async def create_pix_withdrawal(
                         print(f"[Withdrawal] ⚠️  Resposta da NXGate sem ID de transação: {transfer_response}")
         
         elif isinstance(payment_client, GateboxAPI):
-            # Gatebox: key, name, amount, documentNumber (se validação ativa), externalId
+            # Gatebox: key (chave normalizada por tipo), name, amount, documentNumber, externalId
             print(f"[Withdrawal] Usando Gatebox para processar saque")
             doc_number = request.document_validation or (user.cpf if getattr(user, "cpf", None) else None)
             if not doc_number and getattr(user, "cpf", None):
                 doc_number = user.cpf
+            if doc_number:
+                doc_number = "".join(c for c in str(doc_number) if c.isdigit())
+            # Tratamento das chaves: phone com +55, document só dígitos, demais tipos limpos
+            key_gatebox = normalize_pix_key_for_gatebox(request.pix_key, request.pix_key_type)
             transfer_response = await payment_client.withdraw_pix(
                 external_id=external_id,
-                key=request.pix_key,
+                key=key_gatebox,
                 name=user.username or "Cliente",
                 amount=request.amount,
-                document_number=doc_number,
+                document_number=doc_number or None,
                 description=f"Saque Lux Bet - {user.username}",
             )
             if transfer_response:
@@ -1277,20 +1280,27 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
     """
     try:
         data = await request.json()
-        # Gatebox pode enviar payload no topo ou dentro de "data"
+        # Gatebox pode enviar payload no topo, dentro de "data", em "transaction" ou "invoice"
         inner = data.get("data")
-        if isinstance(inner, dict):
-            external_id = data.get("externalId") or data.get("external_id") or inner.get("externalId") or inner.get("external_id")
-            transaction_id = data.get("transactionId") or data.get("transaction_id") or inner.get("transactionId") or inner.get("transaction_id")
-            gatebox_uuid = data.get("uuid") or inner.get("uuid")
-            gatebox_identifier = data.get("identifier") or inner.get("identifier")
-        else:
-            external_id = data.get("externalId") or data.get("external_id")
-            transaction_id = data.get("transactionId") or data.get("transaction_id")
-            gatebox_uuid = data.get("uuid")
-            gatebox_identifier = data.get("identifier")
+        transaction_obj = data.get("transaction") or (inner.get("transaction") if isinstance(inner, dict) else None)
+        invoice_obj = data.get("invoice") or (inner.get("invoice") if isinstance(inner, dict) else None)
+
+        def _get(*keys):
+            for obj in (data, inner, transaction_obj, invoice_obj):
+                if not isinstance(obj, dict):
+                    continue
+                for k in keys:
+                    v = obj.get(k) or (obj.get(k.replace("Id", "_id")) if "Id" in k else None)
+                    if v is not None:
+                        return v
+            return None
+
+        external_id = _get("externalId", "external_id")
+        transaction_id = _get("transactionId", "transaction_id")
+        gatebox_uuid = data.get("uuid") or (inner.get("uuid") if isinstance(inner, dict) else None) or (transaction_obj.get("uuid") if isinstance(transaction_obj, dict) else None)
+        gatebox_identifier = data.get("identifier") or (inner.get("identifier") if isinstance(inner, dict) else None) or (transaction_obj.get("identifier") if isinstance(transaction_obj, dict) else None)
         logger.info("[Webhook Gatebox] Payload: externalId=%r, transactionId=%r, uuid=%r, identifier=%r, type=%r, status=%r",
-                    external_id, transaction_id, gatebox_uuid, gatebox_identifier, data.get("type"), data.get("status"))
+                    external_id, transaction_id, gatebox_uuid, gatebox_identifier, data.get("type") or data.get("event"), data.get("status"))
         logger.info("[Webhook Gatebox] Top-level keys: %s", list(data.keys()) if isinstance(data, dict) else "not-dict")
         if not external_id and not transaction_id and not gatebox_uuid and not gatebox_identifier:
             return {"status": "received", "message": "externalId/transactionId/uuid/identifier não encontrado"}
@@ -1350,7 +1360,12 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
                 logger.warning("[Webhook Gatebox] Fallback status API falhou: %s", e)
 
         # Fallback 2: status por uuid pode não devolver externalId. Se webhook é COMPLETED, consultar PENDING por external_id.
-        status_val = (data.get("status") or (data.get("data") or {}).get("status") or "").upper()
+        status_val = (
+            data.get("status") or (data.get("data") or {}).get("status")
+            or (transaction_obj.get("status") if isinstance(transaction_obj, dict) else None)
+            or (invoice_obj.get("status") if isinstance(invoice_obj, dict) else None)
+            or ""
+        ).upper()
         success_statuses = ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS")
         if not deposit and not withdrawal and status_val in success_statuses:
             try:
@@ -1392,6 +1407,35 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
                 pass
             except Exception as e:
                 logger.warning("[Webhook Gatebox] Fallback 2 (PENDING por external_id) falhou: %s", e)
+
+        # Fallback para falha de saque: webhook veio com status FAILED mas não achamos o saque (ex.: externalId só em objeto aninhado que não lemos).
+        # Consultar saques PENDING recentes por external_id na API; se algum retornar status de falha, devolver saldo.
+        fail_statuses = _GATEBOX_WITHDRAWAL_FAIL_STATUSES
+        if not withdrawal and status_val in fail_statuses and is_cashout:
+            try:
+                gateway = get_active_pix_gateway(db)
+                client = get_payment_client(gateway)
+                if isinstance(client, GateboxAPI):
+                    pending_withdrawals = db.query(Withdrawal).filter(
+                        Withdrawal.status == TransactionStatus.PENDING,
+                        Withdrawal.external_id.isnot(None),
+                    ).order_by(Withdrawal.created_at.desc()).limit(10).all()
+                    for w in pending_withdrawals:
+                        if not w.external_id:
+                            continue
+                        st = await client.get_pix_status(external_id=w.external_id)
+                        if isinstance(st, dict):
+                            s = (st.get("status") or "").upper()
+                            if s in fail_statuses:
+                                logger.info("[Webhook Gatebox] Fallback falha: saque external_id=%r com status=%s; devolvendo saldo", w.external_id, s)
+                                withdrawal = w
+                                break
+            except HTTPException:
+                pass
+            except Exception as e:
+                logger.warning("[Webhook Gatebox] Fallback falha (PENDING por external_id) falhou: %s", e)
+        if withdrawal and status_val in fail_statuses:
+            return await _process_gatebox_withdrawal_fail(data, withdrawal, db, reason="cashout_fail")
 
         if deposit and withdrawal:
             return await _process_gatebox_cashout(data, withdrawal, db) if is_cashout else await _process_gatebox_cashin(data, deposit, db)

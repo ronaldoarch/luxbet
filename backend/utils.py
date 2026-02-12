@@ -71,20 +71,48 @@ def clean_cpf(cpf: str) -> str:
 
 def normalize_phone_for_gatebox(phone: Optional[str]) -> Optional[str]:
     """
-    Normaliza telefone para formato E.164 (+5511999999999) aceito pela Gatebox.
-    Se o valor for inválido ou vazio, retorna None (não enviar o campo).
+    Normaliza telefone para formato E.164 com +55 (Brasil), exigido pela Gatebox.
+    Ex.: 11999999999 -> +5511999999999 | 21987654321 -> +5521987654321
+    Retorna None apenas se não houver dígitos suficientes para formar um número válido.
     """
     if not phone or not str(phone).strip():
         return None
-    digits = ''.join(c for c in str(phone) if c.isdigit())
-    # Brasil: 10 dígitos (DDD 2 + 8) ou 11 (DDD 2 + 9)
+    digits = "".join(c for c in str(phone) if c.isdigit())
+    if not digits:
+        return None
+    # Brasil: +55 (DDI) + DDD (2) + número (8 ou 9 dígitos)
+    # 10 dígitos: DDD + 8 (fixo)
     if len(digits) == 10:
         return f"+55{digits}"
+    # 11 dígitos: DDD + 9 (celular)
     if len(digits) == 11:
         return f"+55{digits}"
-    # Já tem código do país (ex: 55...)
-    if len(digits) >= 12 and digits.startswith('55'):
-        return f"+{digits}" if not digits.startswith('+') else f"+{digits[1:]}"
+    # 9 dígitos: apenas número (celular) — assume DDD 11 (SP) para formar +5511XXXXXXXXX
+    if len(digits) == 9:
+        return f"+5511{digits}"
+    # Já vem com 55 na frente (12+ dígitos)
+    if len(digits) >= 12 and digits.startswith("55"):
+        return f"+{digits}"
     if len(digits) >= 12:
         return f"+{digits}"
     return None
+
+
+def normalize_pix_key_for_gatebox(key: Optional[str], key_type: Optional[str]) -> str:
+    """
+    Normaliza a chave PIX conforme o tipo para envio à API Gatebox.
+    - phoneNumber: E.164 com +55 (ex.: +5511999999999)
+    - document (CPF/CNPJ): apenas dígitos
+    - email, randomKey, paymentCode: valor limpo (strip)
+    """
+    if not key or not str(key).strip():
+        return (key or "").strip()
+    key = str(key).strip()
+    key_type = (key_type or "").strip().lower()
+    if key_type == "phonenumber" or key_type == "phone":
+        normalized = normalize_phone_for_gatebox(key)
+        return normalized if normalized else key
+    if key_type == "document":
+        return "".join(c for c in key if c.isdigit())
+    # email, randomkey, paymentcode: retorna sem espaços extras
+    return key
