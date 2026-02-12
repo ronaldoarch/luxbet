@@ -1460,11 +1460,16 @@ async def _process_gatebox_cashin(data: dict, deposit: Deposit, db: Session) -> 
                 logger.info("[Webhook Gatebox] Creditando saldo: deposit_id=%s, user_id=%s, amount=%s", deposit.id, user.id, deposit.amount)
                 db.refresh(user)
                 user.balance += deposit.amount
-                apply_promotion_bonus(db, user, deposit)
+                db.flush()  # Enviar depósito ao DB antes do bônus (apply_promotion_bonus faz db.refresh e perderia o valor)
+                bonus_amount = apply_promotion_bonus(db, user, deposit)
                 update_affiliate_on_deposit_approved(db, user, deposit)
+                message = f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado e creditado na sua conta."
+                if bonus_amount:
+                    message += f" Você também recebeu um bônus de R$ {bonus_amount:.2f}!"
+                message += f" Saldo atual: R$ {float(user.balance):.2f}"
                 notification = Notification(
                     title="✅ Depósito Aprovado!",
-                    message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado. Saldo atual: R$ {float(user.balance):.2f}",
+                    message=message,
                     type=NotificationType.SUCCESS,
                     user_id=user.id,
                     is_read=False,
