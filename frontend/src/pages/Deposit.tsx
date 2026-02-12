@@ -175,14 +175,17 @@ export default function Deposit() {
         
         if (res.ok) {
           const notifications = await res.json();
-          
-          // Procurar notificação de depósito aprovado recente
-          const depositNotification = notifications.find((n: any) => 
-            n.type === 'success' && 
-            (n.title.includes('Depósito') || n.message.includes('depósito')) &&
-            n.message.includes(deposit.amount.toFixed(2))
-          );
-          
+          const depositCreatedAt = deposit.created_at ? new Date(deposit.created_at).getTime() : 0;
+
+          // Procurar notificação de depósito aprovado que seja DESTE depósito (criada depois do depósito)
+          const depositNotification = notifications.find((n: any) => {
+            if (n.type !== 'success') return false;
+            if (!n.title?.includes('Depósito') && !n.message?.includes('depósito')) return false;
+            if (!n.message?.includes(deposit.amount.toFixed(2))) return false;
+            const notifCreatedAt = n.created_at ? new Date(n.created_at).getTime() : 0;
+            return notifCreatedAt >= depositCreatedAt - 2000;
+          });
+
           if (depositNotification) {
             console.log('[Deposit] ✅ Pagamento confirmado via notificação! Atualizando saldo...');
             setPaymentConfirmed(true);
