@@ -1304,12 +1304,13 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
         deposit = _find_deposit_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
         withdrawal = _find_withdrawal_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
 
-        # Fallback: webhook pode enviar apenas uuid do pagamento (diferente do uuid do QR). Consultar status na Gatebox para obter externalId.
+        # Fallback 1: webhook pode enviar apenas uuid do pagamento. Consultar status na Gatebox por transactionId para obter externalId.
         if not deposit and not withdrawal and (gatebox_uuid or transaction_id):
             try:
                 gateway = get_active_pix_gateway(db)
                 client = get_payment_client(gateway)
                 if isinstance(client, GateboxAPI):
+                    logger.info("[Webhook Gatebox] Fallback: consultando status por transaction_id=%r", gatebox_uuid or transaction_id)
                     status_data = await client.get_pix_status(
                         transaction_id=gatebox_uuid or transaction_id,
                         external_id=external_id,
@@ -1334,6 +1335,32 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
                 pass
             except Exception as e:
                 logger.warning("[Webhook Gatebox] Fallback status API falhou: %s", e)
+
+        # Fallback 2: status por uuid pode não devolver externalId. Se webhook é COMPLETED, consultar depósitos PENDING por external_id.
+        status_val = (data.get("status") or (data.get("data") or {}).get("status") or "").upper()
+        if not deposit and not withdrawal and status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+            try:
+                gateway = get_active_pix_gateway(db)
+                client = get_payment_client(gateway)
+                if isinstance(client, GateboxAPI):
+                    pending_deposits = db.query(Deposit).filter(
+                        Deposit.status == TransactionStatus.PENDING,
+                        Deposit.external_id.isnot(None),
+                    ).order_by(Deposit.created_at.desc()).limit(10).all()
+                    for dep in pending_deposits:
+                        if not dep.external_id:
+                            continue
+                        st = await client.get_pix_status(external_id=dep.external_id)
+                        if isinstance(st, dict):
+                            s = (st.get("status") or "").upper()
+                            if s in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+                                logger.info("[Webhook Gatebox] Fallback 2: depósito encontrado por external_id=%r (status=%s)", dep.external_id, s)
+                                deposit = dep
+                                break
+            except HTTPException:
+                pass
+            except Exception as e:
+                logger.warning("[Webhook Gatebox] Fallback 2 (PENDING por external_id) falhou: %s", e)
 
         if deposit and withdrawal:
             return await _process_gatebox_cashout(data, withdrawal, db) if is_cashout else await _process_gatebox_cashin(data, deposit, db)
