@@ -623,10 +623,7 @@ async def gatebox_diagnostico(
         "gatebox_config": config_info,
         "auth_ok": auth_ok,
         "auth_error": auth_error,
-        "webhook_urls": {
-            "pix_cashin": f"{os.getenv('WEBHOOK_BASE_URL', 'https://api.luxbet.site')}/api/webhooks/gatebox/pix-cashin",
-            "pix_cashout": f"{os.getenv('WEBHOOK_BASE_URL', 'https://api.luxbet.site')}/api/webhooks/gatebox/pix-cashout",
-        },
+        "webhook_url": f"{os.getenv('WEBHOOK_BASE_URL', 'https://api.luxbet.site')}/api/webhooks/gatebox",
     }
 
 

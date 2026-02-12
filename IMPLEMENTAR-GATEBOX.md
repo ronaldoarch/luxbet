@@ -55,31 +55,27 @@ Se preferir usar variáveis de ambiente ao invés do painel admin, o backend pod
 
 ---
 
-## 🌐 Passo 2: Configurar Webhooks no Painel Gatebox
+## 🌐 Passo 2: Configurar Webhook no Painel Gatebox
 
-Os webhooks são **obrigatórios** para depósitos e saques serem processados automaticamente.
+O webhook é **obrigatório** para depósitos e saques serem processados automaticamente. A Gatebox usa **uma única URL** para todos os eventos.
 
 1. **Acesse o painel administrativo da Gatebox**
 
-2. **Configure as URLs dos webhooks:**
-   - **Cash-in (depósito):**
-     ```
-     https://sua-api.com/api/webhooks/gatebox/pix-cashin
-     ```
-   - **Cash-out (saque):**
-     ```
-     https://sua-api.com/api/webhooks/gatebox/pix-cashout
-     ```
+2. **Configure a URL do webhook (uma para todos os eventos):**
+   ```
+   https://sua-api.com/api/webhooks/gatebox
+   ```
    Exemplo com domínio:
    ```
-   https://api.luxbet.site/api/webhooks/gatebox/pix-cashin
-   https://api.luxbet.site/api/webhooks/gatebox/pix-cashout
+   https://api.luxbet.site/api/webhooks/gatebox
    ```
 
 3. **Salve a configuração no painel Gatebox**
 
+O sistema identifica se o evento é depósito (cash-in) ou saque (cash-out) pelo payload (`type`/`event`/`transactionType`) ou pelo `externalId` (busca em depósitos e saques).
+
 **⚠️ Importante:**
-- Os webhooks devem ser acessíveis publicamente (sem autenticação)
+- O webhook deve ser acessível publicamente (sem autenticação)
 - Use HTTPS (não HTTP)
 - A variável `WEBHOOK_BASE_URL` no servidor deve apontar para a URL pública da API (ex.: `https://api.luxbet.site`)
 
@@ -163,7 +159,7 @@ Authorization: Bearer <token_do_usuario>
 ### Teste 4: Verificar webhook
 
 1. **Pague o PIX** gerado (ou simule o pagamento).
-2. **Verifique os logs** do servidor para ver se o webhook foi recebido em `POST /api/webhooks/gatebox/pix-cashin`.
+2. **Verifique os logs** do servidor para ver se o webhook foi recebido em `POST /api/webhooks/gatebox`.
 3. **Confirme** que o saldo foi creditado automaticamente.
 
 ---
@@ -180,12 +176,12 @@ Authorization: Bearer <token_do_usuario>
 ### Problema: Webhook não está chegando
 
 **Solução:**
-1. Verifique se as URLs no painel Gatebox estão exatamente como as retornadas em `diagnostico.webhook_urls`.
+1. Verifique se a URL no painel Gatebox está exatamente como a retornada em `GET /api/admin/gatebox/diagnostico` (campo `webhook_url`).
 2. Verifique se a URL é acessível publicamente:
    ```bash
-   curl -X POST https://sua-api.com/api/webhooks/gatebox/pix-cashin -H "Content-Type: application/json" -d '{}'
+   curl -X POST https://sua-api.com/api/webhooks/gatebox -H "Content-Type: application/json" -d '{}'
    ```
-   (Deve retornar 200 ou 422, não timeout.)
+   (Deve retornar 200 ou corpo com status, não timeout.)
 3. Configure um cron como fallback (se existir endpoint de verificação de depósitos pendentes).
 
 ### Problema: Erro 401 - Não autenticado
@@ -219,8 +215,7 @@ backend/
 Rotas principais:
   POST /api/public/payments/deposit/pix    # Criar depósito PIX (usa Gatebox se for o gateway ativo)
   POST /api/public/payments/withdrawal/pix # Saque PIX (usa Gatebox se ativo)
-  POST /api/webhooks/gatebox/pix-cashin    # Webhook depósito (Gatebox → sistema)
-  POST /api/webhooks/gatebox/pix-cashout   # Webhook saque (Gatebox → sistema)
+  POST /api/webhooks/gatebox               # Webhook único para todos os eventos (depósito e saque)
   GET  /api/admin/gateways                 # Listar/CRUD gateways
   GET  /api/admin/gatebox/ip                # IP para whitelist
   GET  /api/admin/gatebox/diagnostico       # IP + config + teste de auth + URLs webhook
@@ -237,7 +232,7 @@ Rotas principais:
 3. Sistema autentica na Gatebox → `POST /v1/customers/auth/sign-in`
 4. Sistema gera QR Code PIX → `POST /v1/customers/pix/create-immediate-qrcode`
 5. Usuário paga o PIX
-6. Gatebox envia webhook → `POST /api/webhooks/gatebox/pix-cashin`
+6. Gatebox envia webhook → `POST /api/webhooks/gatebox`
 7. Sistema processa depósito e credita saldo
 8. Bônus é aplicado conforme promoções ativas
 
@@ -248,7 +243,7 @@ Rotas principais:
 3. Sistema autentica na Gatebox → `POST /v1/customers/auth/sign-in`
 4. Sistema realiza saque → `POST /v1/customers/pix/withdraw`
 5. Gatebox processa o PIX
-6. Gatebox envia webhook → `POST /api/webhooks/gatebox/pix-cashout`
+6. Gatebox envia webhook → `POST /api/webhooks/gatebox`
 7. Sistema atualiza status do saque (aprovado/rejeitado)
 
 ---
@@ -302,8 +297,7 @@ curl -X POST "https://sua-api.com/api/public/payments/withdrawal/pix" \
 
 - [ ] Credenciais configuradas em Admin → Gateways (gateway PIX com nome contendo "Gatebox")
 - [ ] Gateway marcado como **ativo**
-- [ ] Webhook cash-in configurado no painel Gatebox: `{WEBHOOK_BASE_URL}/api/webhooks/gatebox/pix-cashin`
-- [ ] Webhook cash-out configurado no painel Gatebox: `{WEBHOOK_BASE_URL}/api/webhooks/gatebox/pix-cashout`
+- [ ] Webhook configurado no painel Gatebox (uma URL para todos os eventos): `{WEBHOOK_BASE_URL}/api/webhooks/gatebox`
 - [ ] IP do servidor adicionado na whitelist da Gatebox (use `GET /api/admin/gatebox/ip`)
 - [ ] Teste de depósito funcionando (QR Code gerado)
 - [ ] Teste de saque funcionando (se aplicável)

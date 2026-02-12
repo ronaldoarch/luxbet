@@ -7,7 +7,8 @@ Tokens (sistema → Gatebox):
 - Cache em memória até expirar (~1h); nova autenticação automática quando necessário
 
 Webhooks (Gatebox → sistema):
-- Gatebox não envia token; payload JSON direto em POST /api/webhooks/gatebox
+- Uma única URL para todos os eventos: POST /api/webhooks/gatebox (depósito e saque)
+- Gatebox não envia token; payload JSON direto
 
 Endpoints:
 - Auth: POST /v1/customers/auth/sign-in

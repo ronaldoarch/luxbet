@@ -1157,18 +1157,114 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
         return {"status": "error", "message": str(e)}
 
 
+def _gatebox_event_is_cashout(data: dict) -> bool:
+    """Indica se o payload do webhook Gatebox é de cash-out (saque)."""
+    t = (data.get("type") or data.get("event") or data.get("transactionType") or data.get("operation") or "").upper()
+    if not t:
+        return False
+    return any(x in t for x in ("CASHOUT", "CASH_OUT", "WITHDRAW", "SAQUE", "WITHDRAWAL", "PIX.CASHOUT"))
+
+
+@webhook_router.post("/gatebox")
+async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
+    """
+    Uma única URL para todos os eventos da Gatebox (depósito e saque).
+    Configure na Gatebox: {WEBHOOK_BASE_URL}/api/webhooks/gatebox
+    O payload pode incluir type/event/transactionType (ex.: CASHIN, CASHOUT); se não houver,
+    o sistema identifica pelo externalId (depósito ou saque).
+    """
+    try:
+        data = await request.json()
+        external_id = data.get("externalId") or data.get("external_id")
+        transaction_id = data.get("transactionId") or data.get("transaction_id")
+        if not external_id and not transaction_id:
+            return {"status": "received", "message": "externalId ou transactionId não encontrado"}
+
+        is_cashout = _gatebox_event_is_cashout(data)
+        deposit = None
+        if external_id:
+            deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
+        if not deposit and transaction_id:
+            deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+        withdrawal = None
+        if external_id:
+            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == external_id).first()
+        if not withdrawal and transaction_id:
+            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
+        if deposit and withdrawal:
+            return await _process_gatebox_cashout(data, withdrawal, db) if is_cashout else await _process_gatebox_cashin(data, deposit, db)
+        if deposit:
+            return await _process_gatebox_cashin(data, deposit, db)
+        if withdrawal:
+            return await _process_gatebox_cashout(data, withdrawal, db)
+        return {"status": "received", "message": "Transação não encontrada (depósito ou saque)"}
+    except Exception as e:
+        print(f"[Webhook Gatebox] Erro: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+async def _process_gatebox_cashin(data: dict, deposit: Deposit, db: Session) -> dict:
+    """Processa webhook Gatebox de cash-in (depósito)."""
+    status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
+    if status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+        if deposit.status != TransactionStatus.APPROVED:
+            deposit.status = TransactionStatus.APPROVED
+            user = db.query(User).filter(User.id == deposit.user_id).first()
+            if user:
+                db.refresh(user)
+                user.balance += deposit.amount
+                apply_promotion_bonus(db, user, deposit)
+                update_affiliate_on_deposit_approved(db, user, deposit)
+                notification = Notification(
+                    title="✅ Depósito Aprovado!",
+                    message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado. Saldo atual: R$ {float(user.balance):.2f}",
+                    type=NotificationType.SUCCESS,
+                    user_id=user.id,
+                    is_read=False,
+                    is_active=True,
+                    link="/conta",
+                )
+                db.add(notification)
+    metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+    metadata["webhook_data"] = data
+    metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+    deposit.metadata_json = json.dumps(metadata)
+    db.commit()
+    return {"status": "ok", "message": "Webhook processado"}
+
+
+async def _process_gatebox_cashout(data: dict, withdrawal: Withdrawal, db: Session) -> dict:
+    """Processa webhook Gatebox de cash-out (saque)."""
+    status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
+    if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO"):
+        if withdrawal.status != TransactionStatus.APPROVED:
+            withdrawal.status = TransactionStatus.APPROVED
+    elif status_val in ("ERROR", "CANCELLED", "REJECTED", "FAILED"):
+        if withdrawal.status == TransactionStatus.PENDING:
+            user = db.query(User).filter(User.id == withdrawal.user_id).first()
+            if user:
+                db.refresh(user)
+                user.balance += withdrawal.amount
+        withdrawal.status = TransactionStatus.REJECTED
+    metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
+    metadata["webhook_data"] = data
+    metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+    withdrawal.metadata_json = json.dumps(metadata)
+    db.commit()
+    return {"status": "ok", "message": "Webhook processado"}
+
+
 @webhook_router.post("/gatebox/pix-cashin")
 async def webhook_gatebox_pix_cashin(request: Request, db: Session = Depends(get_db)):
     """
     Webhook para notificações de PIX Cash-in (depósitos) da Gatebox.
-    Configure na Gatebox a URL: {WEBHOOK_BASE_URL}/api/webhooks/gatebox/pix-cashin
+    Preferir a URL única: {WEBHOOK_BASE_URL}/api/webhooks/gatebox (uma URL para todos os eventos).
     Payload esperado (ex.): externalId, transactionId, status (ex.: PAID, COMPLETED, CONCLUIDO).
     """
     try:
         data = await request.json()
         external_id = data.get("externalId") or data.get("external_id")
         transaction_id = data.get("transactionId") or data.get("transaction_id")
-        status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
         if not external_id and not transaction_id:
             return {"status": "received", "message": "externalId ou transactionId não encontrado"}
         deposit = None
@@ -1178,31 +1274,7 @@ async def webhook_gatebox_pix_cashin(request: Request, db: Session = Depends(get
             deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
         if not deposit:
             return {"status": "received", "message": "Depósito não encontrado"}
-        if status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
-            if deposit.status != TransactionStatus.APPROVED:
-                deposit.status = TransactionStatus.APPROVED
-                user = db.query(User).filter(User.id == deposit.user_id).first()
-                if user:
-                    db.refresh(user)
-                    user.balance += deposit.amount
-                    apply_promotion_bonus(db, user, deposit)
-                    update_affiliate_on_deposit_approved(db, user, deposit)
-                    notification = Notification(
-                        title="✅ Depósito Aprovado!",
-                        message=f"Seu depósito de R$ {deposit.amount:.2f} foi confirmado. Saldo atual: R$ {float(user.balance):.2f}",
-                        type=NotificationType.SUCCESS,
-                        user_id=user.id,
-                        is_read=False,
-                        is_active=True,
-                        link="/conta",
-                    )
-                    db.add(notification)
-        metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
-        metadata["webhook_data"] = data
-        metadata["webhook_received_at"] = datetime.utcnow().isoformat()
-        deposit.metadata_json = json.dumps(metadata)
-        db.commit()
-        return {"status": "ok", "message": "Webhook processado"}
+        return await _process_gatebox_cashin(data, deposit, db)
     except Exception as e:
         print(f"[Webhook Gatebox pix-cashin] Erro: {e}")
         return {"status": "error", "message": str(e)}
@@ -1212,14 +1284,13 @@ async def webhook_gatebox_pix_cashin(request: Request, db: Session = Depends(get
 async def webhook_gatebox_pix_cashout(request: Request, db: Session = Depends(get_db)):
     """
     Webhook para notificações de PIX Cash-out (saques) da Gatebox.
-    Configure na Gatebox: {WEBHOOK_BASE_URL}/api/webhooks/gatebox/pix-cashout
+    Preferir a URL única: {WEBHOOK_BASE_URL}/api/webhooks/gatebox (uma URL para todos os eventos).
     Payload esperado: externalId ou transactionId, status (ex.: COMPLETED, SUCCESS, ERROR, CANCELLED).
     """
     try:
         data = await request.json()
         external_id = data.get("externalId") or data.get("external_id")
         transaction_id = data.get("transactionId") or data.get("transaction_id")
-        status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
         if not external_id and not transaction_id:
             return {"status": "received", "message": "externalId ou transactionId não encontrado"}
         withdrawal = None
@@ -1229,22 +1300,7 @@ async def webhook_gatebox_pix_cashout(request: Request, db: Session = Depends(ge
             withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
         if not withdrawal:
             return {"status": "received", "message": "Saque não encontrado"}
-        if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO"):
-            if withdrawal.status != TransactionStatus.APPROVED:
-                withdrawal.status = TransactionStatus.APPROVED
-        elif status_val in ("ERROR", "CANCELLED", "REJECTED", "FAILED"):
-            if withdrawal.status == TransactionStatus.PENDING:
-                user = db.query(User).filter(User.id == withdrawal.user_id).first()
-                if user:
-                    db.refresh(user)
-                    user.balance += withdrawal.amount
-            withdrawal.status = TransactionStatus.REJECTED
-        metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
-        metadata["webhook_data"] = data
-        metadata["webhook_received_at"] = datetime.utcnow().isoformat()
-        withdrawal.metadata_json = json.dumps(metadata)
-        db.commit()
-        return {"status": "ok", "message": "Webhook processado"}
+        return await _process_gatebox_cashout(data, withdrawal, db)
     except Exception as e:
         print(f"[Webhook Gatebox pix-cashout] Erro: {e}")
         return {"status": "error", "message": str(e)}
