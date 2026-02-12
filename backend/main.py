@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -86,6 +86,19 @@ def _cors_headers(origin=None) -> dict:
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Max-Age": "3600",
     }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Garante que 4xx/5xx (incl. 502) tenham sempre CORS para luxbet.site -> api.luxbet.site."""
+    origin = request.headers.get("Origin")
+    headers = dict(_cors_headers(origin))
+    detail = exc.detail
+    if isinstance(detail, dict):
+        content = detail
+    else:
+        content = {"detail": detail}
+    return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
 @app.exception_handler(Exception)

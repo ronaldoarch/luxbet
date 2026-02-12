@@ -41,7 +41,17 @@ class GateboxAPI:
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
                     data = data["data"]
-                self._token = data.get("access_token") if isinstance(data, dict) else None
+                if isinstance(data, dict):
+                    self._token = (
+                        data.get("access_token")
+                        or data.get("token")
+                        or data.get("accessToken")
+                    )
+                else:
+                    self._token = None
+                if not self._token:
+                    keys = list(data.keys()) if isinstance(data, dict) else "n/a"
+                    print(f"[Gatebox] Token não encontrado na resposta do sign-in. Resposta keys: {keys}")
                 return self._token
         except Exception as e:
             print(f"[Gatebox] Erro ao obter token: {e}")
