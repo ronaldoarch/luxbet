@@ -4,6 +4,25 @@ Se o site ainda não abre no 4G depois de colocar na Cloudflare, confira estes i
 
 ---
 
+## 0. CRÍTICO: Nameservers no registrador
+
+**Se os nameservers não estiverem trocados, o resto não adianta.**
+
+O domínio `luxbet.site` foi comprado em um registrador (Hostinger, Namecheap, etc.). Lá, em **Domínios** → **luxbet.site** → **Nameservers** (ou "Servidores DNS"):
+
+- **Deve estar:** os nameservers da Cloudflare (ex.: `ada.ns.cloudflare.com`, `bob.ns.cloudflare.com`)
+- **Não pode estar:** os nameservers antigos (Hostinger, etc.)
+
+**Como conferir:**
+
+1. Cloudflare → luxbet.site → Overview → veja os nameservers que a Cloudflare exige
+2. Acesse o painel do **registrador** (Hostinger, etc.) e confira se os nameservers do `luxbet.site` são exatamente os da Cloudflare
+3. Ou use: https://www.whatsmydns.net/#NS/luxbet.site — deve mostrar `ns1.cloudflare.com`, `ns2.cloudflare.com` (ou similar)
+
+Se ainda mostrar nameservers do Hostinger/outro, o 4G continua consultando o DNS antigo e não a Cloudflare.
+
+---
+
 ## 1. Propagação dos nameservers
 
 Trocar os nameservers na Hostinger para os da Cloudflare pode levar **até 24–48 horas** (às vezes mais) para todas as redes (incluindo 4G) usarem a Cloudflare.
@@ -73,12 +92,23 @@ Se o 4G estiver sendo bloqueado:
 
 ## Resumo rápido
 
-| O que verificar | Onde na Cloudflare |
-|-----------------|--------------------|
-| Registros A para @, www, api (Proxied) | DNS → Records |
-| Modo SSL Full ou Full (strict) | SSL/TLS → Overview |
-| Universal SSL ativo | SSL/TLS → Edge Certificates |
-| Sem bloqueio no firewall | Security → WAF / Firewall |
-| Aguardar propagação (24–48 h) | Nameservers na Hostinger |
+| O que verificar | Onde |
+|-----------------|------|
+| **Nameservers = Cloudflare** | Registrador (Hostinger etc.) → Domínios → luxbet.site |
+| Registros A para @, www, api (Proxied) | Cloudflare → DNS → Records |
+| Modo SSL Full ou Full (strict) | Cloudflare → SSL/TLS → Overview |
+| Universal SSL ativo | Cloudflare → SSL/TLS → Edge Certificates |
+| Sem bloqueio no firewall | Cloudflare → Security → WAF / Firewall |
+| Aguardar propagação (24–48 h) | Após trocar nameservers |
 
 Depois de tudo certo, o domínio tende a abrir no 4G; se ainda não abrir, o mais comum é **propagação** (4G ainda usando DNS antigo) ou **erro de certificado** no navegador.
+
+---
+
+## Teste rápido no 4G (trocar DNS do celular)
+
+Para confirmar se o problema é o DNS da operadora:
+
+**Android (4G):** Configurações → Rede e Internet → Internet → toque na rede 4G → Avançado → DNS privado → **Particular** → digite `one.one.one.one` (Cloudflare)
+
+Se o site **abrir** após trocar o DNS, o problema é o DNS da operadora. Se **não abrir**, confira o item 0 (nameservers).

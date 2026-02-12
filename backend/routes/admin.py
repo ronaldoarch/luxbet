@@ -1607,13 +1607,15 @@ async def launch_game(
         
         # Mensagens de erro mais específicas
         if "ERROR_GET_BALANCE_END_POINT" in error_detail:
+            backend_url = os.getenv("WEBHOOK_BASE_URL", "https://api.luxbet.site")
             raise HTTPException(
                 status_code=502,
                 detail=(
                     f"Erro ao iniciar jogo: {error_detail}. "
                     "O IGameWin está tentando acessar nosso endpoint /gold_api mas não consegue. "
-                    "Verifique se o campo 'Ponto final do site' está configurado como 'https://api.luxbet.site' "
+                    f"Verifique se o campo 'Ponto final do site' está configurado como '{backend_url}' "
                     "(URL do backend, não do frontend) no painel administrativo do IGameWin (Agente de atualização). "
+                    "Se trocou de domínio, atualize para a nova URL. Veja DOMINIO-NOVO-CONFIG.md. "
                     "Aguarde 2-5 minutos após salvar as configurações."
                 )
             )
@@ -3010,8 +3012,10 @@ async def igamewin_gold_api(request: Request, db: Session = Depends(get_db)):
     try:
         # Log da requisição recebida
         client_host = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("User-Agent", "")
         print(f"[Gold API] ===== REQUEST RECEIVED =====")
         print(f"[Gold API] Client IP: {client_host}")
+        print(f"[Gold API] User-Agent: {user_agent[:150] or '(vazio)'}")
         print(f"[Gold API] Headers: {dict(request.headers)}")
         
         data = await request.json()

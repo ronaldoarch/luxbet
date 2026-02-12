@@ -155,10 +155,10 @@ export default function Game() {
 
       {/* Iframe do jogo */}
       {gameUrl && (
-        <div className="w-full game-iframe-container relative">
+        <div className="w-full game-iframe-container relative flex-1 min-h-0">
           <iframe
             src={gameUrl}
-            className="w-full h-full border-0"
+            className="w-full h-full min-h-0 flex-1 border-0"
             title="Jogo"
             allow="fullscreen; autoplay; payment; geolocation; microphone; camera"
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"

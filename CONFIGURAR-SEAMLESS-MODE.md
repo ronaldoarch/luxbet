@@ -24,11 +24,13 @@
 ### Passo 2: Configurar Ponto Final do Site
 
 1. **Localize** o campo **"Ponto final do site"** ou **"Site Endpoint"**
-2. **Configure como:** `https://api.luxbet.site`
+2. **Configure como:** URL do seu backend (ex: `https://api.luxbet.site` ou `https://api.luxbets.com.br`)
    - ⚠️ **IMPORTANTE:** Deve ser a URL do **backend** (não do frontend)
    - ⚠️ **NÃO inclua** `/gold_api` no final - apenas a URL base do backend
    - O IGameWin automaticamente adiciona `/gold_api` ao final
 3. **Salve** as configurações
+
+**Troca de domínio?** Se mudou de domínio e o saldo não desconta, veja [DOMINIO-NOVO-CONFIG.md](./DOMINIO-NOVO-CONFIG.md).
 
 ### Passo 3: Aguardar Aplicação
 
@@ -150,12 +152,13 @@ Após configurar Seamless Mode:
 3. Limpe cache do navegador
 4. Tente iniciar um jogo novamente
 
-### Problema: Erro `ERROR_GET_BALANCE_END_POINT`
+### Problema: Erro `ERROR_GET_BALANCE_END_POINT` ou saldo não desconta
 
 **Solução:**
-1. Verifique se o campo "Ponto final do site" está configurado como `https://api.luxbet.site` (URL do backend)
-2. Verifique se o endpoint `/gold_api` está acessível publicamente
-3. Teste acessando: `https://api.luxbet.site/gold_api` (deve retornar JSON)
+1. Verifique se o campo "Ponto final do site" está configurado com a URL do seu backend (ex: `https://api.luxbets.com.br`)
+2. **Se trocou de domínio:** atualize "Ponto final do site" para a nova URL. Veja [DOMINIO-NOVO-CONFIG.md](./DOMINIO-NOVO-CONFIG.md)
+3. Verifique se o endpoint `/gold_api` está acessível publicamente
+4. Teste acessando: `https://SEU-BACKEND/gold_api` (deve retornar JSON)
 
 ### Problema: Não vejo chamadas ao `/gold_api` nos logs
 
