@@ -48,31 +48,48 @@ class GateboxAPI:
                         or data.get("accessToken")
                     )
                     # Gatebox devolve o token em stackAuth (string JWT, objeto ou lista)
+                    def _token_from_obj(obj):
+                        if not isinstance(obj, dict):
+                            return None
+                        return (
+                            obj.get("access_token") or obj.get("token") or obj.get("accessToken")
+                            or obj.get("value") or obj.get("jwt") or obj.get("bearer") or obj.get("Bearer")
+                            or obj.get("credentials") or obj.get("authorization")
+                        )
+
                     if not self._token:
                         stack = data.get("stackAuth")
                         if isinstance(stack, str) and stack.strip():
                             self._token = stack.strip()
                         elif isinstance(stack, dict):
-                            self._token = (
-                                stack.get("access_token")
-                                or stack.get("token")
-                                or stack.get("accessToken")
-                            )
-                        elif isinstance(stack, list) and len(stack) > 0:
-                            first = stack[0]
-                            if isinstance(first, dict):
-                                self._token = (
-                                    first.get("access_token")
-                                    or first.get("token")
-                                    or first.get("accessToken")
-                                )
-                            elif isinstance(first, str) and first.strip():
-                                self._token = first.strip()
+                            self._token = _token_from_obj(stack)
+                        elif isinstance(stack, list):
+                            for item in stack:
+                                if isinstance(item, str) and item.strip():
+                                    self._token = item.strip()
+                                    break
+                                if isinstance(item, dict):
+                                    self._token = _token_from_obj(item)
+                                    if self._token:
+                                        break
                 else:
                     self._token = None
                 if not self._token:
                     keys = list(data.keys()) if isinstance(data, dict) else "n/a"
-                    print(f"[Gatebox] Token não encontrado na resposta do sign-in. Resposta keys: {keys}")
+                    stack = data.get("stackAuth") if isinstance(data, dict) else None
+                    stack_info = "n/a"
+                    if stack is not None:
+                        if isinstance(stack, dict):
+                            stack_info = f"dict keys: {list(stack.keys())}"
+                        elif isinstance(stack, list):
+                            stack_info = f"list len={len(stack)}"
+                            if len(stack) > 0 and isinstance(stack[0], dict):
+                                stack_info += f" first keys: {list(stack[0].keys())}"
+                            elif len(stack) > 0:
+                                stack_info += f" first type: {type(stack[0]).__name__}"
+                        else:
+                            stack_info = f"type: {type(stack).__name__}"
+                    print(f"[Gatebox] Token não encontrado. data keys: {keys} | stackAuth: {stack_info}")
                 return self._token
         except Exception as e:
             print(f"[Gatebox] Erro ao obter token: {e}")
