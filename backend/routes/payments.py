@@ -1157,21 +1157,41 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
         return {"status": "error", "message": str(e)}
 
 
-def _gatebox_event_is_cashout(data: dict) -> bool:
-    """Indica se o payload do webhook Gatebox é de cash-out (saque)."""
+def _gatebox_event_type(data: dict) -> Optional[str]:
+    """Retorna o tipo do evento Gatebox: PIX_PAY_IN, PIX_PAY_OUT, PIX_REVERSAL, PIX_REVERSAL_OUT, PIX_REFUND ou None."""
     t = (data.get("type") or data.get("event") or data.get("transactionType") or data.get("operation") or "").upper()
     if not t:
+        return None
+    if "REVERSAL_OUT" in t or "REVERSALOUT" in t.replace("_", ""):
+        return "PIX_REVERSAL_OUT"
+    if "REVERSAL" in t and "PAY" not in t:
+        return "PIX_REVERSAL"
+    if "REFUND" in t:
+        return "PIX_REFUND"
+    if any(x in t for x in ("PAY_IN", "CASHIN", "CASH_IN", "DEPOSIT")):
+        return "PIX_PAY_IN"
+    if any(x in t for x in ("PAY_OUT", "CASHOUT", "CASH_OUT", "WITHDRAW", "WITHDRAWAL")):
+        return "PIX_PAY_OUT"
+    return None
+
+
+def _gatebox_event_is_cashout(data: dict) -> bool:
+    """Indica se o payload do webhook Gatebox é de cash-out (saque)."""
+    ev = _gatebox_event_type(data)
+    if ev == "PIX_PAY_OUT" or ev == "PIX_REVERSAL_OUT":
+        return True
+    if ev:
         return False
+    t = (data.get("type") or data.get("event") or data.get("transactionType") or data.get("operation") or "").upper()
     return any(x in t for x in ("CASHOUT", "CASH_OUT", "WITHDRAW", "SAQUE", "WITHDRAWAL", "PIX.CASHOUT"))
 
 
 @webhook_router.post("/gatebox")
 async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
     """
-    Uma única URL para todos os eventos da Gatebox (depósito e saque).
+    Uma única URL para todos os eventos da Gatebox (depósito, saque, reversão, estorno).
     Configure na Gatebox: {WEBHOOK_BASE_URL}/api/webhooks/gatebox
-    O payload pode incluir type/event/transactionType (ex.: CASHIN, CASHOUT); se não houver,
-    o sistema identifica pelo externalId (depósito ou saque).
+    Eventos: PIX_PAY_IN, PIX_PAY_OUT, PIX_REVERSAL, PIX_REVERSAL_OUT, PIX_REFUND.
     """
     try:
         data = await request.json()
@@ -1179,6 +1199,36 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
         transaction_id = data.get("transactionId") or data.get("transaction_id")
         if not external_id and not transaction_id:
             return {"status": "received", "message": "externalId ou transactionId não encontrado"}
+
+        event_type = _gatebox_event_type(data)
+
+        if event_type == "PIX_REVERSAL":
+            deposit = None
+            if external_id:
+                deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
+            if not deposit and transaction_id:
+                deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+            if deposit:
+                return await _process_gatebox_reversal(data, deposit, db)
+            return {"status": "received", "message": "Depósito não encontrado para reversão"}
+
+        if event_type == "PIX_REVERSAL_OUT" or event_type == "PIX_REFUND":
+            withdrawal = None
+            if external_id:
+                withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == external_id).first()
+            if not withdrawal and transaction_id:
+                withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
+            if withdrawal:
+                return await _process_gatebox_withdrawal_fail(data, withdrawal, db, reason=event_type or "reversal")
+            if event_type == "PIX_REFUND":
+                deposit = None
+                if external_id:
+                    deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
+                if not deposit and transaction_id:
+                    deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+                if deposit:
+                    return await _process_gatebox_reversal(data, deposit, db)
+            return {"status": "received", "message": "Transação não encontrada para reversão/estorno"}
 
         is_cashout = _gatebox_event_is_cashout(data)
         deposit = None
@@ -1233,25 +1283,92 @@ async def _process_gatebox_cashin(data: dict, deposit: Deposit, db: Session) -> 
     return {"status": "ok", "message": "Webhook processado"}
 
 
+# Status que indicam falha/reversão de saque: valor deve voltar para a carteira do usuário
+_GATEBOX_WITHDRAWAL_FAIL_STATUSES = (
+    "ERROR", "CANCELLED", "REJECTED", "FAILED", "REVERSED", "REVERSAL",
+    "ESTORNO", "CANCELADO", "FALHA", "REFUNDED",
+)
+
+
+async def _process_gatebox_withdrawal_fail(
+    data: dict, withdrawal: Withdrawal, db: Session, reason: str = "rejection"
+) -> dict:
+    """
+    Processa falha/reversão de saque: devolve o valor à carteira do usuário.
+    Evita dupla devolução: só credita se o saque ainda não estava REJECTED.
+    """
+    if withdrawal.status != TransactionStatus.REJECTED:
+        user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        if user:
+            db.refresh(user)
+            user.balance += withdrawal.amount
+            notification = Notification(
+                title="Saque não realizado",
+                message=f"O saque de R$ {withdrawal.amount:.2f} foi devolvido à sua carteira. Saldo atual: R$ {float(user.balance):.2f}",
+                type=NotificationType.SUCCESS,
+                user_id=user.id,
+                is_read=False,
+                is_active=True,
+                link="/conta",
+            )
+            db.add(notification)
+        withdrawal.status = TransactionStatus.REJECTED
+    metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
+    metadata["webhook_data"] = data
+    metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+    metadata["webhook_fail_reason"] = reason
+    withdrawal.metadata_json = json.dumps(metadata)
+    db.commit()
+    return {"status": "ok", "message": "Falha/reversão de saque processada; valor devolvido à carteira"}
+
+
 async def _process_gatebox_cashout(data: dict, withdrawal: Withdrawal, db: Session) -> dict:
-    """Processa webhook Gatebox de cash-out (saque)."""
+    """Processa webhook Gatebox de cash-out (saque). Sucesso ou falha (valor volta à carteira)."""
     status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
     if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO"):
         if withdrawal.status != TransactionStatus.APPROVED:
             withdrawal.status = TransactionStatus.APPROVED
-    elif status_val in ("ERROR", "CANCELLED", "REJECTED", "FAILED"):
-        if withdrawal.status == TransactionStatus.PENDING:
-            user = db.query(User).filter(User.id == withdrawal.user_id).first()
-            if user:
-                db.refresh(user)
-                user.balance += withdrawal.amount
-        withdrawal.status = TransactionStatus.REJECTED
+    elif status_val in _GATEBOX_WITHDRAWAL_FAIL_STATUSES:
+        return await _process_gatebox_withdrawal_fail(data, withdrawal, db, reason="cashout_fail")
     metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
     metadata["webhook_data"] = data
     metadata["webhook_received_at"] = datetime.utcnow().isoformat()
     withdrawal.metadata_json = json.dumps(metadata)
     db.commit()
     return {"status": "ok", "message": "Webhook processado"}
+
+
+async def _process_gatebox_reversal(data: dict, deposit: Deposit, db: Session) -> dict:
+    """
+    Processa reversão/estorno de depósito (PIX_REVERSAL ou PIX_REFUND sobre depósito).
+    Debita o valor da carteira do usuário (só se o depósito estava aprovado) e marca como rejeitado.
+    """
+    if deposit.status == TransactionStatus.APPROVED:
+        user = db.query(User).filter(User.id == deposit.user_id).first()
+        if user:
+            db.refresh(user)
+            to_debit = min(deposit.amount, float(user.balance))
+            user.balance -= to_debit
+            if user.balance < 0:
+                user.balance = 0
+            notification = Notification(
+                title="Depósito revertido",
+                message=f"O depósito de R$ {deposit.amount:.2f} foi revertido/estornado. Saldo atual: R$ {float(user.balance):.2f}",
+                type=NotificationType.SUCCESS,
+                user_id=user.id,
+                is_read=False,
+                is_active=True,
+                link="/conta",
+            )
+            db.add(notification)
+    deposit.status = TransactionStatus.REJECTED
+    metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+    metadata["webhook_data"] = data
+    metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+    metadata["webhook_type"] = "reversal"
+    deposit.metadata_json = json.dumps(metadata)
+    db.commit()
+    return {"status": "ok", "message": "Reversão de depósito processada"}
 
 
 @webhook_router.post("/gatebox/pix-cashin")
