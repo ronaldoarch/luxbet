@@ -1264,12 +1264,21 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
     """
     try:
         data = await request.json()
-        external_id = data.get("externalId") or data.get("external_id")
-        transaction_id = data.get("transactionId") or data.get("transaction_id")
-        gatebox_uuid = data.get("uuid")
-        gatebox_identifier = data.get("identifier")
+        # Gatebox pode enviar payload no topo ou dentro de "data"
+        inner = data.get("data")
+        if isinstance(inner, dict):
+            external_id = data.get("externalId") or data.get("external_id") or inner.get("externalId") or inner.get("external_id")
+            transaction_id = data.get("transactionId") or data.get("transaction_id") or inner.get("transactionId") or inner.get("transaction_id")
+            gatebox_uuid = data.get("uuid") or inner.get("uuid")
+            gatebox_identifier = data.get("identifier") or inner.get("identifier")
+        else:
+            external_id = data.get("externalId") or data.get("external_id")
+            transaction_id = data.get("transactionId") or data.get("transaction_id")
+            gatebox_uuid = data.get("uuid")
+            gatebox_identifier = data.get("identifier")
         logger.info("[Webhook Gatebox] Payload: externalId=%r, transactionId=%r, uuid=%r, identifier=%r, type=%r, status=%r",
                     external_id, transaction_id, gatebox_uuid, gatebox_identifier, data.get("type"), data.get("status"))
+        logger.info("[Webhook Gatebox] Top-level keys: %s", list(data.keys()) if isinstance(data, dict) else "not-dict")
         if not external_id and not transaction_id and not gatebox_uuid and not gatebox_identifier:
             return {"status": "received", "message": "externalId/transactionId/uuid/identifier não encontrado"}
 
@@ -1294,6 +1303,38 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
         is_cashout = _gatebox_event_is_cashout(data)
         deposit = _find_deposit_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
         withdrawal = _find_withdrawal_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
+
+        # Fallback: webhook pode enviar apenas uuid do pagamento (diferente do uuid do QR). Consultar status na Gatebox para obter externalId.
+        if not deposit and not withdrawal and (gatebox_uuid or transaction_id):
+            try:
+                gateway = get_active_pix_gateway(db)
+                client = get_payment_client(gateway)
+                if isinstance(client, GateboxAPI):
+                    status_data = await client.get_pix_status(
+                        transaction_id=gatebox_uuid or transaction_id,
+                        external_id=external_id,
+                    )
+                    if isinstance(status_data, dict):
+                        resolved_external = status_data.get("externalId") or status_data.get("external_id")
+                        resolved_tx = status_data.get("transactionId") or status_data.get("transaction_id")
+                        resolved_uuid = status_data.get("uuid")
+                        if resolved_external or resolved_tx or resolved_uuid:
+                            logger.info("[Webhook Gatebox] Resolvido via status API: externalId=%r, transactionId=%r, uuid=%r",
+                                        resolved_external, resolved_tx, resolved_uuid)
+                            sid = status_data.get("identifier") if isinstance(status_data, dict) else None
+                            deposit = _find_deposit_by_external_or_metadata(
+                                db, resolved_external or external_id, resolved_tx or transaction_id,
+                                resolved_uuid or gatebox_uuid, gatebox_identifier or sid
+                            )
+                            withdrawal = _find_withdrawal_by_external_or_metadata(
+                                db, resolved_external or external_id, resolved_tx or transaction_id,
+                                resolved_uuid or gatebox_uuid, gatebox_identifier or sid
+                            )
+            except HTTPException:
+                pass
+            except Exception as e:
+                logger.warning("[Webhook Gatebox] Fallback status API falhou: %s", e)
+
         if deposit and withdrawal:
             return await _process_gatebox_cashout(data, withdrawal, db) if is_cashout else await _process_gatebox_cashin(data, deposit, db)
         if deposit:
