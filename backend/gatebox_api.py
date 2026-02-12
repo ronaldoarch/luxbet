@@ -47,6 +47,27 @@ class GateboxAPI:
                         or data.get("token")
                         or data.get("accessToken")
                     )
+                    # Gatebox devolve o token em stackAuth (string JWT, objeto ou lista)
+                    if not self._token:
+                        stack = data.get("stackAuth")
+                        if isinstance(stack, str) and stack.strip():
+                            self._token = stack.strip()
+                        elif isinstance(stack, dict):
+                            self._token = (
+                                stack.get("access_token")
+                                or stack.get("token")
+                                or stack.get("accessToken")
+                            )
+                        elif isinstance(stack, list) and len(stack) > 0:
+                            first = stack[0]
+                            if isinstance(first, dict):
+                                self._token = (
+                                    first.get("access_token")
+                                    or first.get("token")
+                                    or first.get("accessToken")
+                                )
+                            elif isinstance(first, str) and first.strip():
+                                self._token = first.strip()
                 else:
                     self._token = None
                 if not self._token:
