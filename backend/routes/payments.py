@@ -584,6 +584,7 @@ async def create_pix_withdrawal(
     # Realizar transferência PIX conforme gateway
     transfer_response = None
     id_transaction = None
+    gatebox_withdrawal_tx_id = None  # uuid/identifier para o webhook Gatebox localizar o saque
     
     gateway_name = gateway.name.lower()
     print(f"[Withdrawal] Processando saque via {gateway_name.upper()}")
@@ -698,6 +699,15 @@ async def create_pix_withdrawal(
                     or transfer_response.get("endToEnd") or transfer_response.get("externalId")
                     or external_id
                 )
+                # Guardar uuid/identifier para o webhook encontrar o saque quando a Gatebox enviar só uuid
+                gatebox_tx_id = (
+                    transfer_response.get("uuid") or transfer_response.get("identifier")
+                    or transfer_response.get("transactionId") or transfer_response.get("transaction_id")
+                )
+                if gatebox_tx_id and isinstance(transfer_response, dict):
+                    transfer_response = dict(transfer_response)
+                    transfer_response["gatebox_transaction_id"] = gatebox_tx_id
+                    gatebox_withdrawal_tx_id = gatebox_tx_id
                 print(f"[Withdrawal] Gatebox Response - ID: {id_transaction}")
         
         elif isinstance(payment_client, SuitPayAPI):
@@ -763,7 +773,17 @@ async def create_pix_withdrawal(
             detail=f"Erro ao comunicar com o gateway de pagamento: {str(e)}. Tente novamente em alguns instantes."
         )
     
-    # Criar registro de saque
+    # Criar registro de saque (metadata com gatebox_transaction_id para o webhook Gatebox)
+    withdrawal_metadata = {
+        "pix_key": request.pix_key,
+        "pix_key_type": request.pix_key_type,
+        "document_validation": request.document_validation,
+        "external_id": external_id,
+        "gateway": gateway.name,
+        "gateway_response": transfer_response,
+    }
+    if gatebox_withdrawal_tx_id:
+        withdrawal_metadata["gatebox_transaction_id"] = gatebox_withdrawal_tx_id
     withdrawal = Withdrawal(
         user_id=user.id,
         gateway_id=gateway.id,
@@ -771,14 +791,7 @@ async def create_pix_withdrawal(
         status=TransactionStatus.PENDING,
         transaction_id=str(uuid.uuid4()),
         external_id=id_transaction or external_id,
-        metadata_json=json.dumps({
-            "pix_key": request.pix_key,
-            "pix_key_type": request.pix_key_type,
-            "document_validation": request.document_validation,
-            "external_id": external_id,
-            "gateway": gateway.name,
-            "gateway_response": transfer_response
-        })
+        metadata_json=json.dumps(withdrawal_metadata),
     )
     
     # Bloquear saldo do usuário
@@ -1336,13 +1349,15 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
             except Exception as e:
                 logger.warning("[Webhook Gatebox] Fallback status API falhou: %s", e)
 
-        # Fallback 2: status por uuid pode não devolver externalId. Se webhook é COMPLETED, consultar depósitos PENDING por external_id.
+        # Fallback 2: status por uuid pode não devolver externalId. Se webhook é COMPLETED, consultar PENDING por external_id.
         status_val = (data.get("status") or (data.get("data") or {}).get("status") or "").upper()
-        if not deposit and not withdrawal and status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+        success_statuses = ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS")
+        if not deposit and not withdrawal and status_val in success_statuses:
             try:
                 gateway = get_active_pix_gateway(db)
                 client = get_payment_client(gateway)
                 if isinstance(client, GateboxAPI):
+                    # Depósitos PENDING: encontrar qual foi pago
                     pending_deposits = db.query(Deposit).filter(
                         Deposit.status == TransactionStatus.PENDING,
                         Deposit.external_id.isnot(None),
@@ -1353,10 +1368,26 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
                         st = await client.get_pix_status(external_id=dep.external_id)
                         if isinstance(st, dict):
                             s = (st.get("status") or "").upper()
-                            if s in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+                            if s in success_statuses:
                                 logger.info("[Webhook Gatebox] Fallback 2: depósito encontrado por external_id=%r (status=%s)", dep.external_id, s)
                                 deposit = dep
                                 break
+                    # Saques PENDING: se ainda não achou saque, consultar por external_id (webhook pode vir sem externalId)
+                    if not withdrawal:
+                        pending_withdrawals = db.query(Withdrawal).filter(
+                            Withdrawal.status == TransactionStatus.PENDING,
+                            Withdrawal.external_id.isnot(None),
+                        ).order_by(Withdrawal.created_at.desc()).limit(10).all()
+                        for w in pending_withdrawals:
+                            if not w.external_id:
+                                continue
+                            st = await client.get_pix_status(external_id=w.external_id)
+                            if isinstance(st, dict):
+                                s = (st.get("status") or "").upper()
+                                if s in success_statuses:
+                                    logger.info("[Webhook Gatebox] Fallback 2: saque encontrado por external_id=%r (status=%s)", w.external_id, s)
+                                    withdrawal = w
+                                    break
             except HTTPException:
                 pass
             except Exception as e:
@@ -1375,8 +1406,8 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
 
 
 async def _process_gatebox_cashin(data: dict, deposit: Deposit, db: Session) -> dict:
-    """Processa webhook Gatebox de cash-in (depósito)."""
-    status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
+    """Processa webhook Gatebox de cash-in (depósito). Credita saldo uma única vez (idempotente)."""
+    status_val = (data.get("status") or data.get("statusTransaction") or (data.get("data") or {}).get("status") or "").upper()
     if status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
         if deposit.status != TransactionStatus.APPROVED:
             deposit.status = TransactionStatus.APPROVED
@@ -1445,8 +1476,8 @@ async def _process_gatebox_withdrawal_fail(
 
 
 async def _process_gatebox_cashout(data: dict, withdrawal: Withdrawal, db: Session) -> dict:
-    """Processa webhook Gatebox de cash-out (saque). Sucesso ou falha (valor volta à carteira)."""
-    status_val = (data.get("status") or data.get("statusTransaction") or "").upper()
+    """Processa webhook Gatebox de cash-out (saque). Sucesso = APPROVED; falha = devolve saldo."""
+    status_val = (data.get("status") or data.get("statusTransaction") or (data.get("data") or {}).get("status") or "").upper()
     if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO"):
         if withdrawal.status != TransactionStatus.APPROVED:
             withdrawal.status = TransactionStatus.APPROVED
