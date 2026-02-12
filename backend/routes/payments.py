@@ -476,6 +476,22 @@ async def create_pix_deposit(
     print(f"[Deposit] ⚠️  Saldo NÃO será creditado até confirmação do pagamento via webhook")
     print(f"[Deposit] QR Code gerado. Aguardando pagamento...")
     
+    # Marcar como lidas notificações antigas de depósito aprovado para não mostrar
+    # "Pagamento Confirmado" quando o usuário está vendo um novo QR Code ainda não pago
+    from sqlalchemy import and_, or_
+    old_approved = db.query(Notification).filter(
+        and_(
+            Notification.user_id == user.id,
+            Notification.is_read == False,
+            or_(
+                Notification.title.like("%Depósito Aprovado%"),
+                Notification.title.like("%Pagamento Confirmado%")
+            )
+        )
+    ).all()
+    for n in old_approved:
+        n.is_read = True
+
     # Criar notificação informando que o QR code foi gerado
     # A notificação de aprovação será criada pelo webhook quando o pagamento for confirmado
     notification = Notification(
