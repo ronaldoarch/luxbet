@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+import os
 import uuid
 import json
 import time
+
+import httpx
 
 from database import get_db
 from dependencies import get_current_admin_user, get_current_user
@@ -537,6 +540,94 @@ async def delete_gateway(
     db.delete(gateway)
     db.commit()
     return None
+
+
+# ========== GATEBOX (IP + DIAGNÓSTICO) ==========
+@router.get("/gatebox/ip")
+async def gatebox_ip(current_user: User = Depends(get_current_admin_user)):
+    """
+    Retorna o IP de saída do servidor (para whitelist na Gatebox).
+    Requer autenticação admin.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get("https://api.ipify.org")
+            r.raise_for_status()
+            ip = (r.text or "").strip()
+        return {"ip": ip, "message": "Adicione este IP na whitelist da Gatebox (Configurações → Whitelist de IP)."}
+    except Exception as e:
+        return {"ip": None, "error": str(e), "message": "Não foi possível obter o IP. Use curl https://api.ipify.org no servidor."}
+
+
+@router.get("/gatebox/diagnostico")
+async def gatebox_diagnostico(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Diagnóstico completo: IP de saída + configuração Gatebox + teste de autenticação.
+    Requer autenticação admin.
+    """
+    from gatebox_api import GateboxAPI
+
+    outbound_ip = None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get("https://api.ipify.org")
+            r.raise_for_status()
+            outbound_ip = (r.text or "").strip()
+    except Exception as e:
+        outbound_ip = f"Erro: {e}"
+
+    gateway = db.query(Gateway).filter(
+        Gateway.type == "pix",
+        Gateway.is_active == True
+    ).first()
+    gatebox_gateway = None
+    if gateway and gateway.name and "gatebox" in gateway.name.lower():
+        gatebox_gateway = gateway
+
+    if not gatebox_gateway:
+        gatebox_gateway = db.query(Gateway).filter(Gateway.type == "pix").first()
+        if gatebox_gateway and "gatebox" not in (gatebox_gateway.name or "").lower():
+            gatebox_gateway = None
+
+    config_info = None
+    auth_ok = False
+    auth_error = None
+    if gatebox_gateway and gatebox_gateway.credentials:
+        try:
+            creds = json.loads(gatebox_gateway.credentials) if isinstance(gatebox_gateway.credentials, str) else gatebox_gateway.credentials
+            config_info = {
+                "gateway_id": gatebox_gateway.id,
+                "name": gatebox_gateway.name,
+                "api_url": creds.get("api_url", "https://api.gatebox.com.br"),
+                "username": (creds.get("username") or "")[:4] + "***" if creds.get("username") else None,
+            }
+            api = GateboxAPI(
+                username=creds.get("username", ""),
+                password=creds.get("password", ""),
+                api_url=creds.get("api_url", "https://api.gatebox.com.br").rstrip("/"),
+            )
+            token = await api._get_token()
+            auth_ok = bool(token)
+            if not token:
+                auth_error = "Token não retornado (verifique username/senha e resposta da API)."
+        except Exception as e:
+            auth_error = str(e)
+    else:
+        auth_error = "Nenhum gateway PIX do tipo Gatebox ativo encontrado."
+
+    return {
+        "outbound_ip": outbound_ip,
+        "gatebox_config": config_info,
+        "auth_ok": auth_ok,
+        "auth_error": auth_error,
+        "webhook_urls": {
+            "pix_cashin": f"{os.getenv('WEBHOOK_BASE_URL', 'https://api.luxbet.site')}/api/webhooks/gatebox/pix-cashin",
+            "pix_cashout": f"{os.getenv('WEBHOOK_BASE_URL', 'https://api.luxbet.site')}/api/webhooks/gatebox/pix-cashout",
+        },
+    }
 
 
 # ========== IGAMEWIN AGENTS ==========

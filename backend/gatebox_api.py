@@ -1,6 +1,15 @@
 """
-Módulo para integração com a API Gatebox
-Documentação: baseada na collection GATEBOX API (Postman)
+Módulo para integração com a API Gatebox.
+
+Tokens (sistema → Gatebox):
+- Obtenção: POST /v1/customers/auth/sign-in → resposta: { "access_token": "...", "token_type": "Bearer", "expires_in": 3600 }
+- Uso: header Authorization: Bearer <token> em todas as requisições (PIX, saldo, etc.)
+- Cache em memória até expirar (~1h); nova autenticação automática quando necessário
+
+Webhooks (Gatebox → sistema):
+- Gatebox não envia token; payload JSON direto em POST /api/webhooks/gatebox
+
+Endpoints:
 - Auth: POST /v1/customers/auth/sign-in
 - Cash-In: POST /v1/customers/pix/create-immediate-qrcode
 - Status: GET /v1/customers/pix/status
@@ -27,7 +36,10 @@ class GateboxAPI:
         self._token: Optional[str] = None
 
     async def _get_token(self) -> Optional[str]:
-        """Obtém token de acesso (sign-in). Cache em memória."""
+        """
+        Obtém token de acesso via sign-in. Cache em memória até expirar (~1h).
+        Resposta oficial Gatebox: { "access_token": "...", "token_type": "Bearer", "expires_in": 3600 }.
+        """
         if self._token:
             return self._token
         try:
@@ -38,42 +50,71 @@ class GateboxAPI:
                     headers={"Content-Type": "application/json"},
                 )
                 response.raise_for_status()
-                data = response.json()
-                if isinstance(data, dict) and "data" in data:
-                    data = data["data"]
+                body = response.json()
+                if not isinstance(body, dict):
+                    self._token = None
+                    print(f"[Gatebox] Resposta do sign-in não é objeto: {type(body).__name__}")
+                    return None
+
+                def _token_from_obj(obj):
+                    if not isinstance(obj, dict):
+                        return None
+                    return (
+                        obj.get("access_token") or obj.get("token") or obj.get("accessToken")
+                        or obj.get("value") or obj.get("jwt") or obj.get("bearer") or obj.get("Bearer")
+                        or obj.get("credentials") or obj.get("authorization")
+                    )
+
+                # 1) Formato oficial Gatebox: { "access_token": "...", "token_type": "Bearer", "expires_in": 3600 }
+                self._token = _token_from_obj(body)
+                if self._token:
+                    return self._token
+                if body.get("access_token"):
+                    self._token = body["access_token"]
+                    return self._token
+                if body.get("token"):
+                    self._token = body["token"]
+                    return self._token
+                if body.get("accessToken"):
+                    self._token = body["accessToken"]
+                    return self._token
+
+                # 2) Token dentro de data (ex.: { "data": { "access_token": "..." } })
+                data = body.get("data") if body.get("data") is not None else body
+                if data is not body and isinstance(data, dict):
+                    self._token = _token_from_obj(data)
+                    if self._token:
+                        return self._token
                 if isinstance(data, dict):
                     self._token = (
-                        data.get("access_token")
-                        or data.get("token")
-                        or data.get("accessToken")
+                        data.get("access_token") or data.get("token") or data.get("accessToken")
                     )
-                    # Gatebox devolve o token em stackAuth (string JWT, objeto ou lista)
-                    def _token_from_obj(obj):
-                        if not isinstance(obj, dict):
-                            return None
-                        return (
-                            obj.get("access_token") or obj.get("token") or obj.get("accessToken")
-                            or obj.get("value") or obj.get("jwt") or obj.get("bearer") or obj.get("Bearer")
-                            or obj.get("credentials") or obj.get("authorization")
-                        )
+                if self._token:
+                    return self._token
 
-                    if not self._token:
-                        stack = data.get("stackAuth")
-                        if isinstance(stack, str) and stack.strip():
-                            self._token = stack.strip()
-                        elif isinstance(stack, dict):
-                            self._token = _token_from_obj(stack)
-                        elif isinstance(stack, list):
-                            for item in stack:
-                                if isinstance(item, str) and item.strip():
-                                    self._token = item.strip()
+                # 3) Token em stackAuth (string, objeto ou lista; quando stackAuth não é bool)
+                if isinstance(data, dict):
+                    stack = data.get("stackAuth")
+                    if isinstance(stack, str) and stack.strip():
+                        self._token = stack.strip()
+                    elif isinstance(stack, dict):
+                        self._token = _token_from_obj(stack)
+                    elif isinstance(stack, list):
+                        for item in stack:
+                            if isinstance(item, str) and item.strip():
+                                self._token = item.strip()
+                                break
+                            if isinstance(item, dict):
+                                self._token = _token_from_obj(item)
+                                if self._token:
                                     break
-                                if isinstance(item, dict):
-                                    self._token = _token_from_obj(item)
-                                    if self._token:
-                                        break
-                else:
-                    self._token = None
+
+                # 4) Verificar headers da resposta (algumas APIs devolvem token no header)
+                if not self._token:
+                    auth_header = response.headers.get("Authorization") or response.headers.get("X-Auth-Token") or response.headers.get("X-Token")
+                    if auth_header:
+                        self._token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else auth_header.strip()
+
                 if not self._token:
                     keys = list(data.keys()) if isinstance(data, dict) else "n/a"
                     stack = data.get("stackAuth") if isinstance(data, dict) else None
