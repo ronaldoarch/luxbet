@@ -18,8 +18,11 @@ from igamewin_api import get_igamewin_api
 from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox
 from datetime import datetime, timedelta
 import json
+import logging
 import uuid
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/public/payments", tags=["payments"])
 webhook_router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -1202,6 +1205,56 @@ def _gatebox_event_is_cashout(data: dict) -> bool:
     return any(x in t for x in ("CASHOUT", "CASH_OUT", "WITHDRAW", "SAQUE", "WITHDRAWAL", "PIX.CASHOUT"))
 
 
+def _find_deposit_by_external_or_metadata(db: Session, external_id: Optional[str], transaction_id: Optional[str], gatebox_uuid: Optional[str], gatebox_identifier: Optional[str]) -> Optional[Deposit]:
+    """Busca depósito por external_id, transaction_id ou por uuid/identifier da Gatebox (em metadata_json)."""
+    if external_id:
+        d = db.query(Deposit).filter(Deposit.external_id == external_id).first()
+        if d:
+            return d
+    if transaction_id:
+        d = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+        if d:
+            return d
+    if gatebox_uuid or gatebox_identifier:
+        gr = lambda m: m.get("gateway_response") or m.get("gatebox_response") or {}
+        for dep in db.query(Deposit).filter(Deposit.status == TransactionStatus.PENDING).order_by(Deposit.created_at.desc()).limit(50):
+            if not dep.metadata_json:
+                continue
+            try:
+                meta = json.loads(dep.metadata_json) if isinstance(dep.metadata_json, str) else (dep.metadata_json or {})
+                gid = (meta.get("gatebox_transaction_id") or gr(meta).get("uuid") or gr(meta).get("identifier") or gr(meta).get("gatebox_transaction_id"))
+                if gid and (gid == gatebox_uuid or gid == gatebox_identifier):
+                    return dep
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _find_withdrawal_by_external_or_metadata(db: Session, external_id: Optional[str], transaction_id: Optional[str], gatebox_uuid: Optional[str], gatebox_identifier: Optional[str]) -> Optional[Withdrawal]:
+    """Busca saque por external_id, transaction_id ou por uuid/identifier da Gatebox em metadata."""
+    if external_id:
+        w = db.query(Withdrawal).filter(Withdrawal.external_id == external_id).first()
+        if w:
+            return w
+    if transaction_id:
+        w = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
+        if w:
+            return w
+    if gatebox_uuid or gatebox_identifier:
+        gr = lambda m: m.get("gateway_response") or m.get("gatebox_response") or {}
+        for w in db.query(Withdrawal).filter(Withdrawal.status == TransactionStatus.PENDING).order_by(Withdrawal.created_at.desc()).limit(50):
+            if not w.metadata_json:
+                continue
+            try:
+                meta = json.loads(w.metadata_json) if isinstance(w.metadata_json, str) else (w.metadata_json or {})
+                gid = (meta.get("gatebox_transaction_id") or gr(meta).get("uuid") or gr(meta).get("identifier") or gr(meta).get("gatebox_transaction_id"))
+                if gid and (gid == gatebox_uuid or gid == gatebox_identifier):
+                    return w
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
 @webhook_router.post("/gatebox")
 async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
     """
@@ -1213,50 +1266,34 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
         data = await request.json()
         external_id = data.get("externalId") or data.get("external_id")
         transaction_id = data.get("transactionId") or data.get("transaction_id")
-        if not external_id and not transaction_id:
-            return {"status": "received", "message": "externalId ou transactionId não encontrado"}
+        gatebox_uuid = data.get("uuid")
+        gatebox_identifier = data.get("identifier")
+        logger.info("[Webhook Gatebox] Payload: externalId=%r, transactionId=%r, uuid=%r, identifier=%r, type=%r, status=%r",
+                    external_id, transaction_id, gatebox_uuid, gatebox_identifier, data.get("type"), data.get("status"))
+        if not external_id and not transaction_id and not gatebox_uuid and not gatebox_identifier:
+            return {"status": "received", "message": "externalId/transactionId/uuid/identifier não encontrado"}
 
         event_type = _gatebox_event_type(data)
 
         if event_type == "PIX_REVERSAL":
-            deposit = None
-            if external_id:
-                deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
-            if not deposit and transaction_id:
-                deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+            deposit = _find_deposit_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
             if deposit:
                 return await _process_gatebox_reversal(data, deposit, db)
             return {"status": "received", "message": "Depósito não encontrado para reversão"}
 
         if event_type == "PIX_REVERSAL_OUT" or event_type == "PIX_REFUND":
-            withdrawal = None
-            if external_id:
-                withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == external_id).first()
-            if not withdrawal and transaction_id:
-                withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
+            withdrawal = _find_withdrawal_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
             if withdrawal:
                 return await _process_gatebox_withdrawal_fail(data, withdrawal, db, reason=event_type or "reversal")
             if event_type == "PIX_REFUND":
-                deposit = None
-                if external_id:
-                    deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
-                if not deposit and transaction_id:
-                    deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
+                deposit = _find_deposit_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
                 if deposit:
                     return await _process_gatebox_reversal(data, deposit, db)
             return {"status": "received", "message": "Transação não encontrada para reversão/estorno"}
 
         is_cashout = _gatebox_event_is_cashout(data)
-        deposit = None
-        if external_id:
-            deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
-        if not deposit and transaction_id:
-            deposit = db.query(Deposit).filter(Deposit.external_id == transaction_id).first()
-        withdrawal = None
-        if external_id:
-            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == external_id).first()
-        if not withdrawal and transaction_id:
-            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == transaction_id).first()
+        deposit = _find_deposit_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
+        withdrawal = _find_withdrawal_by_external_or_metadata(db, external_id, transaction_id, gatebox_uuid, gatebox_identifier)
         if deposit and withdrawal:
             return await _process_gatebox_cashout(data, withdrawal, db) if is_cashout else await _process_gatebox_cashin(data, deposit, db)
         if deposit:
@@ -1265,7 +1302,7 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
             return await _process_gatebox_cashout(data, withdrawal, db)
         return {"status": "received", "message": "Transação não encontrada (depósito ou saque)"}
     except Exception as e:
-        print(f"[Webhook Gatebox] Erro: {e}")
+        logger.exception("[Webhook Gatebox] Erro ao processar webhook: %s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -1277,6 +1314,7 @@ async def _process_gatebox_cashin(data: dict, deposit: Deposit, db: Session) -> 
             deposit.status = TransactionStatus.APPROVED
             user = db.query(User).filter(User.id == deposit.user_id).first()
             if user:
+                logger.info("[Webhook Gatebox] Creditando saldo: deposit_id=%s, user_id=%s, amount=%s", deposit.id, user.id, deposit.amount)
                 db.refresh(user)
                 user.balance += deposit.amount
                 apply_promotion_bonus(db, user, deposit)
