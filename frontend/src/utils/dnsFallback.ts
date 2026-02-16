@@ -106,15 +106,16 @@ export function getAPIUrlWithFallback(): string {
   // Em produção, tentar detectar automaticamente
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
+    const protocol = window.location.protocol || 'https:';
     
-    // Se estiver em luxbet.site, usar api.luxbet.site
+    // luxbet.site -> api.luxbet.site
     if (hostname.includes('luxbet.site')) {
-      return 'https://api.luxbet.site';
+      return `${protocol}//api.luxbet.site`;
     }
     
-    // Se estiver em www.luxbet.site, usar api.luxbet.site
-    if (hostname.includes('www.luxbet.site')) {
-      return 'https://api.luxbet.site';
+    // Novo domínio: usar api.{hostname} (padrão após troca de domínio)
+    if (!hostname.startsWith('api.')) {
+      return `${protocol}//api.${hostname}`;
     }
   }
   

@@ -20,12 +20,16 @@ export function getAPIUrl(): string {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     
-    // Se estiver em luxbet.site, tentar api.luxbet.site
+    // luxbet.site -> api.luxbet.site
     if (hostname.includes('luxbet.site')) {
       return `${protocol}//api.luxbet.site`;
     }
     
-    // Caso contrário, usar mesmo domínio
+    // Novo domínio: usar api.{hostname} (padrão após troca de domínio)
+    if (!hostname.startsWith('api.')) {
+      return `${protocol}//api.${hostname}`;
+    }
+    
     return `${protocol}//${hostname}`;
   }
   

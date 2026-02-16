@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime
 from models import TransactionStatus, UserRole, MediaType, PromotionType, SupportConfig, CouponType
@@ -49,6 +49,14 @@ class Token(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+    @field_validator("username", "password", mode="before")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        """Remove espaços no início/fim - evita 'senha incorreta' por copy-paste com espaços."""
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 # Gateway Schemas

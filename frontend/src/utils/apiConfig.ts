@@ -31,16 +31,24 @@ const getApiUrl = (): string => {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     
-    // Se estiver em luxbet.site, tentar api.luxbet.site primeiro
+    // luxbet.site -> api.luxbet.site
     if (hostname.includes('luxbet.site')) {
       const apiUrl = `${protocol}//api.luxbet.site`;
       console.log('[API Config] Fallback: usando', apiUrl, 'baseado no hostname:', hostname);
       return apiUrl;
     }
     
-    // Se não conseguir resolver api.luxbet.site, tentar o mesmo domínio
+    // Novo domínio: luxbet.com.br, luxbet.app, etc. -> api.luxbet.com.br, api.luxbet.app
+    // Se o hostname NÃO começa com "api.", tentar api.{hostname} (padrão comum após troca de domínio)
+    if (!hostname.startsWith('api.')) {
+      const apiSubdomainUrl = `${protocol}//api.${hostname}`;
+      console.log('[API Config] Fallback para novo domínio: usando', apiSubdomainUrl);
+      return apiSubdomainUrl;
+    }
+    
+    // Se já está em api.xxx, usar mesmo domínio
     const sameDomainUrl = `${protocol}//${hostname}`;
-    console.log('[API Config] Fallback alternativo: usando mesmo domínio:', sameDomainUrl);
+    console.log('[API Config] Fallback: usando mesmo domínio:', sameDomainUrl);
     return sameDomainUrl;
   }
   

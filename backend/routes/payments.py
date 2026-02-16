@@ -137,7 +137,8 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
         
         if bonus_amount > 0:
             # Aplicar bônus ao saldo do usuário (tanto balance quanto bonus_balance)
-            db.refresh(user)
+            # NÃO fazer db.refresh(user) aqui: o chamador já creditou o depósito e fez flush.
+            # Um refresh poderia sobrescrever o saldo com dados desatualizados, perdendo o valor do depósito.
             balance_before_bonus = float(user.balance)
             bonus_balance_before = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0
             user.balance += bonus_amount
