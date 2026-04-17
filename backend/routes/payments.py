@@ -11,6 +11,7 @@ from models import User, Deposit, Withdrawal, Gateway, TransactionStatus, Bet, B
 from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
 from gatebox_api import GateboxAPI
+from sarrixpay_api import SarrixPayAPI
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse, ManagerCreateSubAffiliate
 from dependencies import get_current_user
 from auth import get_password_hash
@@ -95,10 +96,22 @@ def get_payment_client(gateway: Gateway):
             
             return SuitPayAPI(client_id, client_secret, sandbox=sandbox)
         
+        elif "sarrix" in gateway_name:
+            print(f"[Payment Client] Detectado como SarrixPay")
+            client_id = credentials.get("client_id")
+            client_secret = credentials.get("client_secret")
+            api_url = (credentials.get("api_url") or "https://apiv1.sarrixpay.com").rstrip("/")
+            if not client_id or not client_secret:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Credenciais SarrixPay não configuradas (client_id e client_secret)",
+                )
+            return SarrixPayAPI(client_id, client_secret, base_url=api_url)
+        
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Gateway '{gateway.name}' não suportado. Use 'Gatebox', 'NXGATE' ou 'SuitPay'"
+                detail=f"Gateway '{gateway.name}' não suportado. Use 'Gatebox', 'NXGATE', 'SuitPay' ou 'SarrixPay'"
             )
     except json.JSONDecodeError:
         raise HTTPException(
@@ -403,6 +416,33 @@ async def create_pix_deposit(
             else:
                 print(f"ERROR: pix_response is not a dict: {type(pix_response)}")
                 print(f"ERROR: pix_response value: {pix_response}")
+    
+    elif isinstance(payment_client, SarrixPayAPI):
+        idempotency_dep = f"pixin-{user.id}-{int(datetime.utcnow().timestamp())}"
+        pix_response = await payment_client.create_pix_charge(
+            amount=request.amount,
+            payer_name=request.payer_name or user.username or "Cliente",
+            payer_document=payer_tax_id,
+            description=f"Depósito Lux Bet - {user.username}",
+            idempotency_key=idempotency_dep,
+        )
+        if pix_response:
+            if pix_response.get("_error") or (
+                pix_response.get("error") and not pix_response.get("transaction_id")
+            ):
+                msg = SarrixPayAPI.user_message_from_error(pix_response)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+            id_transaction = pix_response.get("transaction_id")
+            qr = pix_response.get("qr_code") or {}
+            if isinstance(qr, dict):
+                pix_code = qr.get("br_code")
+                pay_url = qr.get("pay_url")
+            else:
+                pix_code = None
+                pay_url = None
+            if pay_url and isinstance(pix_response, dict):
+                pix_response = dict(pix_response)
+                pix_response["pay_url"] = pay_url
     
     # Gatebox (ou outro gateway) pode retornar erro de validação (ex.: telefone inválido)
     if isinstance(pix_response, dict) and pix_response.get("_error") == "VALIDATION":
@@ -746,6 +786,41 @@ async def create_pix_withdrawal(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=error_msg
                     )
+        
+        elif isinstance(payment_client, SarrixPayAPI):
+            print(f"[Withdrawal] Usando SarrixPay para processar saque")
+            try:
+                sk_type, sk_key = SarrixPayAPI.map_frontend_pix_key_type_to_sarrix(
+                    request.pix_key_type, request.pix_key
+                )
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+            doc_ben = request.document_validation or (
+                user.cpf if getattr(user, "cpf", None) else None
+            )
+            if sk_type in ("cpf", "cnpj") and not (doc_ben and str(doc_ben).strip()):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Documento (CPF/CNPJ) é obrigatório para saque com chave PIX de CPF/CNPJ. Preencha a validação ou atualize seu CPF no perfil.",
+                )
+            idempotency_w = f"pixout-{user.id}-{int(datetime.utcnow().timestamp())}"
+            transfer_response = await payment_client.create_pix_transfer(
+                amount=request.amount,
+                beneficiary_name=(user.username or "Cliente")[:120],
+                pix_key=sk_key,
+                pix_key_type=sk_type,
+                beneficiary_document=doc_ben,
+                description=f"Saque Lux Bet - {user.username}",
+                idempotency_key=idempotency_w,
+            )
+            if transfer_response:
+                if transfer_response.get("_error") or (
+                    transfer_response.get("error") and not transfer_response.get("transaction_id")
+                ):
+                    msg = SarrixPayAPI.user_message_from_error(transfer_response)
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+                id_transaction = transfer_response.get("transaction_id")
+                print(f"[Withdrawal] SarrixPay transaction_id: {id_transaction}")
         
         # Validar resposta do gateway
         if not transfer_response:
@@ -1696,6 +1771,81 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
     
     except Exception as e:
         print(f"Erro ao processar webhook PIX Cash-out: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
+
+
+@webhook_router.post("/sarrixpay")
+async def webhook_sarrixpay(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook SarrixPay — eventos normalizados (pix_in.* / pix_out.*).
+    Configure no painel SarrixPay: ``{WEBHOOK_BASE_URL}/api/webhooks/sarrixpay``
+    Resposta recomendada: HTTP 200 em até ~5 s; eventos podem ser reentregues (idempotência).
+    """
+    try:
+        data = await request.json()
+        event = (data.get("event") or "").strip().lower()
+        transaction = data.get("transaction") or {}
+        reference = data.get("reference") or {}
+        tx_id = transaction.get("id") or reference.get("transaction_ref")
+        if not tx_id:
+            return {"status": "received", "message": "transaction.id ausente"}
+        tx_id = str(tx_id)
+
+        # ——— PIX In (depósitos) ———
+        if event.startswith("pix_in"):
+            deposit = db.query(Deposit).filter(Deposit.external_id == tx_id).first()
+            if not deposit:
+                return {"status": "received", "message": "Depósito não encontrado"}
+            if event == "pix_in.succeeded":
+                payload = dict(data)
+                payload["status"] = "COMPLETED"
+                return await _process_gatebox_cashin(payload, deposit, db)
+            if event == "pix_in.refunded":
+                if deposit.status == TransactionStatus.APPROVED:
+                    user = db.query(User).filter(User.id == deposit.user_id).first()
+                    if user and float(user.balance) >= float(deposit.amount):
+                        user.balance -= deposit.amount
+                deposit.status = TransactionStatus.CANCELLED
+                metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+                metadata["webhook_data"] = data
+                metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+                deposit.metadata_json = json.dumps(metadata)
+                db.commit()
+                return {"status": "ok", "message": "Estorno de depósito processado"}
+            metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+            metadata["webhook_data"] = data
+            metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+            deposit.metadata_json = json.dumps(metadata)
+            db.commit()
+            return {"status": "ok", "message": "Evento pix_in recebido"}
+
+        # ——— PIX Out (saques) ———
+        if event.startswith("pix_out"):
+            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == tx_id).first()
+            if not withdrawal:
+                return {"status": "received", "message": "Saque não encontrado"}
+            if event == "pix_out.succeeded":
+                payload = dict(data)
+                payload["status"] = "COMPLETED"
+                return await _process_gatebox_cashout(payload, withdrawal, db)
+            if event in ("pix_out.failed", "pix_out.canceled", "pix_out.refunded"):
+                return await _process_gatebox_withdrawal_fail(
+                    data, withdrawal, db, reason=event
+                )
+            metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
+            metadata["webhook_data"] = data
+            metadata["webhook_received_at"] = datetime.utcnow().isoformat()
+            withdrawal.metadata_json = json.dumps(metadata)
+            db.commit()
+            return {"status": "ok", "message": "Evento pix_out recebido"}
+
+        return {"status": "received", "message": f"Evento não tratado: {event}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Webhook SarrixPay] Erro: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
 
 
