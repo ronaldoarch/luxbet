@@ -26,22 +26,13 @@ export default function Game() {
       return;
     }
 
-    // Verificar se o usuário tem saldo (apenas na carga inicial)
-    // NÃO revalidar quando user.balance mudar durante o jogo: em Transfer Mode o saldo
-    // está no IGameWin e o AuthContext pode atualizar user com balance=0, expulsando o jogador
-    if (!user.balance || user.balance <= 0) {
-      setError('Você precisa ter saldo para jogar. Faça um depósito primeiro.');
-      setLoading(false);
-      return;
-    }
-
     if (!gameCode) {
       setError('Código do jogo não encontrado');
       setLoading(false);
       return;
     }
 
-    const launchGame = async () => {
+    const run = async () => {
       try {
         const res = await fetch(`${API_URL}/api/public/games/${gameCode}/launch?lang=pt`, {
           headers: {
@@ -52,8 +43,7 @@ export default function Game() {
         if (!res.ok) {
           const data = await res.json().catch(() => ({ detail: 'Erro ao iniciar jogo' }));
           const errorMessage = data.detail || 'Erro ao iniciar jogo';
-          
-          // Mensagens de erro mais amigáveis
+
           if (res.status === 503) {
             setError(`${errorMessage}\n\nO servidor pode estar temporariamente indisponível. Tente novamente em alguns instantes.`);
           } else if (res.status === 401) {
@@ -68,21 +58,19 @@ export default function Game() {
 
         const data = await res.json();
         const url = data.game_url || data.launch_url;
-        
+
         if (!url) {
           setError('URL do jogo não foi retornada pelo servidor. Por favor, tente novamente.');
           return;
         }
-        
-        // Validar URL antes de definir
+
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
           setError('URL do jogo inválida. Por favor, entre em contato com o suporte.');
           return;
         }
-        
+
         setGameUrl(url);
       } catch (err: any) {
-        // Tratar erros de rede
         if (err.name === 'TypeError' && err.message.includes('fetch')) {
           setError('Erro de conexão. Verifique sua internet e tente novamente.');
         } else {
@@ -93,9 +81,7 @@ export default function Game() {
       }
     };
 
-    launchGame();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- user removido: AuthContext atualiza
-    // balance para 0 durante o jogo (saldo no IGameWin); re-executar expulsaria o jogador
+    run();
   }, [gameCode, token, authLoading]);
 
   if (loading) {
@@ -202,7 +188,7 @@ export default function Game() {
 // - Em Transfer Mode: precisa sincronizar ao sair do jogo (saldo está no IGameWin)
 // - Em Seamless Mode: NÃO precisa sincronizar (saldo sempre fica no nosso banco, IGameWin chama /gold_api)
 // O backend detecta automaticamente o modo e retorna resposta apropriada.
-function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<void> }) {
+function GameBalanceUpdater({ refreshUser }: { refreshUser: () => Promise<unknown> }) {
   useEffect(() => {
     const token = localStorage.getItem('user_token');
     

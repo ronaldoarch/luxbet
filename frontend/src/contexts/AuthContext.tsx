@@ -24,7 +24,8 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<{ isAdmin?: boolean } | void>;
   register: (userData: RegisterData) => Promise<void>;
   logout: () => void;
-  refreshUser: () => Promise<void>;
+  /** Retorna o usuário atualizado do servidor (útil para checar saldo antes de abrir jogo). */
+  refreshUser: () => Promise<User | null>;
   loading: boolean;
 }
 
@@ -193,10 +194,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (): Promise<User | null> => {
     if (token) {
-      await fetchUser(token);
+      return await fetchUser(token);
     }
+    return null;
   }, [token]);
 
   return (

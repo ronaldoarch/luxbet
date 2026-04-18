@@ -50,7 +50,7 @@ def get_active_pix_gateway(db: Session) -> Gateway:
 def get_payment_client(gateway: Gateway):
     """
     Cria cliente de pagamento baseado no nome do gateway
-    Suporta: SuitPay, NXGATE e Gatebox
+    Suporta: SuitPay, NXGATE, Gatebox e SarrixPay (aceita também o typo "SarryxPay").
     """
     try:
         credentials = json.loads(gateway.credentials) if gateway.credentials else {}
@@ -96,7 +96,8 @@ def get_payment_client(gateway: Gateway):
             
             return SuitPayAPI(client_id, client_secret, sandbox=sandbox)
         
-        elif "sarrix" in gateway_name:
+        elif "sarrix" in gateway_name or "sarryx" in gateway_name:
+            # "sarryx" cobre o typo comum "SarryxPay" (y em vez de i em SarrixPay)
             print(f"[Payment Client] Detectado como SarrixPay")
             client_id = credentials.get("client_id")
             client_secret = credentials.get("client_secret")
