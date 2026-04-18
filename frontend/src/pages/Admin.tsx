@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -592,6 +592,91 @@ function UsersTab({ token }: { token: string }) {
   );
 }
 
+/** Mesmas opções do fluxo "Alterar status": Pendente, Pago, Falhou, Processando, Cancelado */
+const ADMIN_TX_STATUS_OPTIONS: { label: string; value: string }[] = [
+  { label: 'Pendente', value: 'pending' },
+  { label: 'Pago', value: 'approved' },
+  { label: 'Falhou', value: 'rejected' },
+  { label: 'Processando', value: 'processing' },
+  { label: 'Cancelado', value: 'cancelled' },
+];
+
+function AdminTransactionActionsMenu({
+  token,
+  kind,
+  id,
+  onUpdated,
+}: {
+  token: string;
+  kind: 'deposit' | 'withdrawal';
+  id: number;
+  onUpdated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const apply = async (status: string) => {
+    setBusy(true);
+    try {
+      const path = kind === 'deposit' ? `deposits/${id}` : `withdrawals/${id}`;
+      const res = await fetch(`${API_URL}/api/admin/${path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === 'string' ? data.detail : 'Falha ao atualizar status');
+      }
+      setOpen(false);
+      onUpdated();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao atualizar';
+      alert(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-lg border border-gray-600 bg-gray-800 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
+      >
+        Ações
+        <ChevronDown size={14} className="opacity-80" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-50 mt-1 min-w-[160px] rounded-lg border border-gray-600 bg-gray-900 py-1 shadow-xl ring-1 ring-black/40">
+          {ADMIN_TX_STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className="block w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-700"
+              onClick={() => apply(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DepositsTab({ token }: { token: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -624,7 +709,8 @@ function DepositsTab({ token }: { token: string }) {
     switch (status?.toLowerCase()) {
       case 'approved': return '✅ Pago';
       case 'pending': return '⏳ Pendente';
-      case 'rejected': return '❌ Rejeitado';
+      case 'processing': return '⚙️ Processando';
+      case 'rejected': return '❌ Falhou';
       case 'cancelled': return '🚫 Cancelado';
       default: return status || '-';
     }
@@ -658,7 +744,7 @@ function DepositsTab({ token }: { token: string }) {
         loading={loading}
         error={error}
         onRefresh={fetchData}
-        columns={['ID','User','Valor Pago','Status','Criado em']}
+        columns={['ID','User','Valor Pago','Status','Criado em','Ações']}
         rows={items.map(d => [
           d.id, 
           d.user_id, 
@@ -668,12 +754,14 @@ function DepositsTab({ token }: { token: string }) {
           <span key={`status-${d.id}`} className={
             d.status?.toLowerCase() === 'approved' ? 'text-green-400' :
             d.status?.toLowerCase() === 'pending' ? 'text-yellow-400' :
+            d.status?.toLowerCase() === 'processing' ? 'text-cyan-400' :
             d.status?.toLowerCase() === 'rejected' ? 'text-red-400' :
             'text-gray-400'
           }>
             {getStatusLabel(d.status)}
           </span>, 
-          formatDate(d.created_at)
+          formatDate(d.created_at),
+          <AdminTransactionActionsMenu key={`dep-act-${d.id}`} token={token} kind="deposit" id={d.id} onUpdated={fetchData} />,
         ])}
       />
     </div>
@@ -706,14 +794,44 @@ function WithdrawalsTab({ token }: { token: string }) {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const getWithdrawalStatusLabel = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'approved': return 'Pago';
+      case 'pending': return 'Pendente';
+      case 'processing': return 'Processando';
+      case 'rejected': return 'Falhou';
+      case 'cancelled': return 'Cancelado';
+      default: return status || '-';
+    }
+  };
+
   return (
     <TabTable
       title="Saques"
       loading={loading}
       error={error}
       onRefresh={fetchData}
-      columns={['ID','User','Valor','Status','Criado em']}
-      rows={items.map(d => [d.id, d.user_id, `R$ ${d.amount?.toFixed(2)}`, d.status, formatDate(d.created_at)])}
+      columns={['ID','User','Valor','Status','Criado em','Ações']}
+      rows={items.map(d => [
+        d.id,
+        d.user_id,
+        `R$ ${d.amount?.toFixed(2)}`,
+        <span
+          key={`wst-${d.id}`}
+          className={
+            d.status?.toLowerCase() === 'approved' ? 'text-green-400' :
+            d.status?.toLowerCase() === 'pending' ? 'text-yellow-400' :
+            d.status?.toLowerCase() === 'processing' ? 'text-cyan-400' :
+            d.status?.toLowerCase() === 'rejected' ? 'text-red-400' :
+            'text-gray-400'
+          }
+        >
+          {getWithdrawalStatusLabel(d.status)}
+        </span>,
+        formatDate(d.created_at),
+        <AdminTransactionActionsMenu key={`wd-act-${d.id}`} token={token} kind="withdrawal" id={d.id} onUpdated={fetchData} />,
+      ])}
     />
   );
 }
@@ -965,6 +1083,20 @@ function GatewaysTab({ token }: { token: string }) {
         api_key: form.api_key
       });
     }
+    // SarrixPay: mesmo formulário visual da SuitPay, mas credenciais vão para outro cliente HTTP
+    if (gatewayName.includes('sarrix') || gatewayName.includes('sarryx')) {
+      const u = (form.api_url || '').trim();
+      const payload: Record<string, unknown> = {
+        client_id: form.client_id,
+        client_secret: form.client_secret,
+        sandbox: form.sandbox,
+      };
+      // URL base (sandbox pode exigir host diferente; conferir doc SarrixPay)
+      if (u && !u.includes('gatebox.com')) {
+        payload.api_url = u;
+      }
+      return JSON.stringify(payload);
+    }
     // SuitPay usa client_id e client_secret
     return JSON.stringify({
       client_id: form.client_id,
@@ -1048,13 +1180,15 @@ function GatewaysTab({ token }: { token: string }) {
     if (gateway.credentials) {
       try {
         const creds = JSON.parse(gateway.credentials);
+        const n = (gateway.name || '').toLowerCase();
+        const isSarrix = n.includes('sarrix') || n.includes('sarryx');
         setForm(prev => ({
           ...prev,
           client_id: creds.client_id || creds.ci || '',
           client_secret: creds.client_secret || creds.cs || '',
           api_key: creds.api_key || '',
           sandbox: creds.sandbox !== undefined ? creds.sandbox : true,
-          api_url: creds.api_url || 'https://api.gatebox.com.br',
+          api_url: creds.api_url || (isSarrix ? '' : 'https://api.gatebox.com.br'),
           username: creds.username || '',
           password: creds.password || ''
         }));
@@ -1190,6 +1324,21 @@ function GatewaysTab({ token }: { token: string }) {
                 />
               </div>
 
+              {(form.name.toLowerCase().includes('sarrix') || form.name.toLowerCase().includes('sarryx')) && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-gray-400 mb-1">URL base da API SarrixPay (opcional)</label>
+                  <input
+                    type="text"
+                    className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                    placeholder="https://apiv1.sarrixpay.com"
+                    value={form.api_url}
+                    onChange={e => setForm({ ...form, api_url: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Padrão no backend: <code className="text-gray-400">https://apiv1.sarrixpay.com</code>. Se o sandbox usar outro host, informe aqui (veja documentação SarrixPay). O checkbox Sandbox grava a flag nas credenciais — o webhook precisa estar cadastrado no <strong>mesmo</strong> ambiente (sandbox ou produção) que essas chaves.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input 
                   type="checkbox" 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_
 from typing import List, Optional, Dict, Any
@@ -38,6 +38,12 @@ from schemas import (
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api, IGameWinAPI
+
+class SarrixReconcileByTransactionBody(BaseModel):
+    """UUID da transação como no extrato SarrixPay (campo Transação / transaction_id)."""
+
+    transaction_id: str = Field(..., min_length=8, description="ID da transação SarrixPay (ex.: d37d2456-7149-4d8c-a99c-b35ab9bf24da)")
+
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
@@ -227,6 +233,36 @@ async def get_deposit(
     return deposit
 
 
+@router.post("/deposits/{deposit_id}/reconcile-sarrix-pay")
+async def admin_reconcile_sarrix_deposit(
+    deposit_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    """
+    Consulta a API SarrixPay (GET /transactions) e aprova o depósito se o PIX já foi pago.
+    Use quando o pagamento consta no gateway mas o webhook não atualizou a plataforma.
+    """
+    from routes.payments import reconcile_sarrix_deposit_by_id
+
+    return await reconcile_sarrix_deposit_by_id(db, deposit_id)
+
+
+@router.post("/deposits/reconcile-sarrix-pay-by-transaction")
+async def admin_reconcile_sarrix_deposit_by_gateway_tx(
+    body: SarrixReconcileByTransactionBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    """
+    Mesmo fluxo do reconcile por ID interno, mas usando o **Transaction ID** do extrato SarrixPay
+    (o UUID que aparece em “Transação” no comprovante / statement).
+    """
+    from routes.payments import reconcile_sarrix_deposit_by_transaction_id
+
+    return await reconcile_sarrix_deposit_by_transaction_id(db, body.transaction_id.strip())
+
+
 @router.post("/deposits", response_model=DepositResponse, status_code=status.HTTP_201_CREATED)
 async def create_deposit(
     deposit_data: DepositCreate,
@@ -263,12 +299,13 @@ async def update_deposit(
     if not deposit:
         raise HTTPException(status_code=404, detail="Deposit not found")
     
+    old_status = deposit.status
     update_data = deposit_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(deposit, field, value)
     
     # If approved, update user balance
-    if deposit_data.status == TransactionStatus.APPROVED and deposit.status != TransactionStatus.APPROVED:
+    if deposit_data.status == TransactionStatus.APPROVED and old_status != TransactionStatus.APPROVED:
         user = db.query(User).filter(User.id == deposit.user_id).first()
         balance_before = float(user.balance)
         user.balance += deposit.amount
@@ -386,13 +423,19 @@ async def update_withdrawal(
     
     user = db.query(User).filter(User.id == withdrawal.user_id).first()
     
-    # Se está aprovando um saque que estava pendente
-    if withdrawal_data.status == TransactionStatus.APPROVED and withdrawal.status == TransactionStatus.PENDING:
+    # Se está aprovando um saque que estava pendente ou em processamento
+    if withdrawal_data.status == TransactionStatus.APPROVED and withdrawal.status in (
+        TransactionStatus.PENDING,
+        TransactionStatus.PROCESSING,
+    ):
         # O saldo já foi deduzido quando o saque foi criado, então não precisa deduzir novamente
         # Apenas atualizar o status
         print(f"[Admin] Aprovando saque {withdrawal_id} - saldo já foi deduzido anteriormente")
-    # Se está rejeitando/cancelando um saque que estava pendente, reverter o saldo
-    elif withdrawal_data.status in [TransactionStatus.REJECTED, TransactionStatus.CANCELLED] and withdrawal.status == TransactionStatus.PENDING:
+    # Se está rejeitando/cancelando um saque que estava pendente ou em processamento, reverter o saldo
+    elif withdrawal_data.status in [TransactionStatus.REJECTED, TransactionStatus.CANCELLED] and withdrawal.status in (
+        TransactionStatus.PENDING,
+        TransactionStatus.PROCESSING,
+    ):
         if user:
             user.balance += withdrawal.amount
             print(f"[Admin] Revertendo saque {withdrawal_id} - adicionando R$ {withdrawal.amount:.2f} ao saldo do usuário")

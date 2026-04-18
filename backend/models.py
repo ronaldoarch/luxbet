@@ -9,6 +9,7 @@ Base = declarative_base()
 
 class TransactionStatus(str, enum.Enum):
     PENDING = "pending"
+    PROCESSING = "processing"
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"

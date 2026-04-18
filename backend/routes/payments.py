@@ -102,6 +102,14 @@ def get_payment_client(gateway: Gateway):
             client_id = credentials.get("client_id")
             client_secret = credentials.get("client_secret")
             api_url = (credentials.get("api_url") or "https://apiv1.sarrixpay.com").rstrip("/")
+            # O painel grava sandbox: true/false; webhooks PIX são disparados no ambiente da conta Sarrix.
+            # Se usar credenciais sandbox, registre o webhook no painel sandbox (não só em produção).
+            if credentials.get("sandbox") is True and not credentials.get("api_url"):
+                logger.warning(
+                    "[SarrixPay] Credenciais com sandbox=true e sem api_url explícito — usando %s. "
+                    "Se o sandbox usar outro host, defina api_url no JSON do gateway.",
+                    api_url,
+                )
             if not client_id or not client_secret:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1775,6 +1783,127 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
 
 
+def _sarrix_collect_transaction_ids(data: dict) -> list[str]:
+    """Extrai todos os IDs possíveis do payload SarrixPay para casar com `Deposit.external_id`."""
+    ids: list[str] = []
+    transaction = data.get("transaction")
+    if isinstance(transaction, dict) and transaction.get("id"):
+        ids.append(str(transaction["id"]))
+    reference = data.get("reference") or {}
+    if reference.get("transaction_ref"):
+        ids.append(str(reference["transaction_ref"]))
+    for key in ("transaction_id", "transaction_ref", "provider_order", "provider_order_no", "id"):
+        val = data.get(key)
+        if val and key not in ("transaction",):  # evitar dict
+            ids.append(str(val))
+    seen: set[str] = set()
+    out: list[str] = []
+    for i in ids:
+        if i and i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
+
+
+def _sarrix_find_deposit(db: Session, data: dict):
+    """Localiza depósito por external_id ou por IDs dentro de metadata (gateway_response)."""
+    for tid in _sarrix_collect_transaction_ids(data):
+        dep = db.query(Deposit).filter(Deposit.external_id == tid).first()
+        if dep:
+            return dep
+    pending = (
+        db.query(Deposit)
+        .filter(
+            Deposit.status == TransactionStatus.PENDING,
+            Deposit.external_id.isnot(None),
+        )
+        .order_by(Deposit.created_at.desc())
+        .limit(150)
+        .all()
+    )
+    candidates = _sarrix_collect_transaction_ids(data)
+    for tid in candidates:
+        for dep in pending:
+            if not dep.metadata_json:
+                continue
+            try:
+                meta = json.loads(dep.metadata_json)
+            except Exception:
+                continue
+            gr = meta.get("gateway_response")
+            if isinstance(gr, dict):
+                for key in ("transaction_id", "provider_order", "id", "provider_order_no"):
+                    if str(gr.get(key) or "") == tid:
+                        return dep
+            if tid and tid in dep.metadata_json:
+                return dep
+    return None
+
+
+def _sarrix_find_withdrawal(db: Session, data: dict):
+    for tid in _sarrix_collect_transaction_ids(data):
+        w = db.query(Withdrawal).filter(Withdrawal.external_id == tid).first()
+        if w:
+            return w
+    return None
+
+
+async def reconcile_sarrix_deposit_by_transaction_id(db: Session, transaction_id: str) -> dict:
+    """
+    Localiza o depósito pelo mesmo UUID salvo em ``external_id`` (ID da transação no extrato SarrixPay)
+    e executa :func:`reconcile_sarrix_deposit_by_id`.
+    """
+    tid = (transaction_id or "").strip()
+    if not tid:
+        raise HTTPException(status_code=400, detail="transaction_id é obrigatório")
+    deposit = db.query(Deposit).filter(Deposit.external_id == tid).first()
+    if not deposit:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nenhum depósito encontrado com external_id={tid}. Verifique se o UUID é o da cobrança gerada pela plataforma.",
+        )
+    return await reconcile_sarrix_deposit_by_id(db, deposit.id)
+
+
+async def reconcile_sarrix_deposit_by_id(db: Session, deposit_id: int) -> dict:
+    """
+    Consulta GET /transactions na SarrixPay e, se o PIX estiver pago, aplica o mesmo fluxo do webhook.
+    Use quando o webhook não chegou (URL, firewall, ambiente sandbox vs produção).
+    """
+    deposit = db.query(Deposit).filter(Deposit.id == deposit_id).first()
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Depósito não encontrado")
+    if deposit.status == TransactionStatus.APPROVED:
+        return {"ok": True, "message": "Depósito já estava aprovado", "deposit_id": deposit_id}
+    gateway = db.query(Gateway).filter(Gateway.id == deposit.gateway_id).first()
+    if not gateway:
+        raise HTTPException(status_code=400, detail="Gateway do depósito não encontrado")
+    client = get_payment_client(gateway)
+    if not isinstance(client, SarrixPayAPI):
+        raise HTTPException(400, detail="Este depósito não é do gateway SarrixPay")
+    tx_id = (deposit.external_id or "").strip()
+    if not tx_id:
+        raise HTTPException(400, detail="Depósito sem external_id (ID da transação Sarrix)")
+    resp = await client.get_transactions(tx_id)
+    if not resp or resp.get("_error"):
+        msg = SarrixPayAPI.user_message_from_error(resp) if isinstance(resp, dict) else "Falha ao consultar transação"
+        raise HTTPException(status_code=502, detail=msg)
+    items = resp.get("items") if isinstance(resp, dict) else None
+    if not items or not isinstance(items, list):
+        raise HTTPException(502, detail="Resposta da SarrixPay sem lista de transações")
+    item = items[0]
+    st = (item.get("status") or "").lower()
+    if st in ("succeeded", "approved", "paid", "completed"):
+        payload = {"status": "COMPLETED", "transaction": {"id": tx_id}, "reference": {"transaction_ref": tx_id}}
+        return await _process_gatebox_cashin(payload, deposit, db)
+    return {
+        "ok": False,
+        "message": f"Transação ainda não paga na SarrixPay (status={item.get('status')!r})",
+        "deposit_id": deposit_id,
+        "api_status": item.get("status"),
+    }
+
+
 @webhook_router.post("/sarrixpay")
 async def webhook_sarrixpay(request: Request, db: Session = Depends(get_db)):
     """
@@ -1789,13 +1918,18 @@ async def webhook_sarrixpay(request: Request, db: Session = Depends(get_db)):
         reference = data.get("reference") or {}
         tx_id = transaction.get("id") or reference.get("transaction_ref")
         if not tx_id:
-            return {"status": "received", "message": "transaction.id ausente"}
+            alt = _sarrix_collect_transaction_ids(data)
+            tx_id = alt[0] if alt else None
+        if not tx_id:
+            return {"status": "received", "message": "IDs de transação ausentes no payload"}
         tx_id = str(tx_id)
 
         # ——— PIX In (depósitos) ———
         if event.startswith("pix_in"):
-            deposit = db.query(Deposit).filter(Deposit.external_id == tx_id).first()
+            deposit = _sarrix_find_deposit(db, data)
             if not deposit:
+                tried = _sarrix_collect_transaction_ids(data)
+                print(f"[Webhook SarrixPay] Depósito não encontrado para IDs tentados: {tried}")
                 return {"status": "received", "message": "Depósito não encontrado"}
             if event == "pix_in.succeeded":
                 payload = dict(data)
@@ -1822,8 +1956,9 @@ async def webhook_sarrixpay(request: Request, db: Session = Depends(get_db)):
 
         # ——— PIX Out (saques) ———
         if event.startswith("pix_out"):
-            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == tx_id).first()
+            withdrawal = _sarrix_find_withdrawal(db, data)
             if not withdrawal:
+                print(f"[Webhook SarrixPay] Saque não encontrado; tentados: {_sarrix_collect_transaction_ids(data)}")
                 return {"status": "received", "message": "Saque não encontrado"}
             if event == "pix_out.succeeded":
                 payload = dict(data)
