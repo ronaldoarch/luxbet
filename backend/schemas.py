@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, Field
 from typing import Optional, List
 from datetime import datetime
 from models import TransactionStatus, UserRole, MediaType, PromotionType, SupportConfig, CouponType
@@ -25,12 +25,15 @@ class UserUpdate(BaseModel):
     balance: Optional[float] = None
     is_active: Optional[bool] = None
     role: Optional[UserRole] = None
+    playable_bonus_allowed: Optional[bool] = None  # Se pode receber crédito de saldo jogável (bônus admin)
 
 
 class UserResponse(UserBase):
     id: int
     role: UserRole
     balance: float
+    bonus_balance: float = 0.0  # Parcela não sacável (jogos / bônus)
+    playable_bonus_allowed: bool = True
     is_active: bool
     is_verified: bool
     created_at: datetime
@@ -38,6 +41,11 @@ class UserResponse(UserBase):
     
     class Config:
         from_attributes = True
+
+
+class AddBonusBalanceRequest(BaseModel):
+    """Valor a creditar como saldo de bônus — utilizável em jogos, não em saques."""
+    amount: float = Field(gt=0, le=1_000_000)
 
 
 # Auth Schemas

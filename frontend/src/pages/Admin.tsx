@@ -498,6 +498,11 @@ function UsersTab({ token }: { token: string }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [bonusModal, setBonusModal] = useState<{ id: number; username: string } | null>(null);
+  const [bonusAmount, setBonusAmount] = useState('');
+  const [bonusBusy, setBonusBusy] = useState(false);
+  const [quickUserId, setQuickUserId] = useState('');
+  const [quickAmount, setQuickAmount] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true); setError('');
@@ -515,6 +520,83 @@ function UsersTab({ token }: { token: string }) {
     }
   };
 
+  const creditPlayableBonus = async (userId: number, amountInput: string) => {
+    const normalized = amountInput.replace(/\s/g, '').replace(',', '.');
+    const amount = parseFloat(normalized);
+    if (Number.isNaN(amount) || amount <= 0) {
+      setError('Informe um valor maior que zero.');
+      return false;
+    }
+    setBonusBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${userId}/bonus-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          typeof data.detail === 'string'
+            ? data.detail
+            : Array.isArray(data.detail)
+              ? data.detail.map((x: { msg?: string }) => x.msg || '').filter(Boolean).join(' ')
+              : 'Falha ao creditar bônus';
+        throw new Error(msg);
+      }
+      setBonusModal(null);
+      setBonusAmount('');
+      setQuickAmount('');
+      await fetchUsers();
+      return true;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao creditar');
+      return false;
+    } finally {
+      setBonusBusy(false);
+    }
+  };
+
+  const submitBonus = async () => {
+    if (!bonusModal) return;
+    await creditPlayableBonus(bonusModal.id, bonusAmount);
+  };
+
+  const submitQuickBonus = async () => {
+    const id = parseInt(quickUserId, 10);
+    if (!id) {
+      setError('Selecione um usuário na lista.');
+      return;
+    }
+    const u = users.find((x) => x.id === id);
+    if (u && u.playable_bonus_allowed === false) {
+      setError('Este usuário não está autorizado. Ative “Pode receber bônus jogável” na linha do usuário.');
+      return;
+    }
+    await creditPlayableBonus(id, quickAmount);
+  };
+
+  const togglePlayableBonusAllowed = async (u: { id: number; playable_bonus_allowed?: boolean }) => {
+    const currentlyAllowed = u.playable_bonus_allowed !== false;
+    const next = !currentlyAllowed;
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${u.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ playable_bonus_allowed: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === 'string' ? data.detail : 'Falha ao atualizar permissão');
+      }
+      await fetchUsers();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar');
+    }
+  };
+
   const exportUsersToPdf = () => {
     try {
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -522,14 +604,20 @@ function UsersTab({ token }: { token: string }) {
       doc.text('Lista de Usuários', 14, 12);
       doc.setFontSize(10);
       autoTable(doc, {
-        head: [['ID', 'Usuário', 'Email', 'Saldo (R$)', 'Status']],
-        body: users.map(u => [
-          String(u.id),
-          String(u.username ?? ''),
-          String(u.email ?? ''),
-          (u.balance ?? 0).toFixed(2).replace('.', ','),
-          u.is_active ? 'Ativo' : 'Inativo'
-        ]),
+        head: [['ID', 'Usuário', 'Email', 'Saldo sacável (R$)', 'Bônus jogos (R$)', 'Status']],
+        body: users.map(u => {
+          const bonus = Number(u.bonus_balance ?? 0);
+          const total = Number(u.balance ?? 0);
+          const sacavel = Math.max(0, total - bonus);
+          return [
+            String(u.id),
+            String(u.username ?? ''),
+            String(u.email ?? ''),
+            sacavel.toFixed(2).replace('.', ','),
+            bonus.toFixed(2).replace('.', ','),
+            u.is_active ? 'Ativo' : 'Inativo',
+          ];
+        }),
         startY: 18,
         styles: { fontSize: 9 },
         headStyles: { fillColor: [55, 65, 81] }
@@ -542,6 +630,12 @@ function UsersTab({ token }: { token: string }) {
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  useEffect(() => {
+    if (!quickUserId) return;
+    const u = users.find((x) => String(x.id) === quickUserId);
+    if (u && u.playable_bonus_allowed === false) setQuickUserId('');
+  }, [users, quickUserId]);
 
   return (
     <div>
@@ -562,6 +656,101 @@ function UsersTab({ token }: { token: string }) {
         </div>
       </div>
       {error && <div className="text-red-400 mb-3">{error}</div>}
+      {!loading && users.length > 0 && (
+        <div className="mb-6 rounded-xl border border-gray-700 bg-gray-800/60 p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Creditar saldo jogável (não sacável)</h3>
+            <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+              Escolha <strong className="text-gray-300">individualmente</strong> o usuário e o valor. Só é possível creditar quem estiver com{' '}
+              <span className="text-amber-200/90">“Pode receber”</span> ativo na tabela abaixo.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="min-w-[200px] flex-1">
+              <label className="block text-xs text-gray-500 mb-1">Usuário</label>
+              <select
+                value={quickUserId}
+                onChange={(e) => setQuickUserId(e.target.value)}
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm text-white border border-gray-600"
+              >
+                <option value="">— Selecione o usuário —</option>
+                {users.map((u) => {
+                  const blocked = u.playable_bonus_allowed === false;
+                  return (
+                    <option key={u.id} value={String(u.id)} disabled={blocked}>
+                      {u.username} (#{u.id}){blocked ? ' — não autorizado' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="w-36">
+              <label className="block text-xs text-gray-500 mb-1">Valor (R$)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={quickAmount}
+                onChange={(e) => setQuickAmount(e.target.value)}
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm text-white border border-gray-600"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={bonusBusy}
+              onClick={() => void submitQuickBonus()}
+              className="px-4 py-2 rounded-lg bg-[#d4af37] hover:bg-[#c5a028] text-black text-sm font-semibold disabled:opacity-50"
+            >
+              {bonusBusy ? 'Processando…' : 'Creditar'}
+            </button>
+          </div>
+        </div>
+      )}
+      {bonusModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-xl border border-gray-600 bg-gray-800 p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-1">Adicionar saldo bônus (jogos)</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Usuário: <span className="text-gray-200 font-medium">{bonusModal.username}</span>
+            </p>
+            <p className="text-xs text-amber-200/90 mb-4 leading-relaxed">
+              O valor creditado entra no saldo total para apostas, mas é contabilizado como bônus não sacável:
+              não pode ser retirado em saque, apenas utilizado nos jogos. Só usuários autorizados pelo admin podem
+              receber esse crédito.
+            </p>
+            <label className="block text-sm text-gray-300 mb-1">Valor (R$)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Ex: 50 ou 50,00"
+              value={bonusAmount}
+              onChange={(e) => setBonusAmount(e.target.value)}
+              className="w-full bg-gray-700 rounded px-3 py-2 mb-4 text-white"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBonusModal(null);
+                  setBonusAmount('');
+                }}
+                className="px-4 py-2 rounded bg-gray-600 hover:bg-gray-500 text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={bonusBusy}
+                onClick={() => void submitBonus()}
+                className="px-4 py-2 rounded bg-[#d4af37] hover:bg-[#c5a028] text-black text-sm font-semibold disabled:opacity-50"
+              >
+                {bonusBusy ? 'Salvando…' : 'Creditar bônus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {loading ? <div>Carregando...</div> : (
         <div className="overflow-x-auto border border-gray-700 rounded-lg">
           <table className="w-full text-sm">
@@ -570,20 +759,65 @@ function UsersTab({ token }: { token: string }) {
                 <th className="px-3 py-2 text-left">ID</th>
                 <th className="px-3 py-2 text-left">Usuário</th>
                 <th className="px-3 py-2 text-left">Email</th>
-                <th className="px-3 py-2 text-left">Saldo</th>
+                <th className="px-3 py-2 text-left">Saldo total</th>
+                <th className="px-3 py-2 text-left">Sacável</th>
+                <th className="px-3 py-2 text-left">Bônus (jogos)</th>
+                <th className="px-3 py-2 text-left max-w-[140px]">
+                  <span className="leading-tight block">Pode receber bônus jogável</span>
+                </th>
                 <th className="px-3 py-2 text-left">Status</th>
+                <th className="px-3 py-2 text-left">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {users.map(u => (
-                <tr key={u.id} className="border-t border-gray-800">
-                  <td className="px-3 py-2">{u.id}</td>
-                  <td className="px-3 py-2">{u.username}</td>
-                  <td className="px-3 py-2">{u.email}</td>
-                  <td className="px-3 py-2">R$ {u.balance?.toFixed(2)}</td>
-                  <td className="px-3 py-2">{u.is_active ? 'Ativo' : 'Inativo'}</td>
-                </tr>
-              ))}
+              {users.map(u => {
+                const total = Number(u.balance ?? 0);
+                const bonus = Number(u.bonus_balance ?? 0);
+                const sacavel = Math.max(0, total - bonus);
+                const canReceive = u.playable_bonus_allowed !== false;
+                return (
+                  <tr key={u.id} className="border-t border-gray-800">
+                    <td className="px-3 py-2">{u.id}</td>
+                    <td className="px-3 py-2">{u.username}</td>
+                    <td className="px-3 py-2">{u.email}</td>
+                    <td className="px-3 py-2">R$ {total.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-emerald-400/95">R$ {sacavel.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-amber-300/90">R$ {bonus.toFixed(2)}</td>
+                    <td className="px-3 py-2">
+                      <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={canReceive}
+                          onChange={() => void togglePlayableBonusAllowed(u)}
+                          className="rounded border-gray-500 bg-gray-700 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span className="text-xs text-gray-300">{canReceive ? 'Sim' : 'Não'}</span>
+                      </label>
+                    </td>
+                    <td className="px-3 py-2">{u.is_active ? 'Ativo' : 'Inativo'}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        disabled={!canReceive}
+                        title={!canReceive ? 'Ative “Pode receber bônus jogável” para creditar' : 'Creditar saldo jogável para este usuário'}
+                        onClick={() => {
+                          if (!canReceive) {
+                            setError('Ative “Pode receber bônus jogável” nesta linha antes de creditar.');
+                            return;
+                          }
+                          setBonusModal({ id: u.id, username: u.username });
+                          setBonusAmount('');
+                          setError('');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-600/60 bg-amber-900/30 px-2.5 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-900/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-900/30"
+                      >
+                        <Gift size={14} />
+                        Bônus jogos
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -744,7 +978,7 @@ function DepositsTab({ token }: { token: string }) {
         loading={loading}
         error={error}
         onRefresh={fetchData}
-        columns={['ID','User','Valor Pago','Status','Criado em','Ações']}
+        columns={['ID','User','Valor Pago','Status','Criado em']}
         rows={items.map(d => [
           d.id, 
           d.user_id, 
@@ -761,7 +995,6 @@ function DepositsTab({ token }: { token: string }) {
             {getStatusLabel(d.status)}
           </span>, 
           formatDate(d.created_at),
-          <AdminTransactionActionsMenu key={`dep-act-${d.id}`} token={token} kind="deposit" id={d.id} onUpdated={fetchData} />,
         ])}
       />
     </div>

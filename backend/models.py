@@ -33,6 +33,8 @@ class User(Base):
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     balance = Column(Float, default=0.0, nullable=False)
     bonus_balance = Column(Float, default=0.0, nullable=False)  # Saldo de bônus não sacável
+    # Admin pode desmarcar por usuário: sem autorização, não recebe crédito de saldo jogável (bônus admin)
+    playable_bonus_allowed = Column(Boolean, default=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     referred_by_affiliate_id = Column(Integer, ForeignKey("affiliates.id"), nullable=True, index=True)  # Afiliado que indicou

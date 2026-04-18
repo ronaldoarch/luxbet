@@ -84,6 +84,20 @@ def init_db():
             conn.commit()
     except Exception:
         pass  # Coluna já existe
+    # Migração: usuários podem receber ou não bônus jogável (crédito admin) — individual por usuário
+    try:
+        with engine.connect() as conn:
+            if "sqlite" in DATABASE_URL:
+                conn.execute(text("ALTER TABLE users ADD COLUMN playable_bonus_allowed INTEGER DEFAULT 1"))
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS playable_bonus_allowed BOOLEAN DEFAULT TRUE"
+                    )
+                )
+            conn.commit()
+    except Exception:
+        pass  # Coluna já existe
 
 
 def get_db():

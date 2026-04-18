@@ -20,7 +20,7 @@ from models import (
     Coupon, Promotion
 )
 from schemas import (
-    UserResponse, UserCreate, UserUpdate,
+    UserResponse, UserCreate, UserUpdate, AddBonusBalanceRequest,
     DepositResponse, DepositCreate, DepositUpdate,
     WithdrawalResponse, WithdrawalCreate, WithdrawalUpdate,
     FTDResponse, FTDCreate, FTDUpdate,
@@ -159,6 +159,33 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
     
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/bonus-balance", response_model=UserResponse)
+async def add_user_bonus_balance(
+    user_id: int,
+    body: AddBonusBalanceRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    """
+    Credita saldo de bônus para o usuário: incrementa `balance` e `bonus_balance` no mesmo valor.
+    A parcela em `bonus_balance` não conta como saldo sacável (apenas jogos), conforme `available-balance`.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if getattr(user, "playable_bonus_allowed", True) is False:
+        raise HTTPException(
+            status_code=403,
+            detail="Este usuário não está autorizado a receber esse tipo de crédito (saldo jogável). Ative 'Pode receber' na lista de usuários.",
+        )
+    amt = float(body.amount)
+    user.balance = float(user.balance) + amt
+    user.bonus_balance = float(user.bonus_balance or 0.0) + amt
     db.commit()
     db.refresh(user)
     return user
