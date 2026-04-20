@@ -156,20 +156,28 @@ async def get_available_balance(
     db.refresh(current_user)
     total_balance = float(current_user.balance)
     bonus_balance = float(current_user.bonus_balance) if hasattr(current_user, 'bonus_balance') else 0.0
+    wagering_rem = float(getattr(current_user, "bonus_wagering_remaining", 0) or 0.0)
     withdrawable_balance = total_balance - bonus_balance
+    # Com rollover pendente, o backend bloqueia saque; o front pode exibir o valor restante
+    if wagering_rem > 0.001:
+        withdrawable_balance = 0.0
     
     # Em Seamless Mode, o saldo sempre fica no nosso banco
     # Não é necessário verificar ou sincronizar com IGameWin
-    print(f"[Available Balance] Saldo total: R$ {total_balance:.2f}, Bônus não sacável: R$ {bonus_balance:.2f}, Saldo sacável: R$ {withdrawable_balance:.2f}")
+    print(f"[Available Balance] Saldo total: R$ {total_balance:.2f}, Bônus não sacável: R$ {bonus_balance:.2f}, Rollover pendente: R$ {wagering_rem:.2f}, Saldo sacável: R$ {withdrawable_balance:.2f}")
     
     return {
         "available_balance": round(withdrawable_balance, 2),  # Apenas saldo sacável
         "our_balance": round(total_balance, 2),  # Saldo total
         "bonus_balance": round(bonus_balance, 2),  # Bônus não sacável
+        "bonus_wagering_remaining": round(wagering_rem, 2),
         "igamewin_balance": None,
         "total_balance": round(total_balance, 2),
         "needs_sync": False,
-        "message": f"Saldo disponível para saque: R$ {withdrawable_balance:.2f} (Bônus não sacável: R$ {bonus_balance:.2f})"
+        "message": (
+            f"Saldo disponível para saque: R$ {withdrawable_balance:.2f} (Bônus não sacável: R$ {bonus_balance:.2f})"
+            + (f" — Rollover pendente: R$ {wagering_rem:.2f}" if wagering_rem > 0.001 else "")
+        ),
     }
 
 

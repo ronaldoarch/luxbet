@@ -500,9 +500,11 @@ function UsersTab({ token }: { token: string }) {
   const [error, setError] = useState('');
   const [bonusModal, setBonusModal] = useState<{ id: number; username: string } | null>(null);
   const [bonusAmount, setBonusAmount] = useState('');
+  const [bonusRolloverMult, setBonusRolloverMult] = useState('');
   const [bonusBusy, setBonusBusy] = useState(false);
   const [quickUserId, setQuickUserId] = useState('');
   const [quickAmount, setQuickAmount] = useState('');
+  const [quickRolloverMult, setQuickRolloverMult] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true); setError('');
@@ -520,12 +522,19 @@ function UsersTab({ token }: { token: string }) {
     }
   };
 
-  const creditPlayableBonus = async (userId: number, amountInput: string) => {
+  const creditPlayableBonus = async (userId: number, amountInput: string, rolloverMultInput?: string) => {
     const normalized = amountInput.replace(/\s/g, '').replace(',', '.');
     const amount = parseFloat(normalized);
     if (Number.isNaN(amount) || amount <= 0) {
       setError('Informe um valor maior que zero.');
       return false;
+    }
+    let rollover_multiplier: number | undefined;
+    if (rolloverMultInput !== undefined && rolloverMultInput.trim() !== '') {
+      const rm = parseFloat(rolloverMultInput.replace(/\s/g, '').replace(',', '.'));
+      if (!Number.isNaN(rm) && rm > 0) {
+        rollover_multiplier = rm;
+      }
     }
     setBonusBusy(true);
     setError('');
@@ -533,7 +542,7 @@ function UsersTab({ token }: { token: string }) {
       const res = await fetch(`${API_URL}/api/admin/users/${userId}/bonus-balance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ amount, ...(rollover_multiplier !== undefined ? { rollover_multiplier } : {}) }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -547,6 +556,7 @@ function UsersTab({ token }: { token: string }) {
       }
       setBonusModal(null);
       setBonusAmount('');
+      setBonusRolloverMult('');
       setQuickAmount('');
       await fetchUsers();
       return true;
@@ -560,7 +570,7 @@ function UsersTab({ token }: { token: string }) {
 
   const submitBonus = async () => {
     if (!bonusModal) return;
-    await creditPlayableBonus(bonusModal.id, bonusAmount);
+    await creditPlayableBonus(bonusModal.id, bonusAmount, bonusRolloverMult);
   };
 
   const submitQuickBonus = async () => {
@@ -574,7 +584,7 @@ function UsersTab({ token }: { token: string }) {
       setError('Este usuário não está autorizado. Ative “Pode receber bônus jogável” na linha do usuário.');
       return;
     }
-    await creditPlayableBonus(id, quickAmount);
+    await creditPlayableBonus(id, quickAmount, quickRolloverMult);
   };
 
   const togglePlayableBonusAllowed = async (u: { id: number; playable_bonus_allowed?: boolean }) => {
@@ -695,6 +705,18 @@ function UsersTab({ token }: { token: string }) {
                 className="w-full bg-gray-700 rounded px-3 py-2 text-sm text-white border border-gray-600"
               />
             </div>
+            <div className="w-28">
+              <label className="block text-xs text-gray-500 mb-1">Rollover (×)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="opcional"
+                title="Multiplicador sobre o valor creditado; ex.: 5 = exige apostar 5× o crédito"
+                value={quickRolloverMult}
+                onChange={(e) => setQuickRolloverMult(e.target.value)}
+                className="w-full bg-gray-700 rounded px-3 py-2 text-sm text-white border border-gray-600"
+              />
+            </div>
             <button
               type="button"
               disabled={bonusBusy}
@@ -725,8 +747,17 @@ function UsersTab({ token }: { token: string }) {
               placeholder="Ex: 50 ou 50,00"
               value={bonusAmount}
               onChange={(e) => setBonusAmount(e.target.value)}
-              className="w-full bg-gray-700 rounded px-3 py-2 mb-4 text-white"
+              className="w-full bg-gray-700 rounded px-3 py-2 mb-3 text-white"
               autoFocus
+            />
+            <label className="block text-sm text-gray-300 mb-1">Rollover (×) — opcional</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Ex: 10 (exige apostar 10× o valor creditado)"
+              value={bonusRolloverMult}
+              onChange={(e) => setBonusRolloverMult(e.target.value)}
+              className="w-full bg-gray-700 rounded px-3 py-2 mb-4 text-white"
             />
             <div className="flex justify-end gap-2">
               <button
@@ -734,6 +765,7 @@ function UsersTab({ token }: { token: string }) {
                 onClick={() => {
                   setBonusModal(null);
                   setBonusAmount('');
+                  setBonusRolloverMult('');
                 }}
                 className="px-4 py-2 rounded bg-gray-600 hover:bg-gray-500 text-sm"
               >
@@ -762,6 +794,7 @@ function UsersTab({ token }: { token: string }) {
                 <th className="px-3 py-2 text-left">Saldo total</th>
                 <th className="px-3 py-2 text-left">Sacável</th>
                 <th className="px-3 py-2 text-left">Bônus (jogos)</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap">Rollover pend.</th>
                 <th className="px-3 py-2 text-left max-w-[140px]">
                   <span className="leading-tight block">Pode receber bônus jogável</span>
                 </th>
@@ -774,6 +807,7 @@ function UsersTab({ token }: { token: string }) {
                 const total = Number(u.balance ?? 0);
                 const bonus = Number(u.bonus_balance ?? 0);
                 const sacavel = Math.max(0, total - bonus);
+                const wag = Number(u.bonus_wagering_remaining ?? 0);
                 const canReceive = u.playable_bonus_allowed !== false;
                 return (
                   <tr key={u.id} className="border-t border-gray-800">
@@ -783,6 +817,9 @@ function UsersTab({ token }: { token: string }) {
                     <td className="px-3 py-2">R$ {total.toFixed(2)}</td>
                     <td className="px-3 py-2 text-emerald-400/95">R$ {sacavel.toFixed(2)}</td>
                     <td className="px-3 py-2 text-amber-300/90">R$ {bonus.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-xs text-orange-300/90 whitespace-nowrap">
+                      {wag > 0.001 ? `R$ ${wag.toFixed(2)}` : '—'}
+                    </td>
                     <td className="px-3 py-2">
                       <label className="inline-flex items-center gap-2 cursor-pointer select-none">
                         <input
@@ -4440,6 +4477,7 @@ function PromotionsTab({ token }: { token: string }) {
     min_deposit: 0,
     bonus_percentage: 0,
     max_bonus: 0,
+    rollover_multiplier: 0,
     cashback_percentage: 0,
     terms_and_conditions: '',
     link_url: '',
@@ -4564,6 +4602,7 @@ function PromotionsTab({ token }: { token: string }) {
       min_deposit: 0,
       bonus_percentage: 0,
       max_bonus: 0,
+      rollover_multiplier: 0,
       cashback_percentage: 0,
       terms_and_conditions: '',
       link_url: '',
@@ -4587,6 +4626,7 @@ function PromotionsTab({ token }: { token: string }) {
       min_deposit: promo.min_deposit || 0,
       bonus_percentage: promo.bonus_percentage || 0,
       max_bonus: promo.max_bonus || 0,
+      rollover_multiplier: promo.rollover_multiplier ?? 0,
       cashback_percentage: promo.cashback_percentage || 0,
       terms_and_conditions: promo.terms_and_conditions || '',
       link_url: promo.link_url || '',
@@ -4773,6 +4813,18 @@ function PromotionsTab({ token }: { token: string }) {
             />
           </div>
           <div>
+            <label className="block text-sm text-gray-400 mb-1">Rollover (× sobre o bônus)</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+              value={form.rollover_multiplier}
+              onChange={e => setForm({...form, rollover_multiplier: parseFloat(e.target.value) || 0})}
+            />
+            <p className="text-xs text-gray-500 mt-1">Ex.: 10 = o jogador deve apostar 10× o valor do bônus antes de sacar. 0 = sem exigência de rollover por esta promoção.</p>
+          </div>
+          <div>
             <label className="block text-sm text-gray-400 mb-1">% Cashback</label>
             <input
               type="number"
@@ -4892,8 +4944,11 @@ function PromotionsTab({ token }: { token: string }) {
                       )}
                     </div>
                     <p className="text-sm text-gray-400 mb-2">{promo.short_description || promo.description.substring(0, 100)}...</p>
-                    <div className="text-xs text-gray-500">
-                      {new Date(promo.start_date).toLocaleDateString('pt-BR')} até {new Date(promo.end_date).toLocaleDateString('pt-BR')}
+                    <div className="text-xs text-gray-500 space-y-0.5">
+                      <div>{new Date(promo.start_date).toLocaleDateString('pt-BR')} até {new Date(promo.end_date).toLocaleDateString('pt-BR')}</div>
+                      {(Number(promo.rollover_multiplier) > 0) && (
+                        <div className="text-amber-400/90">Rollover: {promo.rollover_multiplier}× sobre o bônus</div>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2 ml-4">

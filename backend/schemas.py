@@ -33,6 +33,7 @@ class UserResponse(UserBase):
     role: UserRole
     balance: float
     bonus_balance: float = 0.0  # Parcela não sacável (jogos / bônus)
+    bonus_wagering_remaining: float = 0.0  # Rollover pendente (volume a apostar) antes de liberar saques
     playable_bonus_allowed: bool = True
     is_active: bool
     is_verified: bool
@@ -46,6 +47,8 @@ class UserResponse(UserBase):
 class AddBonusBalanceRequest(BaseModel):
     """Valor a creditar como saldo de bônus — utilizável em jogos, não em saques."""
     amount: float = Field(gt=0, le=1_000_000)
+    # Opcional: multiplicador de rollover sobre este crédito (ex.: 5 = exige apostar 5× o valor creditado)
+    rollover_multiplier: Optional[float] = Field(default=None, ge=0, le=1000)
 
 
 # Auth Schemas
@@ -452,6 +455,7 @@ class PromotionBase(BaseModel):
     min_deposit: float = 0.0
     bonus_percentage: float = 0.0
     max_bonus: float = 0.0
+    rollover_multiplier: float = 0.0  # 0 = sem rollover obrigatório via esta promoção
     cashback_percentage: float = 0.0
     terms_and_conditions: Optional[str] = None
     link_url: Optional[str] = None
@@ -477,6 +481,7 @@ class PromotionUpdate(BaseModel):
     min_deposit: Optional[float] = None
     bonus_percentage: Optional[float] = None
     max_bonus: Optional[float] = None
+    rollover_multiplier: Optional[float] = None
     cashback_percentage: Optional[float] = None
     terms_and_conditions: Optional[str] = None
     link_url: Optional[str] = None

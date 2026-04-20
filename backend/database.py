@@ -98,6 +98,34 @@ def init_db():
             conn.commit()
     except Exception:
         pass  # Coluna já existe
+    # Migração: rollover pendente (volume a apostar) após bônus com rollover
+    try:
+        with engine.connect() as conn:
+            if "sqlite" in DATABASE_URL:
+                conn.execute(text("ALTER TABLE users ADD COLUMN bonus_wagering_remaining REAL DEFAULT 0.0"))
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_wagering_remaining DOUBLE PRECISION DEFAULT 0.0"
+                    )
+                )
+            conn.commit()
+    except Exception:
+        pass
+    # Migração: multiplicador de rollover nas promoções
+    try:
+        with engine.connect() as conn:
+            if "sqlite" in DATABASE_URL:
+                conn.execute(text("ALTER TABLE promotions ADD COLUMN rollover_multiplier REAL DEFAULT 0.0"))
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE promotions ADD COLUMN IF NOT EXISTS rollover_multiplier DOUBLE PRECISION DEFAULT 0.0"
+                    )
+                )
+            conn.commit()
+    except Exception:
+        pass
 
 
 def get_db():

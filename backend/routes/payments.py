@@ -17,6 +17,7 @@ from dependencies import get_current_user
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
 from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox, normalize_pix_key_for_gatebox
+from bonus_wagering import add_rollover_requirement
 from datetime import datetime, timedelta
 import json
 import logging
@@ -193,6 +194,12 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
             )
             db.add(notification)
             db.flush()  # Garantir que a notificação também seja persistida
+
+            # Rollover: exige volume de apostas (bônus × multiplicador) antes de liberar saques
+            rm = float(getattr(promo, "rollover_multiplier", 0) or 0.0)
+            if rm > 0:
+                add_rollover_requirement(user, bonus_amount, rm)
+                db.flush()
             
             # Refresh do usuário para garantir que o saldo está atualizado no objeto
             db.refresh(user)
@@ -583,6 +590,16 @@ async def create_pix_withdrawal(
     # Usar usuário autenticado
     user = current_user
     db.refresh(user)  # Garantir dados atualizados
+
+    wagering_rem = float(getattr(user, "bonus_wagering_remaining", 0) or 0.0)
+    if wagering_rem > 0.001:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Rollover pendente: falta apostar R$ {wagering_rem:.2f} em volume para liberar saques "
+                "(apostas contam para cumprir o requisito)."
+            ),
+        )
     
     # Calcular saldo sacável (balance - bonus_balance)
     bonus_balance = float(user.bonus_balance) if hasattr(user, 'bonus_balance') else 0.0

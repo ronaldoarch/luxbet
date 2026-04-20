@@ -20,6 +20,7 @@ export default function Withdrawal() {
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
   const [bonusBalance, setBonusBalance] = useState<number | null>(null);
   const [totalBalance, setTotalBalance] = useState<number | null>(null);
+  const [wageringRemaining, setWageringRemaining] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [syncingBalance, setSyncingBalance] = useState(false);
   const [hasSynced, setHasSynced] = useState(false); // Flag para sincronizar apenas uma vez
@@ -70,6 +71,9 @@ export default function Withdrawal() {
           setAvailableBalance(balanceData.available_balance || user.balance || 0);
           setBonusBalance(balanceData.bonus_balance || 0);
           setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance || 0);
+          setWageringRemaining(
+            typeof balanceData.bonus_wagering_remaining === 'number' ? balanceData.bonus_wagering_remaining : null
+          );
           
           // Sincronizar apenas UMA vez quando necessário e ainda não foi sincronizado
           if (balanceData.needs_sync && !syncingBalance && !hasSynced) {
@@ -110,15 +114,26 @@ export default function Withdrawal() {
                   setAvailableBalance(updatedBalanceData.available_balance || user.balance || 0);
                   setBonusBalance(updatedBalanceData.bonus_balance || 0);
                   setTotalBalance(updatedBalanceData.our_balance || updatedBalanceData.total_balance || user.balance || 0);
+                  setWageringRemaining(
+                    typeof updatedBalanceData.bonus_wagering_remaining === 'number'
+                      ? updatedBalanceData.bonus_wagering_remaining
+                      : null
+                  );
                 } else {
                   setAvailableBalance(balanceData.available_balance || user.balance || 0);
                   setBonusBalance(balanceData.bonus_balance || 0);
                   setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance || 0);
+                  setWageringRemaining(
+                    typeof balanceData.bonus_wagering_remaining === 'number' ? balanceData.bonus_wagering_remaining : null
+                  );
                 }
               } else {
                 setAvailableBalance(balanceData.available_balance || user.balance || 0);
                 setBonusBalance(balanceData.bonus_balance || 0);
                 setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance || 0);
+                setWageringRemaining(
+                  typeof balanceData.bonus_wagering_remaining === 'number' ? balanceData.bonus_wagering_remaining : null
+                );
               }
             } finally {
               setSyncingBalance(false);
@@ -128,6 +143,7 @@ export default function Withdrawal() {
           setAvailableBalance(user?.balance || 0);
           setBonusBalance(0);
           setTotalBalance(user?.balance || 0);
+          setWageringRemaining(null);
         }
       } catch (err) {
         if (cancelled) return;
@@ -135,6 +151,7 @@ export default function Withdrawal() {
         setAvailableBalance(user?.balance || 0);
         setBonusBalance(0);
         setTotalBalance(user?.balance || 0);
+        setWageringRemaining(null);
       } finally {
         if (!cancelled) {
           setLoadingBalance(false);
@@ -224,17 +241,32 @@ export default function Withdrawal() {
                   setAvailableBalance(currentBalance);
                   setBonusBalance(updatedBalanceData.bonus_balance || 0);
                   setTotalBalance(updatedBalanceData.our_balance || updatedBalanceData.total_balance || user.balance);
+                  setWageringRemaining(
+                    typeof updatedBalanceData.bonus_wagering_remaining === 'number'
+                      ? updatedBalanceData.bonus_wagering_remaining
+                      : null
+                  );
                 } else {
                   currentBalance = balanceData.available_balance || user.balance;
                   setAvailableBalance(currentBalance);
                   setBonusBalance(balanceData.bonus_balance || 0);
                   setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance);
+                  setWageringRemaining(
+                    typeof balanceData.bonus_wagering_remaining === 'number'
+                      ? balanceData.bonus_wagering_remaining
+                      : null
+                  );
                 }
               } else {
                 currentBalance = balanceData.available_balance || user.balance;
                 setAvailableBalance(currentBalance);
                 setBonusBalance(balanceData.bonus_balance || 0);
                 setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance);
+                setWageringRemaining(
+                  typeof balanceData.bonus_wagering_remaining === 'number'
+                    ? balanceData.bonus_wagering_remaining
+                    : null
+                );
               }
             } finally {
               setSyncingBalance(false);
@@ -244,6 +276,9 @@ export default function Withdrawal() {
             setAvailableBalance(currentBalance);
             setBonusBalance(balanceData.bonus_balance || 0);
             setTotalBalance(balanceData.our_balance || balanceData.total_balance || user.balance);
+            setWageringRemaining(
+              typeof balanceData.bonus_wagering_remaining === 'number' ? balanceData.bonus_wagering_remaining : null
+            );
           }
         }
       }
@@ -346,6 +381,16 @@ export default function Withdrawal() {
                     <p className="text-gray-300">
                       🎁 Bônus não sacável: R$ {bonusBalance.toFixed(2).replace('.', ',')}
                     </p>
+                  )}
+                  {wageringRemaining !== null && wageringRemaining > 0.001 && (
+                    <div className="rounded-lg bg-orange-500/15 border border-orange-500/40 px-3 py-2 text-orange-200 text-sm">
+                      <p className="font-semibold">Rollover pendente</p>
+                      <p className="text-orange-100/90 mt-1">
+                        Falta apostar <strong>R$ {wageringRemaining.toFixed(2).replace('.', ',')}</strong> em volume
+                        (somando o valor das apostas) para liberar saques. Jogue caça-níqueis ou outros jogos elegíveis
+                        até zerar este valor.
+                      </p>
+                    </div>
                   )}
                   {totalBalance !== null && (
                     <p className="text-gray-400 text-xs">

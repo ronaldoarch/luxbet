@@ -33,6 +33,8 @@ class User(Base):
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     balance = Column(Float, default=0.0, nullable=False)
     bonus_balance = Column(Float, default=0.0, nullable=False)  # Saldo de bônus não sacável
+    # Volume de apostas (rollover) ainda pendente antes de liberar saques após bônus com rollover
+    bonus_wagering_remaining = Column(Float, default=0.0, nullable=False)
     # Admin pode desmarcar por usuário: sem autorização, não recebe crédito de saldo jogável (bônus admin)
     playable_bonus_allowed = Column(Boolean, default=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -337,6 +339,8 @@ class Promotion(Base):
     min_deposit = Column(Float, default=0.0)  # Depósito mínimo (se aplicável)
     bonus_percentage = Column(Float, default=0.0)  # % de bônus (se aplicável)
     max_bonus = Column(Float, default=0.0)  # Bônus máximo (se aplicável)
+    # Multiplicador de rollover sobre o valor do bônus (ex.: 10 = apostar 10× o bônus). 0 = sem exigência extra
+    rollover_multiplier = Column(Float, default=0.0, nullable=False)
     cashback_percentage = Column(Float, default=0.0)  # % de cashback (se aplicável)
     terms_and_conditions = Column(Text)  # Termos e condições
     link_url = Column(String(500))  # Link para mais detalhes ou ação

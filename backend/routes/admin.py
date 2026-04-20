@@ -38,6 +38,7 @@ from schemas import (
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api, IGameWinAPI
+from bonus_wagering import add_rollover_requirement, reduce_bonus_wagering_remaining
 
 class SarrixReconcileByTransactionBody(BaseModel):
     """UUID da transação como no extrato SarrixPay (campo Transação / transaction_id)."""
@@ -186,6 +187,9 @@ async def add_user_bonus_balance(
     amt = float(body.amount)
     user.balance = float(user.balance) + amt
     user.bonus_balance = float(user.bonus_balance or 0.0) + amt
+    rm = body.rollover_multiplier
+    if rm is not None and float(rm) > 0:
+        add_rollover_requirement(user, amt, float(rm))
     db.commit()
     db.refresh(user)
     return user
@@ -3330,6 +3334,7 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
                 })
             )
             db.add(bet)
+            reduce_bonus_wagering_remaining(user, bet_money)
             
         elif txn_type == "credit":
             # Apenas ganho (creditar)
@@ -3412,6 +3417,7 @@ async def _handle_transaction(data: Dict[str, Any], agent: IGameWinAgent, db: Se
                         })
                     )
                     db.add(bet)
+            reduce_bonus_wagering_remaining(user, bet_money)
         
         db.commit()
         db.refresh(user)  # Garantir que temos o valor atualizado
