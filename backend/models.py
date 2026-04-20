@@ -142,6 +142,8 @@ class FTDSettings(Base):
     pass_rate = Column(Float, default=0.0, nullable=False)  # Taxa de passagem (FTD interno)
     min_amount = Column(Float, default=2.0, nullable=False)  # Depósito mínimo (R$)
     min_withdrawal = Column(Float, default=10.0, nullable=False)  # Saque mínimo (R$)
+    # Rollover global: multiplicador sobre o valor do bônus (0 = sem exigência de volume para saque)
+    rollover_multiplier = Column(Float, default=0.0, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -339,8 +341,6 @@ class Promotion(Base):
     min_deposit = Column(Float, default=0.0)  # Depósito mínimo (se aplicável)
     bonus_percentage = Column(Float, default=0.0)  # % de bônus (se aplicável)
     max_bonus = Column(Float, default=0.0)  # Bônus máximo (se aplicável)
-    # Multiplicador de rollover sobre o valor do bônus (ex.: 10 = apostar 10× o bônus). 0 = sem exigência extra
-    rollover_multiplier = Column(Float, default=0.0, nullable=False)
     cashback_percentage = Column(Float, default=0.0)  # % de cashback (se aplicável)
     terms_and_conditions = Column(Text)  # Termos e condições
     link_url = Column(String(500))  # Link para mais detalhes ou ação

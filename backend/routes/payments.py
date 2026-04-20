@@ -17,7 +17,7 @@ from dependencies import get_current_user
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api
 from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox, normalize_pix_key_for_gatebox
-from bonus_wagering import add_rollover_requirement
+from bonus_wagering import add_rollover_requirement, get_global_rollover_multiplier
 from datetime import datetime, timedelta
 import json
 import logging
@@ -195,8 +195,8 @@ def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional
             db.add(notification)
             db.flush()  # Garantir que a notificação também seja persistida
 
-            # Rollover: exige volume de apostas (bônus × multiplicador) antes de liberar saques
-            rm = float(getattr(promo, "rollover_multiplier", 0) or 0.0)
+            # Rollover global (FTDSettings): volume = bônus × multiplicador
+            rm = get_global_rollover_multiplier(db)
             if rm > 0:
                 add_rollover_requirement(user, bonus_amount, rm)
                 db.flush()

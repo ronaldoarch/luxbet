@@ -47,8 +47,6 @@ class UserResponse(UserBase):
 class AddBonusBalanceRequest(BaseModel):
     """Valor a creditar como saldo de bônus — utilizável em jogos, não em saques."""
     amount: float = Field(gt=0, le=1_000_000)
-    # Opcional: multiplicador de rollover sobre este crédito (ex.: 5 = exige apostar 5× o valor creditado)
-    rollover_multiplier: Optional[float] = Field(default=None, ge=0, le=1000)
 
 
 # Auth Schemas
@@ -240,6 +238,7 @@ class FTDSettingsBase(BaseModel):
     pass_rate: float = 0.0
     min_amount: float = 2.0  # Depósito mínimo (R$)
     min_withdrawal: float = 10.0  # Saque mínimo (R$)
+    rollover_multiplier: float = 0.0  # Global: × sobre o bônus para liberar saque (0 = sem rollover)
     is_active: bool = True
 
 
@@ -455,7 +454,6 @@ class PromotionBase(BaseModel):
     min_deposit: float = 0.0
     bonus_percentage: float = 0.0
     max_bonus: float = 0.0
-    rollover_multiplier: float = 0.0  # 0 = sem rollover obrigatório via esta promoção
     cashback_percentage: float = 0.0
     terms_and_conditions: Optional[str] = None
     link_url: Optional[str] = None
@@ -481,7 +479,6 @@ class PromotionUpdate(BaseModel):
     min_deposit: Optional[float] = None
     bonus_percentage: Optional[float] = None
     max_bonus: Optional[float] = None
-    rollover_multiplier: Optional[float] = None
     cashback_percentage: Optional[float] = None
     terms_and_conditions: Optional[str] = None
     link_url: Optional[str] = None

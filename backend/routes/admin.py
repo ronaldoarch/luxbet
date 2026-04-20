@@ -38,7 +38,7 @@ from schemas import (
 )
 from auth import get_password_hash
 from igamewin_api import get_igamewin_api, IGameWinAPI
-from bonus_wagering import add_rollover_requirement, reduce_bonus_wagering_remaining
+from bonus_wagering import add_rollover_requirement, get_global_rollover_multiplier, reduce_bonus_wagering_remaining
 
 class SarrixReconcileByTransactionBody(BaseModel):
     """UUID da transação como no extrato SarrixPay (campo Transação / transaction_id)."""
@@ -187,9 +187,9 @@ async def add_user_bonus_balance(
     amt = float(body.amount)
     user.balance = float(user.balance) + amt
     user.bonus_balance = float(user.bonus_balance or 0.0) + amt
-    rm = body.rollover_multiplier
-    if rm is not None and float(rm) > 0:
-        add_rollover_requirement(user, amt, float(rm))
+    rm = get_global_rollover_multiplier(db)
+    if rm > 0:
+        add_rollover_requirement(user, amt, rm)
     db.commit()
     db.refresh(user)
     return user
@@ -540,7 +540,9 @@ async def get_ftd_settings(
     settings = db.query(FTDSettings).filter(FTDSettings.is_active == True).first()
     if not settings:
         # Create default settings
-        settings = FTDSettings(pass_rate=0.0, min_amount=2.0, min_withdrawal=10.0, is_active=True)
+        settings = FTDSettings(
+            pass_rate=0.0, min_amount=2.0, min_withdrawal=10.0, rollover_multiplier=0.0, is_active=True
+        )
         db.add(settings)
         db.commit()
         db.refresh(settings)

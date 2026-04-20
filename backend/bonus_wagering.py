@@ -1,5 +1,17 @@
 """Regra de rollover: volume de apostas necessário antes de liberar saques após bônus com rollover."""
 
+from sqlalchemy.orm import Session
+
+
+def get_global_rollover_multiplier(db: Session) -> float:
+    """Multiplicador único (configuração global em FTDSettings). 0 = sem rollover obrigatório."""
+    from models import FTDSettings
+
+    s = db.query(FTDSettings).filter(FTDSettings.is_active == True).first()
+    if not s:
+        return 0.0
+    return float(getattr(s, "rollover_multiplier", 0) or 0.0)
+
 
 def reduce_bonus_wagering_remaining(user, stake: float) -> None:
     """
