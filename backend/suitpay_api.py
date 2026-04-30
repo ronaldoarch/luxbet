@@ -211,8 +211,8 @@ class SuitPayAPI:
             if value is not None:
                 values.append(str(value))
         
-        # Concatena com client_secret
-        string_to_hash = "".join(values) + client_secret
+        # Conforme a SuitPay, o hash usa o client_secret antes dos valores recebidos.
+        string_to_hash = client_secret + "".join(values)
         
         # Calcula SHA-256
         calculated_hash = hashlib.sha256(string_to_hash.encode()).hexdigest()

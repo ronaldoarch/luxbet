@@ -144,6 +144,59 @@ def get_payment_client(gateway: Gateway):
         )
 
 
+def find_withdrawal_by_gateway_ids(db: Session, *ids: Optional[str]) -> Optional[Withdrawal]:
+    """
+    Localiza saques por IDs diretos ou por IDs gravados no metadata do gateway.
+    Alguns provedores retornam um ID na criação e outro no webhook.
+    """
+    search_ids = [str(i).strip() for i in ids if i is not None and str(i).strip()]
+    if not search_ids:
+        return None
+
+    withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id.in_(search_ids)).first()
+    if withdrawal:
+        return withdrawal
+
+    recent_withdrawals = (
+        db.query(Withdrawal)
+        .order_by(Withdrawal.created_at.desc())
+        .limit(300)
+        .all()
+    )
+    gateway_id_keys = (
+        "external_id",
+        "id_transaction",
+        "gateway_transaction_id",
+        "gatebox_transaction_id",
+        "idTransaction",
+        "internalreference",
+        "transaction_id",
+        "externalId",
+        "withdrawal_id",
+        "uuid",
+        "identifier",
+        "id",
+    )
+
+    for item in recent_withdrawals:
+        if not item.metadata_json:
+            continue
+        try:
+            metadata = json.loads(item.metadata_json)
+        except Exception:
+            continue
+
+        candidates = [metadata.get(key) for key in gateway_id_keys]
+        gateway_response = metadata.get("gateway_response")
+        if isinstance(gateway_response, dict):
+            candidates.extend(gateway_response.get(key) for key in gateway_id_keys)
+
+        if any(str(candidate).strip() in search_ids for candidate in candidates if candidate is not None):
+            return item
+
+    return None
+
+
 def apply_promotion_bonus(db: Session, user: User, deposit: Deposit) -> Optional[float]:
     """
     Aplica bônus de promoção quando um depósito é aprovado.
@@ -341,6 +394,7 @@ async def create_pix_deposit(
     pix_response = None
     id_transaction = None
     pix_code = None
+    request_number = None
     
     gateway_name = gateway.name.lower()
     
@@ -557,6 +611,7 @@ async def create_pix_deposit(
             "pix_qr_code_base64": qr_code_base64,
             "gateway": gateway.name,
             "gateway_response": pix_response,
+            "request_number": request_number,
             "created_at": datetime.utcnow().isoformat(),
             "waiting_payment": True
         })
@@ -687,6 +742,7 @@ async def create_pix_withdrawal(
     transfer_response = None
     id_transaction = None
     gatebox_withdrawal_tx_id = None  # uuid/identifier para o webhook Gatebox localizar o saque
+    withdrawal_status = TransactionStatus.PENDING
     
     gateway_name = gateway.name.lower()
     print(f"[Withdrawal] Processando saque via {gateway_name.upper()}")
@@ -848,6 +904,9 @@ async def create_pix_withdrawal(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=error_msg
                     )
+                # Conforme documentação SuitPay, response=OK significa transferência realizada.
+                # O webhook permanece como confirmação/idempotência e pode cancelar/devolver depois.
+                withdrawal_status = TransactionStatus.APPROVED
         
         elif isinstance(payment_client, SarrixPayAPI):
             print(f"[Withdrawal] Usando SarrixPay para processar saque")
@@ -944,14 +1003,17 @@ async def create_pix_withdrawal(
         "external_id": external_id,
         "gateway": gateway.name,
         "gateway_response": transfer_response,
+        "initial_status": withdrawal_status.value,
     }
+    if withdrawal_status == TransactionStatus.APPROVED:
+        withdrawal_metadata["approved_at"] = datetime.utcnow().isoformat()
     if gatebox_withdrawal_tx_id:
         withdrawal_metadata["gatebox_transaction_id"] = gatebox_withdrawal_tx_id
     withdrawal = Withdrawal(
         user_id=user.id,
         gateway_id=gateway.id,
         amount=request.amount,
-        status=TransactionStatus.PENDING,
+        status=withdrawal_status,
         transaction_id=str(uuid.uuid4()),
         external_id=id_transaction or external_id,
         metadata_json=json.dumps(withdrawal_metadata),
@@ -997,27 +1059,16 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
     """
     try:
         data = await request.json()
-        
-        # Buscar gateway PIX ativo para validar hash
-        gateway = get_active_pix_gateway(db)
-        credentials = json.loads(gateway.credentials) if gateway.credentials else {}
-        client_secret = credentials.get("client_secret") or credentials.get("cs")
-        
-        if not client_secret:
-            raise HTTPException(status_code=500, detail="Credenciais do gateway não configuradas")
-        
-        # Validar hash
-        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret):
-            raise HTTPException(status_code=401, detail="Hash inválido")
-        
+
         # Processar webhook conforme documentação oficial SuitPay
         # Campos esperados: idTransaction, typeTransaction, statusTransaction, 
         # value, payerName, payerTaxId, paymentDate, paymentCode, requestNumber, hash
         id_transaction = data.get("idTransaction")
-        status_transaction = data.get("statusTransaction")
+        status_transaction = (data.get("statusTransaction") or "").upper()
         type_transaction = data.get("typeTransaction")  # Deve ser "PIX"
         value = data.get("value")
         request_number = data.get("requestNumber")
+        external_id = data.get("externalId") or data.get("external_id")
         payment_date = data.get("paymentDate")  # Formato: dd/MM/yyyy HH:mm:ss
         payment_code = data.get("paymentCode")
         
@@ -1025,6 +1076,8 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         deposit = None
         if id_transaction:
             deposit = db.query(Deposit).filter(Deposit.external_id == id_transaction).first()
+        if not deposit and external_id:
+            deposit = db.query(Deposit).filter(Deposit.external_id == external_id).first()
         
         if not deposit and request_number:
             # Tentar buscar pelo request_number no metadata
@@ -1038,7 +1091,27 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
                     break
         
         if not deposit:
-            return {"status": "ok", "message": "Depósito não encontrado"}
+            logger.warning(
+                "[Webhook SuitPay] Depósito não encontrado: idTransaction=%r externalId=%r requestNumber=%r",
+                id_transaction,
+                external_id,
+                request_number,
+            )
+            raise HTTPException(status_code=404, detail="Depósito não encontrado")
+
+        # Validar o hash com as credenciais do gateway que originou este depósito.
+        gateway = db.query(Gateway).filter(Gateway.id == deposit.gateway_id).first()
+        if not gateway:
+            raise HTTPException(status_code=500, detail="Gateway associado ao depósito não encontrado")
+
+        credentials = json.loads(gateway.credentials) if gateway.credentials else {}
+        client_secret = credentials.get("client_secret") or credentials.get("cs")
+
+        if not client_secret:
+            raise HTTPException(status_code=500, detail="Credenciais do gateway do depósito não configuradas")
+
+        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret):
+            raise HTTPException(status_code=401, detail="Hash inválido")
         
         # Atualizar status do depósito
         if status_transaction == "PAID_OUT":
@@ -1129,6 +1202,8 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         
         return {"status": "ok", "message": "Webhook processado com sucesso"}
     
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Erro ao processar webhook PIX Cash-in: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
@@ -1277,16 +1352,11 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
             print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Nenhum ID de transação encontrado no webhook")
             return {"status": "received", "message": "idTransaction ou internalreference não encontrado"}
         
-        # Buscar saque pelo external_id (pode ser idTransaction ou internalreference)
-        withdrawal = None
         search_ids = [id_transaction, internalreference]
-        
-        for search_id in search_ids:
-            if search_id:
-                withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == search_id).first()
-                if withdrawal:
-                    print(f"[Webhook NXGATE PIX Cash-out] ✅ Saque encontrado pelo ID: {search_id}")
-                    break
+        # Buscar saque por IDs diretos ou IDs armazenados no metadata do gateway
+        withdrawal = find_withdrawal_by_gateway_ids(db, id_transaction, internalreference)
+        if withdrawal:
+            print(f"[Webhook NXGATE PIX Cash-out] ✅ Saque encontrado: {withdrawal.id}")
         
         if not withdrawal:
             print(f"[Webhook NXGATE PIX Cash-out] ⚠️  Saque não encontrado com IDs: {search_ids}")
@@ -1298,7 +1368,7 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
             
             if not withdrawal:
                 print(f"[Webhook NXGATE PIX Cash-out] ❌ Saque não encontrado após todas as tentativas")
-                return {"status": "received", "message": "Saque não encontrado"}
+                raise HTTPException(status_code=404, detail="Saque não encontrado")
         
         old_status = withdrawal.status
         print(f"[Webhook NXGATE PIX Cash-out] Saque ID: {withdrawal.id}, Status atual: {old_status}")
@@ -1343,6 +1413,8 @@ async def webhook_nxgate_pix_cashout(request: Request, db: Session = Depends(get
         
         return {"status": "received", "message": "Webhook processado com sucesso"}
     
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"\n{'='*80}")
         print(f"[Webhook NXGATE PIX Cash-out] ❌ ERRO ao processar webhook: {str(e)}")
@@ -1807,15 +1879,19 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
         
         # Processar webhook
         id_transaction = data.get("idTransaction")
-        status_transaction = data.get("statusTransaction")
+        external_id = data.get("externalId") or data.get("external_id")
+        status_transaction = (data.get("statusTransaction") or "").upper()
         
-        # Buscar saque pelo external_id
-        withdrawal = None
-        if id_transaction:
-            withdrawal = db.query(Withdrawal).filter(Withdrawal.external_id == id_transaction).first()
+        # Buscar saque pelo ID do gateway ou pelo externalId enviado na criação
+        withdrawal = find_withdrawal_by_gateway_ids(db, id_transaction, external_id)
         
         if not withdrawal:
-            return {"status": "ok", "message": "Saque não encontrado"}
+            logger.warning(
+                "[Webhook SuitPay PIX Cash-out] Saque não encontrado: idTransaction=%r externalId=%r",
+                id_transaction,
+                external_id,
+            )
+            raise HTTPException(status_code=404, detail="Saque não encontrado")
         
         old_status = withdrawal.status
         print(f"[Webhook SuitPay PIX Cash-out] Saque ID: {withdrawal.id}, Status atual: {old_status}")
@@ -1828,8 +1904,8 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
             else:
                 print(f"[Webhook SuitPay PIX Cash-out] ⚠️  Saque já estava aprovado, ignorando webhook duplicado")
         elif status_transaction == "CANCELED":
-            # Reverter saldo se foi cancelado (usar old_status para garantir que verificamos o status antes da atualização)
-            if old_status == TransactionStatus.PENDING:
+            # Reverter saldo se foi cancelado/devolvido pela SuitPay e ainda não estava cancelado/rejeitado.
+            if old_status in (TransactionStatus.PENDING, TransactionStatus.APPROVED, TransactionStatus.PROCESSING):
                 user = db.query(User).filter(User.id == withdrawal.user_id).first()
                 if user:
                     db.refresh(user)  # Garantir dados atualizados
@@ -1853,6 +1929,8 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
         
         return {"status": "ok", "message": "Webhook processado com sucesso"}
     
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Erro ao processar webhook PIX Cash-out: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
