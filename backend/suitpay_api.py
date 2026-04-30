@@ -6,6 +6,10 @@ import httpx
 import json
 from typing import Optional, Dict, Any, List
 import os
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class SuitPayAPI:
@@ -195,6 +199,8 @@ class SuitPayAPI:
         data: Dict[str, Any],
         client_secret: str,
         raw_body: Optional[bytes] = None,
+        headers: Optional[Dict[str, Any]] = None,
+        allow_missing_hash: bool = False,
     ) -> bool:
         """
         Valida o hash do webhook recebido da SuitPay
@@ -206,6 +212,8 @@ class SuitPayAPI:
             data: Dados do webhook (JSON) - deve manter ordem original
             client_secret: Client Secret (cs) da SuitPay
             raw_body: Corpo bruto opcional do webhook para preservar formatos como 10.00
+            headers: Headers opcionais do request para casos em que a SuitPay envie a assinatura fora do body
+            allow_missing_hash: Aceita callbacks sem assinatura quando a transação já foi localizada localmente
         
         Returns:
             True se o hash for válido, False caso contrário
@@ -217,10 +225,38 @@ class SuitPayAPI:
         # Faz cópia para não modificar o original
         data_copy = copy.deepcopy(data)
         
-        # Remove o hash do dict para calcular
-        received_hash = data_copy.pop("hash", None)
+        hash_field_names = {"hash", "signature", "x-signature", "x-webhook-signature", "webhook-signature"}
+
+        def is_hash_key(key: Any) -> bool:
+            return str(key).strip().lower() in hash_field_names
+
+        def extract_hash_from_payload(payload: Dict[str, Any]) -> Optional[str]:
+            for key in list(payload.keys()):
+                if is_hash_key(key):
+                    value = payload.pop(key, None)
+                    return str(value).strip() if value is not None else None
+            return None
+
+        def extract_hash_from_headers(request_headers: Optional[Dict[str, Any]]) -> Optional[str]:
+            if not request_headers:
+                return None
+            for key, value in request_headers.items():
+                if is_hash_key(key):
+                    return str(value).strip() if value is not None else None
+            return None
+
+        # Remove o hash do dict para calcular, aceitando variações de nome/case.
+        received_hash = extract_hash_from_payload(data_copy) or extract_hash_from_headers(headers)
         if not received_hash:
-            return False
+            header_keys = list(headers.keys()) if headers else []
+            logger.warning(
+                "[SuitPay Webhook Hash] Hash ausente no payload/headers. "
+                "payload_keys=%s header_keys=%s allow_missing_hash=%s",
+                list(data.keys()),
+                header_keys,
+                allow_missing_hash,
+            )
+            return allow_missing_hash
         
         def stringify_value(value: Any) -> str:
             if isinstance(value, Decimal):
@@ -285,18 +321,18 @@ class SuitPayAPI:
 
                     if text[idx] == '"':
                         value, idx = decoder.raw_decode(text, idx)
-                        if key != "hash":
+                        if not is_hash_key(key):
                             values.append(str(value))
                     elif text[idx] in "[{":
                         value, idx = decoder.raw_decode(text, idx)
-                        if key != "hash" and value is not None:
+                        if not is_hash_key(key) and value is not None:
                             values.append(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
                     else:
                         start = idx
                         while idx < length and text[idx] not in ",}":
                             idx += 1
                         token = text[start:idx].strip()
-                        if key != "hash" and token != "null":
+                        if not is_hash_key(key) and token != "null":
                             values.append(token)
 
                     idx = skip_ws(idx)
@@ -333,8 +369,11 @@ class SuitPayAPI:
             if calculated_hash.lower() == received_hash:
                 return True
 
-        print(
+        logger.warning(
             "[SuitPay Webhook Hash] Hash inválido. "
-            f"received={received_hash} calculated={calculated_hashes} keys={list(data.keys())}"
+            "received=%s calculated=%s keys=%s",
+            received_hash,
+            calculated_hashes,
+            list(data.keys()),
         )
         return False

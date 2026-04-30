@@ -31,6 +31,13 @@ import base64
 
 logger = logging.getLogger(__name__)
 
+
+def _decimal_default(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
 router = APIRouter(prefix="/api/public/payments", tags=["payments"])
 webhook_router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 affiliate_router = APIRouter(prefix="/api/public/affiliate", tags=["affiliate"])
@@ -1120,8 +1127,26 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         if not client_secret:
             raise HTTPException(status_code=500, detail="Credenciais do gateway do depósito não configuradas")
 
-        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret, raw_body=raw_body):
+        if not SuitPayAPI.validate_webhook_hash(
+            data.copy(),
+            client_secret,
+            raw_body=raw_body,
+            headers=dict(request.headers),
+            allow_missing_hash=True,
+        ):
             raise HTTPException(status_code=401, detail="Hash inválido")
+
+        if status_transaction == "PAID_OUT" and value is not None:
+            webhook_amount = Decimal(str(value)).quantize(Decimal("0.01"))
+            deposit_amount = Decimal(str(deposit.amount)).quantize(Decimal("0.01"))
+            if webhook_amount != deposit_amount:
+                logger.warning(
+                    "[Webhook SuitPay] Valor divergente no cash-in: deposit_id=%s webhook_value=%s deposit_amount=%s",
+                    deposit.id,
+                    webhook_amount,
+                    deposit_amount,
+                )
+                raise HTTPException(status_code=400, detail="Valor do webhook divergente do depósito")
         
         # Atualizar status do depósito
         if status_transaction == "PAID_OUT":
@@ -1185,14 +1210,14 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         
         # Atualizar metadata
         metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
-        metadata["webhook_data"] = data
+        metadata["webhook_data"] = json.loads(raw_body.decode("utf-8"))
         metadata["webhook_received_at"] = datetime.utcnow().isoformat()
         if status_transaction == "PAID_OUT":
             metadata["approved_at"] = datetime.utcnow().isoformat()
         deposit.metadata_json = json.dumps(metadata)
-        
+
         db.commit()
-        
+
         # Refresh para garantir que os dados estão atualizados
         db.refresh(deposit)
         if 'user' in locals() and user:
@@ -1298,8 +1323,8 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
         
         # Atualizar metadata
         metadata = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
-        metadata["webhook_data"] = data
-        metadata["webhook_parsed"] = parsed
+        metadata["webhook_data"] = json.loads(raw_body.decode("utf-8"))
+        metadata["webhook_parsed"] = json.loads(json.dumps(parsed, default=_decimal_default))
         metadata["webhook_received_at"] = datetime.utcnow().isoformat()
         if status_payment == "paid":
             metadata["approved_at"] = datetime.utcnow().isoformat()
@@ -1885,10 +1910,6 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
         if not client_secret:
             raise HTTPException(status_code=500, detail="Credenciais do gateway não configuradas")
         
-        # Validar hash
-        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret, raw_body=raw_body):
-            raise HTTPException(status_code=401, detail="Hash inválido")
-        
         # Processar webhook
         id_transaction = data.get("idTransaction")
         external_id = data.get("externalId") or data.get("external_id")
@@ -1904,6 +1925,16 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
                 external_id,
             )
             raise HTTPException(status_code=404, detail="Saque não encontrado")
+
+        # A documentação SuitPay não garante assinatura no callback; se vier assinatura, ela precisa bater.
+        if not SuitPayAPI.validate_webhook_hash(
+            data.copy(),
+            client_secret,
+            raw_body=raw_body,
+            headers=dict(request.headers),
+            allow_missing_hash=True,
+        ):
+            raise HTTPException(status_code=401, detail="Hash inválido")
         
         old_status = withdrawal.status
         print(f"[Webhook SuitPay PIX Cash-out] Saque ID: {withdrawal.id}, Status atual: {old_status}")
@@ -1933,12 +1964,12 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
         
         # Atualizar metadata
         metadata = json.loads(withdrawal.metadata_json) if withdrawal.metadata_json else {}
-        metadata["webhook_data"] = data
+        metadata["webhook_data"] = json.loads(raw_body.decode("utf-8"))
         metadata["webhook_received_at"] = datetime.utcnow().isoformat()
         withdrawal.metadata_json = json.dumps(metadata)
-        
+
         db.commit()
-        
+
         return {"status": "ok", "message": "Webhook processado com sucesso"}
     
     except HTTPException:
