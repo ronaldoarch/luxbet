@@ -4,7 +4,7 @@ Documentação: https://sandbox.ws.suitpay.app (sandbox) ou https://ws.suitpay.a
 """
 import httpx
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
 
 
@@ -46,7 +46,19 @@ class SuitPayAPI:
         except httpx.HTTPStatusError as e:
             error_text = e.response.text if e.response else "Sem resposta"
             print(f"Erro HTTP SuitPay {endpoint}: {e.response.status_code} - {error_text}")
-            return None
+            error_payload: Dict[str, Any] = {
+                "_error": True,
+                "_http_status": e.response.status_code if e.response else None,
+                "message": error_text,
+            }
+            if e.response is not None:
+                try:
+                    response_json = e.response.json()
+                    if isinstance(response_json, dict):
+                        error_payload.update(response_json)
+                except Exception:
+                    pass
+            return error_payload
         except Exception as e:
             print(f"Erro ao chamar SuitPay {endpoint}: {str(e)}")
             return None
@@ -179,7 +191,11 @@ class SuitPayAPI:
         return await self._post("/api/v1/gateway/pix-payment", payload)
     
     @staticmethod
-    def validate_webhook_hash(data: Dict[str, Any], client_secret: str) -> bool:
+    def validate_webhook_hash(
+        data: Dict[str, Any],
+        client_secret: str,
+        raw_body: Optional[bytes] = None,
+    ) -> bool:
         """
         Valida o hash do webhook recebido da SuitPay
         
@@ -189,12 +205,14 @@ class SuitPayAPI:
         Args:
             data: Dados do webhook (JSON) - deve manter ordem original
             client_secret: Client Secret (cs) da SuitPay
+            raw_body: Corpo bruto opcional do webhook para preservar formatos como 10.00
         
         Returns:
             True se o hash for válido, False caso contrário
         """
         import hashlib
         import copy
+        from decimal import Decimal
         
         # Faz cópia para não modificar o original
         data_copy = copy.deepcopy(data)
@@ -204,18 +222,119 @@ class SuitPayAPI:
         if not received_hash:
             return False
         
-        # IMPORTANTE: Concatena valores na ORDEM ORIGINAL do JSON recebido
-        # Não ordenar alfabeticamente! A documentação exige manter a ordem original
-        values = []
-        for key, value in data_copy.items():
-            if value is not None:
-                values.append(str(value))
+        def stringify_value(value: Any) -> str:
+            if isinstance(value, Decimal):
+                return format(value, "f")
+            return str(value)
         
-        # Conforme a SuitPay, o hash usa o client_secret antes dos valores recebidos.
-        string_to_hash = client_secret + "".join(values)
-        
-        # Calcula SHA-256
-        calculated_hash = hashlib.sha256(string_to_hash.encode()).hexdigest()
+        def add_hash_candidates(values_string: str, candidates: List[Dict[str, str]], source: str) -> None:
+            if not values_string:
+                return
+            # Integrações SuitPay em produção podem divergir entre secret+payload e payload+secret.
+            candidates.extend([
+                {"source": source, "order": "secret+values", "value": client_secret + values_string},
+                {"source": source, "order": "values+secret", "value": values_string + client_secret},
+            ])
+
+        def values_string_from_data() -> str:
+            # IMPORTANTE: Concatena valores na ORDEM ORIGINAL do JSON recebido.
+            # Não ordenar alfabeticamente! A documentação exige manter a ordem original.
+            values = []
+            for key, value in data_copy.items():
+                if value is not None:
+                    values.append(stringify_value(value))
+            return "".join(values)
+
+        def values_string_from_raw_body(body: bytes) -> Optional[str]:
+            """
+            Extrai valores do JSON bruto preservando tokens numéricos como 10.00.
+            O webhook SuitPay é um objeto JSON plano, mas strings são decodificadas
+            com JSONDecoder para respeitar escapes.
+            """
+            try:
+                text = body.decode("utf-8")
+                decoder = json.JSONDecoder()
+                idx = 0
+                length = len(text)
+
+                def skip_ws(pos: int) -> int:
+                    while pos < length and text[pos].isspace():
+                        pos += 1
+                    return pos
+
+                idx = skip_ws(idx)
+                if idx >= length or text[idx] != "{":
+                    return None
+                idx += 1
+                values = []
+
+                while True:
+                    idx = skip_ws(idx)
+                    if idx >= length:
+                        return None
+                    if text[idx] == "}":
+                        break
+
+                    key, idx = decoder.raw_decode(text, idx)
+                    idx = skip_ws(idx)
+                    if idx >= length or text[idx] != ":":
+                        return None
+                    idx = skip_ws(idx + 1)
+                    if idx >= length:
+                        return None
+
+                    if text[idx] == '"':
+                        value, idx = decoder.raw_decode(text, idx)
+                        if key != "hash":
+                            values.append(str(value))
+                    elif text[idx] in "[{":
+                        value, idx = decoder.raw_decode(text, idx)
+                        if key != "hash" and value is not None:
+                            values.append(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+                    else:
+                        start = idx
+                        while idx < length and text[idx] not in ",}":
+                            idx += 1
+                        token = text[start:idx].strip()
+                        if key != "hash" and token != "null":
+                            values.append(token)
+
+                    idx = skip_ws(idx)
+                    if idx < length and text[idx] == ",":
+                        idx += 1
+                        continue
+                    if idx < length and text[idx] == "}":
+                        break
+                    return None
+
+                return "".join(values)
+            except Exception:
+                return None
+
+        candidates: List[Dict[str, str]] = []
+        add_hash_candidates(values_string_from_data(), candidates, "parsed-json")
+
+        if raw_body:
+            raw_values_string = values_string_from_raw_body(raw_body)
+            if raw_values_string:
+                add_hash_candidates(raw_values_string, candidates, "raw-body")
         
         # Compara hashes (case-insensitive conforme documentação)
-        return calculated_hash.lower() == received_hash.lower()
+        received_hash = received_hash.lower()
+        calculated_hashes = []
+        for candidate in candidates:
+            string_to_hash = candidate["value"]
+            calculated_hash = hashlib.sha256(string_to_hash.encode()).hexdigest()
+            calculated_hashes.append({
+                "source": candidate["source"],
+                "order": candidate["order"],
+                "hash": calculated_hash,
+            })
+            if calculated_hash.lower() == received_hash:
+                return True
+
+        print(
+            "[SuitPay Webhook Hash] Hash inválido. "
+            f"received={received_hash} calculated={calculated_hashes} keys={list(data.keys())}"
+        )
+        return False

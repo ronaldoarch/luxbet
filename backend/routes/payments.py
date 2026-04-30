@@ -20,6 +20,7 @@ from igamewin_api import get_igamewin_api
 from utils import generate_fake_cpf, clean_cpf, normalize_phone_for_gatebox, normalize_pix_key_for_gatebox
 from bonus_wagering import add_rollover_requirement, get_global_rollover_multiplier
 from datetime import datetime, timedelta
+from decimal import Decimal
 import json
 import logging
 import uuid
@@ -886,10 +887,9 @@ async def create_pix_withdrawal(
             )
             
             if transfer_response:
-                id_transaction = transfer_response.get("idTransaction")
                 # Verificar resposta da API SuitPay
                 response_status = transfer_response.get("response", "").upper()
-                if response_status != "OK":
+                if transfer_response.get("_error") or response_status != "OK":
                     error_messages = {
                         "ACCOUNT_DOCUMENTS_NOT_VALIDATED": "Conta não validada",
                         "NO_FUNDS": "Saldo insuficiente no gateway",
@@ -897,13 +897,22 @@ async def create_pix_withdrawal(
                         "UNAUTHORIZED_IP": "IP não autorizado. Cadastre o IP do servidor na SuitPay.",
                         "DOCUMENT_VALIDATE": "A chave PIX não pertence ao documento informado",
                         "DUPLICATE_EXTERNAL_ID": "External ID já foi utilizado",
+                        "OPERATION_EXCEEDS_LIMIT": "Esta operação excedeu o limite da conta. Tente um valor menor ou entre em contato com o suporte.",
                         "ERROR": "Erro interno no gateway"
                     }
-                    error_msg = error_messages.get(response_status, f"Erro: {response_status}")
+                    error_code = (
+                        response_status
+                        or str(transfer_response.get("errorCode") or "").upper()
+                        or str(transfer_response.get("code") or "").upper()
+                        or str(transfer_response.get("error") or "").upper()
+                    )
+                    gateway_message = transfer_response.get("message")
+                    error_msg = error_messages.get(error_code) or gateway_message or f"Erro: {error_code or 'SuitPay'}"
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=error_msg
                     )
+                id_transaction = transfer_response.get("idTransaction")
                 # Conforme documentação SuitPay, response=OK significa transferência realizada.
                 # O webhook permanece como confirmação/idempotência e pode cancelar/devolver depois.
                 withdrawal_status = TransactionStatus.APPROVED
@@ -1058,7 +1067,8 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
     Webhook para receber notificações de PIX Cash-in (depósitos) da SuitPay
     """
     try:
-        data = await request.json()
+        raw_body = await request.body()
+        data = json.loads(raw_body, parse_float=Decimal)
 
         # Processar webhook conforme documentação oficial SuitPay
         # Campos esperados: idTransaction, typeTransaction, statusTransaction, 
@@ -1110,7 +1120,7 @@ async def webhook_pix_cashin(request: Request, db: Session = Depends(get_db)):
         if not client_secret:
             raise HTTPException(status_code=500, detail="Credenciais do gateway do depósito não configuradas")
 
-        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret):
+        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret, raw_body=raw_body):
             raise HTTPException(status_code=401, detail="Hash inválido")
         
         # Atualizar status do depósito
@@ -1215,7 +1225,8 @@ async def webhook_nxgate_pix_cashin(request: Request, db: Session = Depends(get_
     Webhook para receber notificações de PIX Cash-in (depósitos) da NXGATE
     """
     try:
-        data = await request.json()
+        raw_body = await request.body()
+        data = json.loads(raw_body, parse_float=Decimal)
         
         # Parse do webhook NXGATE
         parsed = NXGateAPI.parse_webhook_payment(data)
@@ -1863,7 +1874,8 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
     Webhook para receber notificações de PIX Cash-out (saques) da SuitPay
     """
     try:
-        data = await request.json()
+        raw_body = await request.body()
+        data = json.loads(raw_body, parse_float=Decimal)
         
         # Buscar gateway PIX ativo para validar hash
         gateway = get_active_pix_gateway(db)
@@ -1874,7 +1886,7 @@ async def webhook_pix_cashout(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=500, detail="Credenciais do gateway não configuradas")
         
         # Validar hash
-        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret):
+        if not SuitPayAPI.validate_webhook_hash(data.copy(), client_secret, raw_body=raw_body):
             raise HTTPException(status_code=401, detail="Hash inválido")
         
         # Processar webhook
