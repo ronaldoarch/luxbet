@@ -12,6 +12,7 @@ from suitpay_api import SuitPayAPI
 from nxgate_api import NXGateAPI
 from gatebox_api import GateboxAPI
 from sarrixpay_api import SarrixPayAPI
+from cyberpay_api import CyberPayAPI, normalize_phone_cyber
 from schemas import DepositResponse, WithdrawalResponse, DepositPixRequest, WithdrawalPixRequest, AffiliateResponse, ManagerCreateSubAffiliate
 from dependencies import get_current_user
 from auth import get_password_hash
@@ -23,6 +24,9 @@ import json
 import logging
 import uuid
 import os
+import hmac
+import hashlib
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,7 @@ def get_active_pix_gateway(db: Session) -> Gateway:
 def get_payment_client(gateway: Gateway):
     """
     Cria cliente de pagamento baseado no nome do gateway
-    Suporta: SuitPay, NXGATE, Gatebox e SarrixPay (aceita também o typo "SarryxPay").
+    Suporta: SuitPay, NXGATE, Gatebox, SarrixPay (typo "SarryxPay") e Cyber/Escale (API escalecyber.com).
     """
     try:
         credentials = json.loads(gateway.credentials) if gateway.credentials else {}
@@ -118,10 +122,20 @@ def get_payment_client(gateway: Gateway):
                 )
             return SarrixPayAPI(client_id, client_secret, base_url=api_url)
         
+        elif "cyber" in gateway_name or "escale" in gateway_name:
+            api_key = credentials.get("api_key") or credentials.get("x_api_key")
+            api_url = (credentials.get("api_url") or "https://api.escalecyber.com/v1").rstrip("/")
+            if not api_key:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="API Key do gateway Cyber não configurada (api_key no JSON do gateway)",
+                )
+            return CyberPayAPI(api_key=str(api_key).strip(), base_url=api_url)
+        
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Gateway '{gateway.name}' não suportado. Use 'Gatebox', 'NXGATE', 'SuitPay' ou 'SarrixPay'"
+                detail=f"Gateway '{gateway.name}' não suportado. Use 'Gatebox', 'NXGATE', 'SuitPay', 'SarrixPay' ou 'Cyber'"
             )
     except json.JSONDecodeError:
         raise HTTPException(
@@ -459,6 +473,28 @@ async def create_pix_deposit(
             if pay_url and isinstance(pix_response, dict):
                 pix_response = dict(pix_response)
                 pix_response["pay_url"] = pay_url
+    
+    elif isinstance(payment_client, CyberPayAPI):
+        doc_digits = clean_cpf(payer_tax_id) if payer_tax_id else ""
+        doc_type = "cnpj" if len(doc_digits) > 11 else "cpf"
+        email_ci = (request.payer_email or "").strip() or f"user{user.id}@cliente.luxbet"
+        phone_ci = normalize_phone_cyber(request.payer_phone)
+        pix_response = await payment_client.create_pix_transaction(
+            amount=float(request.amount),
+            customer_name=request.payer_name or user.username or "Cliente",
+            customer_phone=phone_ci,
+            customer_document=payer_tax_id,
+            customer_email=email_ci,
+            description=f"Depósito Lux Bet - {user.username}",
+            customer_document_type=doc_type,
+            metadata={"luxbet_user_id": user.id, "luxbet_username": user.username},
+        )
+        if pix_response and pix_response.get("_error"):
+            msg = CyberPayAPI.user_message_from_error(pix_response)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+        if pix_response:
+            id_transaction = pix_response.get("id")
+            pix_code = pix_response.get("paymentCode")
     
     # Gatebox (ou outro gateway) pode retornar erro de validação (ex.: telefone inválido)
     if isinstance(pix_response, dict) and pix_response.get("_error") == "VALIDATION":
@@ -847,6 +883,28 @@ async def create_pix_withdrawal(
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
                 id_transaction = transfer_response.get("transaction_id")
                 print(f"[Withdrawal] SarrixPay transaction_id: {id_transaction}")
+        
+        elif isinstance(payment_client, CyberPayAPI):
+            print(f"[Withdrawal] Usando Cyber (Escale Cyber) para processar saque")
+            cy_pix_type = CyberPayAPI.map_frontend_pix_key_type_to_cyber(
+                request.pix_key_type, request.pix_key
+            )
+            transfer_response = await payment_client.create_pix_withdrawal(
+                amount=float(request.amount),
+                pix_key=(request.pix_key or "").strip(),
+                pix_key_type=cy_pix_type,
+                description=f"Saque Lux Bet - {user.username}",
+            )
+            if transfer_response and transfer_response.get("_error"):
+                msg = CyberPayAPI.user_message_from_error(transfer_response)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+            if transfer_response:
+                id_transaction = (
+                    transfer_response.get("id")
+                    or transfer_response.get("withdrawal_id")
+                    or transfer_response.get("transaction_id")
+                )
+                print(f"[Withdrawal] Cyber withdrawal id: {id_transaction}")
         
         # Validar resposta do gateway
         if not transfer_response:
@@ -1554,7 +1612,7 @@ async def webhook_gatebox(request: Request, db: Session = Depends(get_db)):
 async def _process_gatebox_cashin(data: dict, deposit: Deposit, db: Session) -> dict:
     """Processa webhook Gatebox de cash-in (depósito). Credita saldo uma única vez (idempotente)."""
     status_val = (data.get("status") or data.get("statusTransaction") or (data.get("data") or {}).get("status") or "").upper()
-    if status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "PAID_OUT", "SUCCESS"):
+    if status_val in ("PAID", "COMPLETED", "CONCLUIDO", "APROVADO", "APPROVED", "PAID_OUT", "SUCCESS"):
         if deposit.status != TransactionStatus.APPROVED:
             deposit.status = TransactionStatus.APPROVED
             user = db.query(User).filter(User.id == deposit.user_id).first()
@@ -1629,7 +1687,7 @@ async def _process_gatebox_withdrawal_fail(
 async def _process_gatebox_cashout(data: dict, withdrawal: Withdrawal, db: Session) -> dict:
     """Processa webhook Gatebox de cash-out (saque). Sucesso = APPROVED; falha = devolve saldo."""
     status_val = (data.get("status") or data.get("statusTransaction") or (data.get("data") or {}).get("status") or "").upper()
-    if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO"):
+    if status_val in ("COMPLETED", "SUCCESS", "PAID_OUT", "APROVADO", "APPROVED", "PAID"):
         if withdrawal.status != TransactionStatus.APPROVED:
             withdrawal.status = TransactionStatus.APPROVED
     elif status_val in _GATEBOX_WITHDRAWAL_FAIL_STATUSES:
@@ -1919,6 +1977,158 @@ async def reconcile_sarrix_deposit_by_id(db: Session, deposit_id: int) -> dict:
         "deposit_id": deposit_id,
         "api_status": item.get("status"),
     }
+
+
+def _cyber_get_webhook_secret(db: Session) -> Optional[str]:
+    for g in db.query(Gateway).filter(Gateway.type == "pix").all():
+        n = (g.name or "").lower()
+        if "cyber" in n or "escale" in n:
+            try:
+                creds = json.loads(g.credentials or "{}")
+                s = creds.get("webhook_secret")
+                if s:
+                    return str(s).strip()
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
+def _cyber_verify_signature(body: bytes, secret: str, header_val: Optional[str]) -> bool:
+    """Valida X-Webhook-Signature (HMAC-SHA256 hex ou base64); secret pode vir com prefixo whsec_."""
+    if not secret:
+        return True
+    if not header_val:
+        return False
+    hv = header_val.strip()
+    if hv.lower().startswith("sha256="):
+        hv = hv.split("=", 1)[-1].strip()
+    keys = [secret]
+    if secret.startswith("whsec_"):
+        keys.append(secret[6:])
+    for key in keys:
+        mac = hmac.new(key.encode("utf-8"), body, hashlib.sha256)
+        hex_d = mac.hexdigest()
+        b64_d = base64.b64encode(mac.digest()).decode("ascii")
+        if hmac.compare_digest(hex_d, hv) or hmac.compare_digest(b64_d, hv):
+            return True
+    return False
+
+
+def _cyber_event_data(payload: dict) -> dict:
+    d = payload.get("data")
+    return d if isinstance(d, dict) else {}
+
+
+def _cyber_find_deposit(db: Session, d: dict) -> Optional[Deposit]:
+    for k in ("transactionId", "transaction_id"):
+        tid = d.get(k)
+        if tid:
+            dep = db.query(Deposit).filter(Deposit.external_id == str(tid)).first()
+            if dep:
+                return dep
+    for k in ("externalId", "external_id"):
+        eid = d.get(k)
+        if eid:
+            dep = db.query(Deposit).filter(Deposit.external_id == str(eid)).first()
+            if dep:
+                return dep
+    return None
+
+
+def _cyber_find_withdrawal(db: Session, d: dict) -> Optional[Withdrawal]:
+    for k in ("withdrawalId", "withdrawal_id"):
+        wid = d.get(k)
+        if wid:
+            w = db.query(Withdrawal).filter(Withdrawal.external_id == str(wid)).first()
+            if w:
+                return w
+    tid = d.get("id")
+    if tid and str(tid).startswith("wd_"):
+        w = db.query(Withdrawal).filter(Withdrawal.external_id == str(tid)).first()
+        if w:
+            return w
+    for k in ("transactionId", "transaction_id"):
+        tid = d.get(k)
+        if tid:
+            w = db.query(Withdrawal).filter(Withdrawal.external_id == str(tid)).first()
+            if w:
+                return w
+    return None
+
+
+@webhook_router.post("/cyberpay")
+async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook Cyber Payment (Escale Cyber).
+    Configure no painel: {WEBHOOK_BASE_URL}/api/webhooks/cyberpay
+    Eventos: pix.in.confirmation, pix.in.expired, pix.in.failed, pix.in.reversal.confirmation,
+    pix.out.confirmation, pix.out.failure, pix.out.reversal (e processing como ACK).
+    """
+    body_bytes = await request.body()
+    secret = _cyber_get_webhook_secret(db)
+    sig = request.headers.get("X-Webhook-Signature") or request.headers.get("x-webhook-signature")
+    if secret and not _cyber_verify_signature(body_bytes, secret, sig):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Assinatura de webhook inválida")
+
+    try:
+        data = json.loads(body_bytes.decode("utf-8"))
+    except Exception:
+        return {"status": "received", "message": "JSON inválido"}
+
+    event_type = (data.get("type") or "").strip().lower()
+    d = _cyber_event_data(data)
+
+    try:
+        if event_type == "pix.in.confirmation":
+            deposit = _cyber_find_deposit(db, d)
+            if not deposit:
+                return {"status": "received", "message": "Depósito não encontrado"}
+            payload = dict(d)
+            payload["status"] = "APPROVED"
+            return await _process_gatebox_cashin(payload, deposit, db)
+
+        if event_type in ("pix.in.expired", "pix.in.failed"):
+            deposit = _cyber_find_deposit(db, d)
+            if deposit and deposit.status == TransactionStatus.PENDING:
+                deposit.status = TransactionStatus.CANCELLED
+                meta = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
+                meta["webhook_data"] = data
+                meta["webhook_received_at"] = datetime.utcnow().isoformat()
+                deposit.metadata_json = json.dumps(meta)
+                db.commit()
+            return {"status": "ok", "message": "Evento de depósito registrado"}
+
+        if event_type == "pix.in.reversal.confirmation":
+            deposit = _cyber_find_deposit(db, d)
+            if not deposit:
+                return {"status": "received", "message": "Depósito não encontrado"}
+            rev = dict(d)
+            rev["status"] = "REFUNDED"
+            return await _process_gatebox_reversal(rev, deposit, db)
+
+        if event_type == "pix.out.confirmation":
+            withdrawal = _cyber_find_withdrawal(db, d)
+            if not withdrawal:
+                return {"status": "received", "message": "Saque não encontrado"}
+            out = dict(d)
+            out["status"] = "COMPLETED"
+            return await _process_gatebox_cashout(out, withdrawal, db)
+
+        if event_type in ("pix.out.failure", "pix.out.reversal"):
+            withdrawal = _cyber_find_withdrawal(db, d)
+            if not withdrawal:
+                return {"status": "received", "message": "Saque não encontrado"}
+            return await _process_gatebox_withdrawal_fail(data, withdrawal, db, reason=event_type)
+
+        if event_type in ("pix.in.processing", "pix.out.processing", "pix.in.reversal.processing"):
+            return {"status": "ok", "message": "ack"}
+
+        return {"status": "received", "message": f"Evento não tratado: {event_type}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[Webhook Cyber] Erro: %s", e)
+        raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
 
 
 @webhook_router.post("/sarrixpay")

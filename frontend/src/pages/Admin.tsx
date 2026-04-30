@@ -1285,7 +1285,8 @@ function GatewaysTab({ token }: { token: string }) {
     // Gatebox
     api_url: 'https://api.gatebox.com.br',
     username: '',
-    password: ''
+    password: '',
+    webhook_secret: '', // Cyber (opcional): validação X-Webhook-Signature
   });
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -1302,7 +1303,7 @@ function GatewaysTab({ token }: { token: string }) {
   };
 
   const resetForm = () => {
-    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true, api_url: 'https://api.gatebox.com.br', username: '', password: '' });
+    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true, api_url: 'https://api.gatebox.com.br', username: '', password: '', webhook_secret: '' });
     setEditingId(null);
   };
 
@@ -1321,6 +1322,17 @@ function GatewaysTab({ token }: { token: string }) {
       return JSON.stringify({
         api_key: form.api_key
       });
+    }
+    // Cyber / Escale Cyber — X-API-Key + base URL (opcional webhook_secret para validar assinatura)
+    if (gatewayName.includes('cyber') || gatewayName.includes('escale')) {
+      const u = (form.api_url || 'https://api.escalecyber.com/v1').trim() || 'https://api.escalecyber.com/v1';
+      const payload: Record<string, unknown> = {
+        api_key: form.api_key,
+        api_url: u,
+      };
+      const ws = (form.webhook_secret || '').trim();
+      if (ws) payload.webhook_secret = ws;
+      return JSON.stringify(payload);
     }
     // SarrixPay: mesmo formulário visual da SuitPay, mas credenciais vão para outro cliente HTTP
     if (gatewayName.includes('sarrix') || gatewayName.includes('sarryx')) {
@@ -1412,7 +1424,8 @@ function GatewaysTab({ token }: { token: string }) {
       sandbox: true,
       api_url: 'https://api.gatebox.com.br',
       username: '',
-      password: ''
+      password: '',
+      webhook_secret: '',
     });
 
     // Parse credentials se existir
@@ -1421,15 +1434,17 @@ function GatewaysTab({ token }: { token: string }) {
         const creds = JSON.parse(gateway.credentials);
         const n = (gateway.name || '').toLowerCase();
         const isSarrix = n.includes('sarrix') || n.includes('sarryx');
+        const isCyber = n.includes('cyber') || n.includes('escale');
         setForm(prev => ({
           ...prev,
           client_id: creds.client_id || creds.ci || '',
           client_secret: creds.client_secret || creds.cs || '',
           api_key: creds.api_key || '',
           sandbox: creds.sandbox !== undefined ? creds.sandbox : true,
-          api_url: creds.api_url || (isSarrix ? '' : 'https://api.gatebox.com.br'),
+          api_url: creds.api_url || (isCyber ? 'https://api.escalecyber.com/v1' : isSarrix ? '' : 'https://api.gatebox.com.br'),
           username: creds.username || '',
-          password: creds.password || ''
+          password: creds.password || '',
+          webhook_secret: creds.webhook_secret || '',
         }));
       } catch (e) {
         // Se não for JSON, deixa vazio
@@ -1538,6 +1553,45 @@ function GatewaysTab({ token }: { token: string }) {
               />
               <p className="text-xs text-gray-500 mt-1">NXGATE usa apenas API Key para autenticação</p>
             </div>
+          ) : (form.name.toLowerCase().includes('cyber') || form.name.toLowerCase().includes('escale')) ? (
+            <>
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-400 mb-1">API URL (base)</label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                  placeholder="https://api.escalecyber.com/v1"
+                  value={form.api_url}
+                  onChange={e => setForm({ ...form, api_url: e.target.value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">Padrão: produção Cyber Payment API</p>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-400 mb-1">X-API-Key</label>
+                <input
+                  type="password"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                  placeholder="Chave da API (header X-API-Key)"
+                  value={form.api_key}
+                  onChange={e => setForm({ ...form, api_key: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-400 mb-1">Webhook secret (opcional)</label>
+                <input
+                  type="password"
+                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
+                  placeholder="whsec_... — valida header X-Webhook-Signature"
+                  value={form.webhook_secret}
+                  onChange={e => setForm({ ...form, webhook_secret: e.target.value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Cadastre no painel Cyber a URL:{' '}
+                  <code className="text-gray-400">{'{WEBHOOK_BASE_URL}/api/webhooks/cyberpay'}</code>
+                  . Se preencher o secret, requisições sem assinatura válida serão rejeitadas.
+                </p>
+              </div>
+            </>
           ) : (
             // SuitPay - Client ID e Client Secret
             <>
