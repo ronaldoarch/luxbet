@@ -39,4 +39,5 @@ EXPOSE 8000
 RUN python -c "import fastapi, uvicorn, psycopg2; print('Dependencies OK')" || (echo "ERROR: Dependencies missing" && exit 1)
 
 # Comando para iniciar a aplicação
-CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+# mkdir garante que as subpastas existam mesmo quando /app/uploads vem de um volume externo vazio
+CMD ["sh", "-c", "mkdir -p /app/uploads/logos /app/uploads/banners && chmod -R 755 /app/uploads && python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
