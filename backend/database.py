@@ -141,6 +141,20 @@ def init_db():
     except Exception:
         pass
 
+    try:
+        with engine.connect() as conn:
+            if "sqlite" in DATABASE_URL:
+                conn.execute(text("ALTER TABLE game_customizations ADD COLUMN custom_image_url VARCHAR(500)"))
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE game_customizations ADD COLUMN IF NOT EXISTS custom_image_url VARCHAR(500)"
+                    )
+                )
+            conn.commit()
+    except Exception:
+        pass
+
 
 def get_db():
     """Dependency for getting DB session"""

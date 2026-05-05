@@ -539,6 +539,7 @@ class GameCustomizationBase(BaseModel):
     game_code: str
     custom_name: Optional[str] = None
     custom_provider: Optional[str] = None
+    custom_image_url: Optional[str] = None
 
 
 class GameCustomizationCreate(GameCustomizationBase):
@@ -548,6 +549,7 @@ class GameCustomizationCreate(GameCustomizationBase):
 class GameCustomizationUpdate(BaseModel):
     custom_name: Optional[str] = None
     custom_provider: Optional[str] = None
+    custom_image_url: Optional[str] = None
 
 
 class GameCustomizationResponse(GameCustomizationBase):

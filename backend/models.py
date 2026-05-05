@@ -397,6 +397,7 @@ class GameCustomization(Base):
     game_code = Column(String(255), unique=True, nullable=False, index=True)  # Código único do jogo (ex: "XwaysHoarder")
     custom_name = Column(String(255))  # Nome customizado do jogo
     custom_provider = Column(String(100))  # Provedor customizado
-    # O game_code original não é alterado, apenas o nome e provider podem ser customizados
+    custom_image_url = Column(String(500))  # Imagem customizada — sobrescreve a capa do provedor nos mini cards
+    # O game_code original não é alterado, apenas o nome, provider e imagem podem ser customizados
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

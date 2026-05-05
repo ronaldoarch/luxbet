@@ -1836,8 +1836,9 @@ function IGameWinTab({ token }: { token: string }) {
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceError, setBalanceError] = useState('');
   const [editingGame, setEditingGame] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ custom_name: '', custom_provider: '' });
+  const [editForm, setEditForm] = useState({ custom_name: '', custom_provider: '', custom_image_url: '' });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingGameImage, setUploadingGameImage] = useState(false);
 
   const fetchData = async () => {
     setLoading(true); setError('');
@@ -2210,7 +2211,8 @@ function IGameWinTab({ token }: { token: string }) {
                             });
                             setEditForm({
                               custom_name: g.game_name || g.name || g.title || g.gameTitle || '',
-                              custom_provider: g.provider_code || g.provider || g.provider_name || g.vendor || g.vendor_name || providerCode || ''
+                              custom_provider: g.provider_code || g.provider || g.provider_name || g.vendor || g.vendor_name || providerCode || '',
+                              custom_image_url: g.custom_image_url || ''
                             });
                           }}
                           className="text-[#d4af37] hover:text-[#ffd700] text-sm font-medium"
@@ -2238,7 +2240,7 @@ function IGameWinTab({ token }: { token: string }) {
               <button
                 onClick={() => {
                   setEditingGame(null);
-                  setEditForm({ custom_name: '', custom_provider: '' });
+                  setEditForm({ custom_name: '', custom_provider: '', custom_image_url: '' });
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -2279,6 +2281,76 @@ function IGameWinTab({ token }: { token: string }) {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Imagem do Mini Card</label>
+                {/* Preview da imagem atual (customizada ou capa do provedor) */}
+                {(editForm.custom_image_url || editingGame.banner || editingGame.image) && (
+                  <div className="mb-2 relative w-24 h-24 rounded-lg overflow-hidden border border-gray-600">
+                    <img
+                      src={editForm.custom_image_url || editingGame.banner || editingGame.image}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    {editForm.custom_image_url && (
+                      <button
+                        type="button"
+                        onClick={() => setEditForm({ ...editForm, custom_image_url: '' })}
+                        className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                        title="Remover imagem customizada"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/* Upload de arquivo */}
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <span className={`px-3 py-1.5 rounded text-sm font-medium border border-gray-600 hover:border-[#d4af37] transition-colors ${uploadingGameImage ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    {uploadingGameImage ? 'Enviando...' : 'Fazer upload'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingGameImage}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingGameImage(true);
+                      try {
+                        const fd = new FormData();
+                        fd.append('file', file);
+                        fd.append('media_type', 'logos');
+                        const res = await fetch(`${API_URL}/api/admin/media/upload`, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}` },
+                          body: fd
+                        });
+                        if (!res.ok) throw new Error('Falha no upload');
+                        const data = await res.json();
+                        const url = data.url?.startsWith('/api') ? `${API_URL}${data.url}` : data.url;
+                        setEditForm((prev) => ({ ...prev, custom_image_url: url }));
+                      } catch (err: any) {
+                        alert('Erro no upload: ' + err.message);
+                      } finally {
+                        setUploadingGameImage(false);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                </label>
+                {/* Ou colar URL diretamente */}
+                <input
+                  type="text"
+                  value={editForm.custom_image_url}
+                  onChange={(e) => setEditForm({ ...editForm, custom_image_url: e.target.value })}
+                  placeholder="Ou cole a URL da imagem (deixe vazio para usar a capa do provedor)"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">Se vazio, usa a capa original do jogo.</p>
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={async () => {
@@ -2293,13 +2365,14 @@ function IGameWinTab({ token }: { token: string }) {
                         body: JSON.stringify({
                           game_code: editingGame.game_code,
                           custom_name: editForm.custom_name || null,
-                          custom_provider: editForm.custom_provider || null
+                          custom_provider: editForm.custom_provider || null,
+                          custom_image_url: editForm.custom_image_url || null
                         })
                       });
                       if (!res.ok) throw new Error('Falha ao salvar');
                       await fetchGames(providerCode);
                       setEditingGame(null);
-                      setEditForm({ custom_name: '', custom_provider: '' });
+                      setEditForm({ custom_name: '', custom_provider: '', custom_image_url: '' });
                     } catch (err: any) {
                       alert('Erro ao salvar: ' + err.message);
                     } finally {
@@ -2314,7 +2387,7 @@ function IGameWinTab({ token }: { token: string }) {
                 <button
                   onClick={() => {
                     setEditingGame(null);
-                    setEditForm({ custom_name: '', custom_provider: '' });
+                    setEditForm({ custom_name: '', custom_provider: '', custom_image_url: '' });
                   }}
                   className="px-4 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded"
                 >

@@ -892,6 +892,11 @@ def _apply_game_customizations(games: list, db: Session) -> list:
                 game["provider_code"] = custom.custom_provider
                 game["provider_name"] = custom.custom_provider
                 game["vendor"] = custom.custom_provider
+            if custom.custom_image_url:
+                game["banner"] = custom.custom_image_url
+                game["image"] = custom.custom_image_url
+                game["cover"] = custom.custom_image_url
+                game["thumbnail"] = custom.custom_image_url
                 game["vendor_name"] = custom.custom_provider
     
     return games
@@ -3549,6 +3554,8 @@ async def update_game_customization(
         customization.custom_name = customization_data.custom_name
     if customization_data.custom_provider is not None:
         customization.custom_provider = customization_data.custom_provider
+    if customization_data.custom_image_url is not None:
+        customization.custom_image_url = customization_data.custom_image_url
     customization.updated_at = datetime.utcnow()
     
     db.commit()
