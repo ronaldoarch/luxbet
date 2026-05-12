@@ -4,6 +4,7 @@ Base: https://api.escalecyber.com/v1 — autenticação: header X-API-Key.
 
 Documentação: PIX cash-in (POST /payments/transactions), cash-out (POST /payments/withdrawals),
 webhooks com eventos pix.in.* / pix.out.* (payload { id, type, created_at, data }).
+Endpoints no LuxBet: POST /api/webhooks/cyberpay ou POST /api/webhook/cyber (equivalentes).
 """
 from __future__ import annotations
 

@@ -1571,7 +1571,9 @@ function GatewaysTab({ token }: { token: string }) {
                 />
               </div>
               <p className="md:col-span-2 text-xs text-gray-500">
-                Cadastre no painel Cyber a URL:{' '}
+                Cadastre no painel Cyber uma das URLs (equivalentes):{' '}
+                <code className="text-gray-400">{'{WEBHOOK_BASE_URL}/api/webhook/cyber'}</code>
+                {' ou '}
                 <code className="text-gray-400">{'{WEBHOOK_BASE_URL}/api/webhooks/cyberpay'}</code>
               </p>
             </>

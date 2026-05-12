@@ -37,6 +37,8 @@ def _decimal_default(obj):
 
 router = APIRouter(prefix="/api/public/payments", tags=["payments"])
 webhook_router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+# Alias usado por alguns painéis (ex.: /api/webhook/cyber em vez de /api/webhooks/cyberpay)
+webhook_cyber_alt_router = APIRouter(prefix="/api/webhook", tags=["webhooks"])
 affiliate_router = APIRouter(prefix="/api/public/affiliate", tags=["affiliate"])
 manager_router = APIRouter(prefix="/api/public/manager", tags=["manager"])
 
@@ -2150,16 +2152,12 @@ def _cyber_find_withdrawal(db: Session, d: dict) -> Optional[Withdrawal]:
     return None
 
 
-@webhook_router.post("/cyberpay")
-async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
+async def _handle_cyberpay_webhook_body(body_bytes: bytes, db: Session):
     """
-    Webhook Cyber Payment (Escale Cyber).
-    Configure no painel: {WEBHOOK_BASE_URL}/api/webhooks/cyberpay
+    Processa o payload Cyber Payment (Escale Cyber).
     Eventos: pix.in.confirmation, pix.in.expired, pix.in.failed, pix.in.reversal.confirmation,
     pix.out.confirmation, pix.out.failure, pix.out.reversal (e processing como ACK).
     """
-    body_bytes = await request.body()
-
     try:
         data = json.loads(body_bytes.decode("utf-8"))
     except Exception:
@@ -2225,6 +2223,27 @@ async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.exception("[Webhook Cyber] Erro: %s", e)
         raise HTTPException(status_code=500, detail=f"Erro ao processar webhook: {str(e)}")
+
+
+@webhook_router.post("/cyberpay")
+async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook Cyber Payment (Escale Cyber).
+    URL: {WEBHOOK_BASE_URL}/api/webhooks/cyberpay
+    (Alias equivalente: {WEBHOOK_BASE_URL}/api/webhook/cyber)
+    """
+    body_bytes = await request.body()
+    return await _handle_cyberpay_webhook_body(body_bytes, db)
+
+
+@webhook_cyber_alt_router.post("/cyber")
+async def webhook_cyberpay_alt_path(request: Request, db: Session = Depends(get_db)):
+    """
+    Mesmo processamento de /api/webhooks/cyberpay — path alternativo para o painel Cyber.
+    URL: {WEBHOOK_BASE_URL}/api/webhook/cyber
+    """
+    body_bytes = await request.body()
+    return await _handle_cyberpay_webhook_body(body_bytes, db)
 
 
 @webhook_router.post("/sarrixpay")
