@@ -2102,23 +2102,34 @@ def _cyber_event_data(payload: dict) -> dict:
     return d if isinstance(d, dict) else {}
 
 
+def _cyber_merged_lookup(payload: dict) -> dict:
+    """Junta `data` do webhook com campos no topo (`id`, etc.). A doc Cyber usa { id, type, created_at, data }."""
+    inner = _cyber_event_data(payload)
+    merged: dict = {}
+    if inner:
+        merged.update(inner)
+    for k in ("id", "transactionId", "transaction_id", "externalId", "external_id", "withdrawalId", "withdrawal_id"):
+        v = payload.get(k)
+        if v is not None and k not in merged:
+            merged[k] = v
+    return merged
+
+
 def _cyber_find_deposit(db: Session, d: dict) -> Optional[Deposit]:
-    for k in ("transactionId", "transaction_id"):
+    if not d:
+        return None
+    for k in ("transactionId", "transaction_id", "id", "externalId", "external_id"):
         tid = d.get(k)
         if tid:
             dep = db.query(Deposit).filter(Deposit.external_id == str(tid)).first()
-            if dep:
-                return dep
-    for k in ("externalId", "external_id"):
-        eid = d.get(k)
-        if eid:
-            dep = db.query(Deposit).filter(Deposit.external_id == str(eid)).first()
             if dep:
                 return dep
     return None
 
 
 def _cyber_find_withdrawal(db: Session, d: dict) -> Optional[Withdrawal]:
+    if not d:
+        return None
     for k in ("withdrawalId", "withdrawal_id"):
         wid = d.get(k)
         if wid:
@@ -2126,7 +2137,7 @@ def _cyber_find_withdrawal(db: Session, d: dict) -> Optional[Withdrawal]:
             if w:
                 return w
     tid = d.get("id")
-    if tid and str(tid).startswith("wd_"):
+    if tid:
         w = db.query(Withdrawal).filter(Withdrawal.external_id == str(tid)).first()
         if w:
             return w
@@ -2155,19 +2166,25 @@ async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
         return {"status": "received", "message": "JSON inválido"}
 
     event_type = (data.get("type") or "").strip().lower()
-    d = _cyber_event_data(data)
+    lookup = _cyber_merged_lookup(data)
 
     try:
         if event_type == "pix.in.confirmation":
-            deposit = _cyber_find_deposit(db, d)
+            deposit = _cyber_find_deposit(db, lookup)
             if not deposit:
+                logger.warning(
+                    "[Webhook Cyber] Depósito não encontrado (pix.in.confirmation). "
+                    "lookup_keys=%s sample=%s",
+                    list(lookup.keys()) if lookup else [],
+                    {k: lookup.get(k) for k in ("id", "transactionId", "transaction_id") if k in lookup},
+                )
                 return {"status": "received", "message": "Depósito não encontrado"}
-            payload = dict(d)
+            payload = dict(lookup)
             payload["status"] = "APPROVED"
             return await _process_gatebox_cashin(payload, deposit, db)
 
         if event_type in ("pix.in.expired", "pix.in.failed"):
-            deposit = _cyber_find_deposit(db, d)
+            deposit = _cyber_find_deposit(db, lookup)
             if deposit and deposit.status == TransactionStatus.PENDING:
                 deposit.status = TransactionStatus.CANCELLED
                 meta = json.loads(deposit.metadata_json) if deposit.metadata_json else {}
@@ -2178,23 +2195,23 @@ async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
             return {"status": "ok", "message": "Evento de depósito registrado"}
 
         if event_type == "pix.in.reversal.confirmation":
-            deposit = _cyber_find_deposit(db, d)
+            deposit = _cyber_find_deposit(db, lookup)
             if not deposit:
                 return {"status": "received", "message": "Depósito não encontrado"}
-            rev = dict(d)
+            rev = dict(lookup)
             rev["status"] = "REFUNDED"
             return await _process_gatebox_reversal(rev, deposit, db)
 
         if event_type == "pix.out.confirmation":
-            withdrawal = _cyber_find_withdrawal(db, d)
+            withdrawal = _cyber_find_withdrawal(db, lookup)
             if not withdrawal:
                 return {"status": "received", "message": "Saque não encontrado"}
-            out = dict(d)
+            out = dict(lookup)
             out["status"] = "COMPLETED"
             return await _process_gatebox_cashout(out, withdrawal, db)
 
         if event_type in ("pix.out.failure", "pix.out.reversal"):
-            withdrawal = _cyber_find_withdrawal(db, d)
+            withdrawal = _cyber_find_withdrawal(db, lookup)
             if not withdrawal:
                 return {"status": "received", "message": "Saque não encontrado"}
             return await _process_gatebox_withdrawal_fail(data, withdrawal, db, reason=event_type)
