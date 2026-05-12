@@ -1286,7 +1286,6 @@ function GatewaysTab({ token }: { token: string }) {
     api_url: 'https://api.gatebox.com.br',
     username: '',
     password: '',
-    webhook_secret: '', // Cyber (opcional): validação X-Webhook-Signature
   });
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -1303,7 +1302,7 @@ function GatewaysTab({ token }: { token: string }) {
   };
 
   const resetForm = () => {
-    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true, api_url: 'https://api.gatebox.com.br', username: '', password: '', webhook_secret: '' });
+    setForm({ name: '', type: 'pix', is_active: true, client_id: '', client_secret: '', api_key: '', sandbox: true, api_url: 'https://api.gatebox.com.br', username: '', password: '' });
     setEditingId(null);
   };
 
@@ -1323,16 +1322,13 @@ function GatewaysTab({ token }: { token: string }) {
         api_key: form.api_key
       });
     }
-    // Cyber / Escale Cyber — X-API-Key + base URL (opcional webhook_secret para validar assinatura)
+    // Cyber / Escale Cyber — X-API-Key + base URL
     if (gatewayName.includes('cyber') || gatewayName.includes('escale')) {
       const u = (form.api_url || 'https://api.escalecyber.com/v1').trim() || 'https://api.escalecyber.com/v1';
-      const payload: Record<string, unknown> = {
+      return JSON.stringify({
         api_key: form.api_key,
         api_url: u,
-      };
-      const ws = (form.webhook_secret || '').trim();
-      if (ws) payload.webhook_secret = ws;
-      return JSON.stringify(payload);
+      });
     }
     // SarrixPay: mesmo formulário visual da SuitPay, mas credenciais vão para outro cliente HTTP
     if (gatewayName.includes('sarrix') || gatewayName.includes('sarryx')) {
@@ -1425,7 +1421,6 @@ function GatewaysTab({ token }: { token: string }) {
       api_url: 'https://api.gatebox.com.br',
       username: '',
       password: '',
-      webhook_secret: '',
     });
 
     // Parse credentials se existir
@@ -1444,7 +1439,6 @@ function GatewaysTab({ token }: { token: string }) {
           api_url: creds.api_url || (isCyber ? 'https://api.escalecyber.com/v1' : isSarrix ? '' : 'https://api.gatebox.com.br'),
           username: creds.username || '',
           password: creds.password || '',
-          webhook_secret: creds.webhook_secret || '',
         }));
       } catch (e) {
         // Se não for JSON, deixa vazio
@@ -1576,21 +1570,10 @@ function GatewaysTab({ token }: { token: string }) {
                   onChange={e => setForm({ ...form, api_key: e.target.value })}
                 />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm text-gray-400 mb-1">Webhook secret (opcional)</label>
-                <input
-                  type="password"
-                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm border border-gray-600 focus:border-[#d4af37] focus:outline-none"
-                  placeholder="whsec_... — valida header X-Webhook-Signature"
-                  value={form.webhook_secret}
-                  onChange={e => setForm({ ...form, webhook_secret: e.target.value })}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Cadastre no painel Cyber a URL:{' '}
-                  <code className="text-gray-400">{'{WEBHOOK_BASE_URL}/api/webhooks/cyberpay'}</code>
-                  . Se preencher o secret, requisições sem assinatura válida serão rejeitadas.
-                </p>
-              </div>
+              <p className="md:col-span-2 text-xs text-gray-500">
+                Cadastre no painel Cyber a URL:{' '}
+                <code className="text-gray-400">{'{WEBHOOK_BASE_URL}/api/webhooks/cyberpay'}</code>
+              </p>
             </>
           ) : (
             // SuitPay - Client ID e Client Secret

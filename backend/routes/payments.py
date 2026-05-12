@@ -25,9 +25,6 @@ import json
 import logging
 import uuid
 import os
-import hmac
-import hashlib
-import base64
 
 logger = logging.getLogger(__name__)
 
@@ -2100,41 +2097,6 @@ async def reconcile_sarrix_deposit_by_id(db: Session, deposit_id: int) -> dict:
     }
 
 
-def _cyber_get_webhook_secret(db: Session) -> Optional[str]:
-    for g in db.query(Gateway).filter(Gateway.type == "pix").all():
-        n = (g.name or "").lower()
-        if "cyber" in n or "escale" in n:
-            try:
-                creds = json.loads(g.credentials or "{}")
-                s = creds.get("webhook_secret")
-                if s:
-                    return str(s).strip()
-            except json.JSONDecodeError:
-                continue
-    return None
-
-
-def _cyber_verify_signature(body: bytes, secret: str, header_val: Optional[str]) -> bool:
-    """Valida X-Webhook-Signature (HMAC-SHA256 hex ou base64); secret pode vir com prefixo whsec_."""
-    if not secret:
-        return True
-    if not header_val:
-        return False
-    hv = header_val.strip()
-    if hv.lower().startswith("sha256="):
-        hv = hv.split("=", 1)[-1].strip()
-    keys = [secret]
-    if secret.startswith("whsec_"):
-        keys.append(secret[6:])
-    for key in keys:
-        mac = hmac.new(key.encode("utf-8"), body, hashlib.sha256)
-        hex_d = mac.hexdigest()
-        b64_d = base64.b64encode(mac.digest()).decode("ascii")
-        if hmac.compare_digest(hex_d, hv) or hmac.compare_digest(b64_d, hv):
-            return True
-    return False
-
-
 def _cyber_event_data(payload: dict) -> dict:
     d = payload.get("data")
     return d if isinstance(d, dict) else {}
@@ -2186,10 +2148,6 @@ async def webhook_cyberpay(request: Request, db: Session = Depends(get_db)):
     pix.out.confirmation, pix.out.failure, pix.out.reversal (e processing como ACK).
     """
     body_bytes = await request.body()
-    secret = _cyber_get_webhook_secret(db)
-    sig = request.headers.get("X-Webhook-Signature") or request.headers.get("x-webhook-signature")
-    if secret and not _cyber_verify_signature(body_bytes, secret, sig):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Assinatura de webhook inválida")
 
     try:
         data = json.loads(body_bytes.decode("utf-8"))
