@@ -8,7 +8,7 @@ import {
   ArrowDownCircle, Activity, RefreshCw,
   Image as ImageIcon, Home, BarChart3,
   ChevronUp, ChevronDown, Percent, FileText, 
-  Gift, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, MessageCircle, FileDown
+  Gift, Tag, Gamepad2, UserCog, Palette, BarChart, GripVertical, MessageCircle, FileDown, KeyRound
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -501,6 +501,15 @@ function UsersTab({ token }: { token: string }) {
   const [bonusModal, setBonusModal] = useState<{ id: number; username: string } | null>(null);
   const [bonusAmount, setBonusAmount] = useState('');
   const [bonusBusy, setBonusBusy] = useState(false);
+  const [passwordModal, setPasswordModal] = useState<{
+    id: number;
+    username: string;
+    email: string;
+  } | null>(null);
+  const [pwdNew, setPwdNew] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const [pwdError, setPwdError] = useState('');
   const [quickUserId, setQuickUserId] = useState('');
   const [quickAmount, setQuickAmount] = useState('');
 
@@ -561,6 +570,50 @@ function UsersTab({ token }: { token: string }) {
   const submitBonus = async () => {
     if (!bonusModal) return;
     await creditPlayableBonus(bonusModal.id, bonusAmount);
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModal(null);
+    setPwdNew('');
+    setPwdConfirm('');
+    setPwdError('');
+  };
+
+  const submitPasswordReset = async () => {
+    if (!passwordModal) return;
+    const trimmed = pwdNew.trim();
+    if (trimmed.length < 6) {
+      setPwdError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (trimmed !== pwdConfirm.trim()) {
+      setPwdError('As senhas não coincidem.');
+      return;
+    }
+    setPwdBusy(true);
+    setPwdError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${passwordModal.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ new_password: trimmed }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          typeof data.detail === 'string'
+            ? data.detail
+            : Array.isArray(data.detail)
+              ? data.detail.map((x: { msg?: string }) => x.msg || '').filter(Boolean).join(' ')
+              : 'Falha ao alterar senha';
+        throw new Error(msg);
+      }
+      closePasswordModal();
+    } catch (err: unknown) {
+      setPwdError(err instanceof Error ? err.message : 'Erro ao alterar senha');
+    } finally {
+      setPwdBusy(false);
+    }
   };
 
   const submitQuickBonus = async () => {
@@ -752,6 +805,72 @@ function UsersTab({ token }: { token: string }) {
           </div>
         </div>
       )}
+      {passwordModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-xl border border-gray-600 bg-gray-800 p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-1">Alterar senha</h3>
+            <p className="text-sm text-gray-400 mb-4 leading-relaxed">
+              <span className="text-gray-200 font-medium">{passwordModal.username}</span>
+              <span className="text-gray-500"> · ID {passwordModal.id}</span>
+              {passwordModal.email ? (
+                <>
+                  <br />
+                  <span className="text-xs text-gray-500">{passwordModal.email}</span>
+                </>
+              ) : null}
+            </p>
+            <label className="block text-sm text-gray-300 mb-1">Nova senha</label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={pwdNew}
+              onChange={(e) => {
+                setPwdNew(e.target.value);
+                setPwdError('');
+              }}
+              className="w-full bg-gray-700 rounded px-3 py-2 mb-1 text-white border border-gray-600"
+              placeholder="Mínimo 6 caracteres"
+            />
+            <p className="text-xs text-gray-500 mb-3">Mínimo de 6 caracteres.</p>
+            <label className="block text-sm text-gray-300 mb-1">Confirmar nova senha</label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={pwdConfirm}
+              onChange={(e) => {
+                setPwdConfirm(e.target.value);
+                setPwdError('');
+              }}
+              className="w-full bg-gray-700 rounded px-3 py-2 mb-3 text-white border border-gray-600"
+              placeholder="Digite novamente"
+            />
+            {pwdError ? <p className="text-sm text-red-400 mb-3">{pwdError}</p> : null}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closePasswordModal}
+                disabled={pwdBusy}
+                className="px-4 py-2 rounded bg-gray-600 hover:bg-gray-500 text-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={
+                  pwdBusy ||
+                  pwdNew.trim().length < 6 ||
+                  pwdConfirm.trim().length < 6 ||
+                  pwdNew.trim() !== pwdConfirm.trim()
+                }
+                onClick={() => void submitPasswordReset()}
+                className="px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {pwdBusy ? 'Salvando…' : 'Salvar nova senha'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {loading ? <div>Carregando...</div> : (
         <div className="overflow-x-auto border border-gray-700 rounded-lg">
           <table className="w-full text-sm">
@@ -802,24 +921,44 @@ function UsersTab({ token }: { token: string }) {
                     </td>
                     <td className="px-3 py-2">{u.is_active ? 'Ativo' : 'Inativo'}</td>
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        disabled={!canReceive}
-                        title={!canReceive ? 'Ative “Pode receber bônus jogável” para creditar' : 'Creditar saldo jogável para este usuário'}
-                        onClick={() => {
-                          if (!canReceive) {
-                            setError('Ative “Pode receber bônus jogável” nesta linha antes de creditar.');
-                            return;
-                          }
-                          setBonusModal({ id: u.id, username: u.username });
-                          setBonusAmount('');
-                          setError('');
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg border border-amber-600/60 bg-amber-900/30 px-2.5 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-900/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-900/30"
-                      >
-                        <Gift size={14} />
-                        Bônus jogos
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={!canReceive}
+                          title={!canReceive ? 'Ative “Pode receber bônus jogável” para creditar' : 'Creditar saldo jogável para este usuário'}
+                          onClick={() => {
+                            if (!canReceive) {
+                              setError('Ative “Pode receber bônus jogável” nesta linha antes de creditar.');
+                              return;
+                            }
+                            setBonusModal({ id: u.id, username: u.username });
+                            setBonusAmount('');
+                            setError('');
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-amber-600/60 bg-amber-900/30 px-2.5 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-900/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-900/30"
+                        >
+                          <Gift size={14} />
+                          Bônus jogos
+                        </button>
+                        <button
+                          type="button"
+                          title="Definir nova senha de login para este usuário"
+                          onClick={() => {
+                            setPasswordModal({
+                              id: u.id,
+                              username: String(u.username ?? ''),
+                              email: String(u.email ?? ''),
+                            });
+                            setPwdNew('');
+                            setPwdConfirm('');
+                            setPwdError('');
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-sky-600/50 bg-sky-900/25 px-2.5 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-900/45"
+                        >
+                          <KeyRound size={14} />
+                          Alterar senha
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

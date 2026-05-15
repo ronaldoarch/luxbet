@@ -211,8 +211,8 @@ async def reset_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     new_pass = (body.new_password or "").strip()
-    if len(new_pass) < 4:
-        raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 4 caracteres")
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
     user.password_hash = get_password_hash(new_pass)
     db.commit()
     db.refresh(user)
